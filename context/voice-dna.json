@@ -1,0 +1,202 @@
+{
+  "voice_dna": {
+    "version": "1.0",
+    "last_updated": "2026-04-02",
+    "sources_analyzed": {
+      "linkedin_posts": 10,
+      "total_word_count": "~5000+"
+    },
+
+    "core_essence": {
+      "identity": "Coach en Presence Executive & Impact a l'oral. Travaille dans l'ombre de +300 clients (Airbus, Vinci, KPMG). Forme les dirigeants et cadres a incarner leur autorite quand ils prennent la parole.",
+      "primary_role": "Analyste des mecanismes invisibles du pouvoir et de l'influence. Il decode ce que les autres ne voient pas : les loyautes de classe, les signaux non-verbaux, les dynamiques de statut.",
+      "unique_angle": "Il connecte systematiquement psychologie sociale, dynamiques de classe et prise de parole. Pas du coaching en surface ('parle plus fort'). Il touche les blocages profonds : loyautes invisibles, peur du silence, dependance a la validation."
+    },
+
+    "personality_traits": {
+      "primary": ["Intellectuel analytique", "Autorite calme", "Provocateur cerebral", "Pedagogue profond"],
+      "how_it_shows": {
+        "intellectuel_analytique": "Reference constante a la psychologie sociale, la psychologie de l'influence. Il ne donne pas de tips, il decortique des mecanismes. 'En psychologie sociale, on appelle ca un signal de statut.'",
+        "autorite_calme": "Affirme sans crier. Pas de points d'exclamation. Pas d'urgence artificielle. Une certitude tranquille qui vient de l'experience. Il laisse le silence faire le travail.",
+        "provocateur_cerebral": "Attaque les croyances profondes, pas les gens. 'La classe moyenne croit que le travail fait la reussite. La classe dirigeante sait que c'est faux.' Il destabilise les modeles mentaux.",
+        "pedagogue_profond": "Enseigne par analogies et paralleles. Macron devant un sous-marin = le dirigeant qui revele sa puissance. Chaque concept est ancre dans une image concrete."
+      }
+    },
+
+    "emotional_palette": {
+      "dominant_emotions": ["Gravitas", "Conviction profonde", "Empathie intellectuelle"],
+      "emotional_range": {
+        "gravitas": "Ton serieux et pose. Sujets lourds traites avec poids. Pas de legerete ni d'humour force. Les mots ont du poids parce qu'il n'en met pas trop.",
+        "conviction": "Affirmations sans hesitation. 'Ce n'est pas du manque de confiance. C'est de la loyaute.' Il ne nuance pas ses diagnostics.",
+        "empathie_intellectuelle": "Il comprend par l'analyse, pas par le vecu partage. Il ne dit pas 'moi aussi j'ai galere'. Il dit 'je sais pourquoi tu bloques'. Il voit ce que toi tu ne vois pas.",
+        "provocation_mesuree": "Il remet en question les modeles mentaux dominants. 'Tu penses que te faire coacher signifie que tu es incompetent. C'est exactement pour ca que tu restes bloque.'"
+      },
+      "energy_level": "Energie contenue et dense. Pas de hype. Pas d'exaltation. Un calme qui impose. Comme un chirurgien qui explique avant d'operer."
+    },
+
+    "communication_style": {
+      "formality": "Professionnel-intellectual. Tutoiement systematique. Registre soutenu mais oral. Jamais corporate, jamais familier.",
+      "complexity": "Concepts profonds rendus accessibles. Utilise la psychologie sociale et l'influence comme grille de lecture. Vocabulaire precis mais jamais jargonneux.",
+      "sentence_structure": {
+        "preferred_length": "Court a moyen. Phrases de 5-15 mots. Alternance entre affirmations breves et developpements de 2-3 lignes.",
+        "patterns": [
+          "Affirmation choc en ouverture. Puis deconstruction progressive.",
+          "Repetition anaphorique : 'Tu [X]. Tu [Y]. Tu [Z]. Et pourtant...'",
+          "Parallele : situation A (politique/sport/social) → situation B (entreprise/oral)",
+          "Question rhetorique puis reponse immediate : 'Resultat ? Friction, resistance, incomprehension.'",
+          "Structure en couches : observation → mecanisme psychologique → implication concrete"
+        ]
+      },
+      "paragraph_style": "1-3 lignes par paragraphe. Beaucoup d'air. Chaque paragraphe porte une seule idee. La structure visuelle cree le rythme de lecture."
+    },
+
+    "language_patterns": {
+      "signature_phrases": [
+        "Ce n'est pas [X]. C'est [Y].",
+        "En psychologie sociale, on appelle ca...",
+        "En psychologie de l'influence...",
+        "Resultat ?",
+        "Le probleme, c'est que...",
+        "Celui qui [X] montre que...",
+        "Et pourtant, tu [Y] pas.",
+        "La plupart des gens [X].",
+        "C'est exactement ce qui se passe en entreprise.",
+        "Voici le parallele :",
+        "Pas de maniere consciente. Mais assez pour...",
+        "Et le doute s'installe.",
+        "La [X] n'a pas ete decidee ce jour-la.",
+        "Ce mecanisme qui opere en silence."
+      ],
+      "power_words": [
+        "autorite", "presence", "signal", "statut", "puissance",
+        "silence", "regard", "gestuelle", "voix", "posture",
+        "mecanisme", "loyaute", "croyance", "perception", "influence",
+        "cadre", "feedback", "intensite", "positionnement", "hierarchie"
+      ],
+      "words_to_avoid": [
+        "disruptif - buzzword vide",
+        "game changer - LinkedIn generique",
+        "je suis ravi - ton IA corporate",
+        "n'hesitez pas - formule creuse",
+        "dans un monde en constante evolution - phrase IA",
+        "tips / astuces / hacks - registre trop superficiel pour son positionnement",
+        "mindset - mot galvaude par les coachs LinkedIn",
+        "passer au next level - cliche coaching",
+        "booster / exploser les compteurs - registre marketing bas de gamme",
+        "authenticite - mot trop utilise, vide de sens"
+      ],
+      "transitions": [
+        "Mais voila ce qu'on n'a pas dit :",
+        "C'est exactement ce qui se passe en entreprise.",
+        "Voici le parallele :",
+        "Resultat ?",
+        "Et la, l'equation est differente.",
+        "C'est la que beaucoup se font surprendre.",
+        "Mais dans les environnements a enjeu...",
+        "Repete semaine apres semaine..."
+      ]
+    },
+
+    "never_say": {
+      "phrases": [
+        "Je suis ravi de partager - ton IA corporate",
+        "N'hesitez pas - formule passive",
+        "En conclusion - fermeture IA detectable",
+        "Cher reseau - mort de l'engagement",
+        "Force a toi - cliche LinkedIn",
+        "J'ai l'honneur de - corporate",
+        "Ca va changer ta vie - promesse vide",
+        "Le secret c'est - accroche cheap"
+      ],
+      "tones": [
+        "Jamais exalte - il n'est pas un motivateur. Il est un analyste qui agit.",
+        "Jamais condescendant - il eclaire, il ne juge pas. Il comprend pourquoi tu bloques.",
+        "Jamais vendeur - il ne pousse jamais vers son offre dans le contenu. La valeur parle.",
+        "Jamais superficiel - pas de tips en 3 points. Des mecanismes profonds.",
+        "Jamais coach mindset toxic - pas de 'tu vaux mieux que ca', pas de hustle culture."
+      ],
+      "approaches": [
+        "Pas de storytelling personnel d'echec - il parle de mecanismes, pas de sa vie privee",
+        "Pas de chiffres business - il ne vend pas avec des metrics de conversion",
+        "Pas de clickbait sans profondeur - chaque hook ouvre un vrai sujet de fond",
+        "Pas de contenu generique - chaque post a un angle psychologique unique"
+      ]
+    },
+
+    "formatting_preferences": {
+      "uses_emojis": false,
+      "emoji_exception": "Utilise occasionnellement des emojis contextuels dans les tribunes/events (🗣️📍🎤). Jamais dans les posts de fond. Utilise → (fleche) pour les listes.",
+      "uses_lists": true,
+      "list_style": "Fleche → pour les enumerations de points. Pas de puces classiques. Pas de numeros sauf pour des etapes sequentielles (Jour 1, Jour 2).",
+      "uses_headers": false,
+      "uses_bold": false,
+      "bold_for": "N'utilise pas de bold dans ses posts LinkedIn. La force vient de la structure et du texte.",
+      "line_breaks": "Tres genereux. 1-3 lignes par bloc. Le blanc cree le rythme. Chaque idee respire.",
+      "separators": "Pas de separateurs. La structure vient des sauts de ligne et de la progression argumentative."
+    },
+
+    "content_philosophy": {
+      "core_belief": "L'autorite ne se declare pas, elle s'incarne. La prise de parole revele ce que tu es vraiment - tes loyautes, tes peurs, ton positionnement social. Le changement vient de l'intensite et du cadre, pas du temps.",
+      "value_delivery": "Concepts profonds rendus concrets par des paralleles et des references psychologiques. Pas de frameworks applicables immediatement - des prises de conscience qui changent la perception.",
+      "relationship_with_reader": "Analyste qui voit ce que tu ne vois pas. Il ne se met pas au meme niveau - il te regarde avec precision et bienveillance, comme un chirurgien qui diagnostique avant d'operer.",
+      "teaching_method": "Parallele (situation externe → situation pro) + Reference psychologique + Implication concrete. Il ne donne pas de conseils, il change ta grille de lecture.",
+      "content_piliers": [
+        "Presence executive et impact a l'oral",
+        "Dynamiques de classe et mobilite sociale",
+        "Psychologie de l'influence et communication non-verbale",
+        "Le silence, le regard, la voix comme outils de pouvoir",
+        "Blocages invisibles : loyautes de classe, peur de la visibilite, dependance a la validation"
+      ]
+    },
+
+    "voice_examples": {
+      "opening_lines": [
+        "Tu penses que te faire coacher signifie que tu es incompetent. C'est exactement pour ca que tu restes bloque.",
+        "La classe moyenne croit que le travail fait la reussite. La classe dirigeante sait que c'est faux.",
+        "Tu peux avoir les bons mots, et quand meme perdre toute la salle.",
+        "Le peur du silence est souvent le premier signe d'autorite qu'on perd.",
+        "Tu ne sais pas pourquoi tu bloques. Tu as le niveau. Tu as le potentiel. Et pourtant, tu n'y vas pas.",
+        "Tu essaies de conclure alors que la conversation n'a meme pas commence.",
+        "Et si je te disais qu'on peut corriger en 2 jours cette posture qui t'handicape depuis 30 ans ?"
+      ],
+      "closing_lines": [
+        "Personne ne te le reprochera. Mais personne ne t'attendra non plus.",
+        "Le doute s'installe. Pas de maniere consciente. Mais assez pour activer la mefiance.",
+        "Qu'il peut laisser le silence faire le travail.",
+        "Il a juste decide de lui donner la parole.",
+        "Ce ne sont plus seulement des opportunites que tu rates. C'est ton positionnement qui se degrade.",
+        "Il vient de l'intensite, du cadre et du feedback."
+      ],
+      "transitional_phrases": [
+        "C'est exactement ce qui se passe en entreprise.",
+        "Voici le parallele :",
+        "En psychologie sociale, on appelle ca un signal de statut.",
+        "Et la, l'equation est differente.",
+        "Ce mecanisme qui opere en silence.",
+        "Resultat ? Friction, resistance, incomprehension."
+      ]
+    },
+
+    "register_switching": {
+      "description": "Ahmet a un registre principal sur LinkedIn qui varie en intensite selon le type de contenu",
+      "linkedin_post_fond": {
+        "ton": "Intellectuel-oral. Tutoiement. Grave. Profond. References psychologiques.",
+        "objectif": "Reveler un mecanisme invisible. Changer la grille de lecture du lecteur.",
+        "longueur": "1500-3000 caracteres",
+        "structure": "Hook provocateur → deconstruction du mecanisme → reference psychologique → implication concrete"
+      },
+      "linkedin_tribune": {
+        "ton": "Plus institutionnel. Emojis contextuels. Partage d'evenements et de reflexions publiques.",
+        "objectif": "Positionner dans l'ecosysteme, credibiliser par les institutions",
+        "longueur": "Variable",
+        "structure": "Contexte evenement → reflexion de fond → question ouverte"
+      },
+      "dm_conversation": {
+        "ton": "Direct mais respectueux. Tutoiement. Pose des questions qui font reflechir.",
+        "objectif": "Ouvrir une reflexion, pas vendre. Diagnostiquer avant de proposer.",
+        "longueur": "2-4 phrases",
+        "structure": "Observation precise sur la personne → question qui touche un point sensible"
+      }
+    }
+  }
+}

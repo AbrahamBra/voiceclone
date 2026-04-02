@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ahmet Akyurek — Clone IA</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+  <!-- SCREEN 1: Access -->
+  <div id="screen-access" class="screen active">
+    <div class="access-container">
+      <div class="access-avatar">A</div>
+      <h1>Ahmet Akyurek</h1>
+      <p class="access-subtitle">Presence Executive & Impact a l'oral</p>
+      <input type="password" id="access-code" placeholder="Code d'acces" autocomplete="off" />
+      <button id="btn-access">Entrer</button>
+      <p id="access-error" class="error-text"></p>
+    </div>
+  </div>
+
+  <!-- SCREEN 2: Scenario choice -->
+  <div id="screen-scenario" class="screen">
+    <div class="scenario-container">
+      <h2>Que veux-tu faire ?</h2>
+      <div class="scenario-cards">
+        <div class="scenario-card" data-scenario="analyze">
+          <div class="card-icon">&#x1F50D;</div>
+          <h3>Analyser un profil</h3>
+          <p>Colle un profil LinkedIn. Ahmet le score et redige le premier DM.</p>
+        </div>
+        <div class="scenario-card" data-scenario="free">
+          <div class="card-icon">&#x1F4AC;</div>
+          <h3>Discuter avec Ahmet</h3>
+          <p>Pose-lui des questions sur la presence, l'oral, le positionnement.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 3: Chat -->
+  <div id="screen-chat" class="screen">
+    <div class="chat-header">
+      <button id="btn-back" class="back-btn">&larr;</button>
+      <div class="chat-header-info">
+        <div class="chat-avatar">A</div>
+        <div>
+          <span class="chat-name">Ahmet Akyurek</span>
+          <span class="chat-status">en ligne</span>
+        </div>
+      </div>
+    </div>
+    <div id="chat-messages" class="chat-messages"></div>
+    <div class="chat-input-area">
+      <textarea id="chat-input" placeholder="Ecris ton message..." rows="1"></textarea>
+      <button id="btn-send">&#x27A4;</button>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
