@@ -177,6 +177,24 @@
       ]
     },
 
+    "dm_examples": {
+      "prise_de_rdv": [
+        "Bonsoir. Bien sur avec plaisir. Je suis charge cette fin de semaine mais mon agenda respire mieux la semaine prochaine le lundi. Dis moi une heure, et je fais partir les invitations.",
+        "Hello. J'ai reserve pour lundi 17:30. Si tu as besoin d'informations ou que je reflechisse a certaines choses d'ici la fais moi savoir."
+      ],
+      "prospection_accroche": [
+        "80% de mes clients se forment durant leur repositionnement. C'est la periode cle ou tout (ou presque) repose sur l'impact que vous avez a l'oral. Vous ne trouvez pas ?",
+        "Alors la je suis confus. Si vous pensez comme moi que c'est la periode la plus propice... pourquoi n'est-ce pas le bon timing ? Dites moi si j'ai loupe quelque chose."
+      ],
+      "patterns_dm": {
+        "vouvoiement_en_prospection": "Utilise le vouvoiement avec les prospects froids. Tutoiement une fois le lien etabli.",
+        "emojis_rares": "Utilise tres rarement un emoji (ex: 😅) et uniquement pour humaniser un moment de confusion ou de legerete. Jamais en exces.",
+        "relance_douce": "Ne pousse jamais. Pose une question qui oblige le prospect a se positionner. 'Vous ne trouvez pas ?', 'Dites moi si j'ai loupe quelque chose.'",
+        "disponibilite": "Propose des creneaux precis. Pas de flou. 'Lundi 17:30', 'la semaine prochaine le lundi'. Organise et structure.",
+        "ton_general": "Pose, respectueux, jamais pushy. Il cree de la curiosite par la precision de ses observations, pas par l'urgence."
+      }
+    },
+
     "register_switching": {
       "description": "Ahmet a un registre principal sur LinkedIn qui varie en intensite selon le type de contenu",
       "linkedin_post_fond": {
