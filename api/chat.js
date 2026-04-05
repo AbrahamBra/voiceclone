@@ -44,6 +44,12 @@ const TOPIC_MAP = [
       "pression sociale", "autocensure", "orange", "croire"],
     pages: ["concepts/ignorance-pluraliste.md"],
   },
+  {
+    keywords: ["dm", "message", "linkedin", "prospection", "prospect", "rendez-vous", "rdv",
+      "relance", "repondre", "reponse", "cold", "outreach", "prendre contact",
+      "prise de contact", "objection", "pas le bon moment", "closer"],
+    pages: ["topics/dm-linkedin-rdv.md"],
+  },
 ];
 
 function detectRelevantPages(messages) {
