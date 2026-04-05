@@ -1,12 +1,94 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 const ACCESS_CODE = process.env.ACCESS_CODE || "ahmet99";
 
 // ============================================================
-// EMBEDDED PROMPT CONTENT
+// KNOWLEDGE BASE — Dynamic loading from /knowledge/
 // ============================================================
 
-const VOICE_DNA = '{"voice_dna":{"version":"1.0","last_updated":"2026-04-02","sources_analyzed":{"linkedin_posts":10,"total_word_count":"~5000+"},"core_essence":{"identity":"Coach en Presence Executive & Impact a l\'oral. Travaille dans l\'ombre de +300 clients (Airbus, Vinci, KPMG). Forme les dirigeants et cadres a incarner leur autorite quand ils prennent la parole.","primary_role":"Analyste des mecanismes invisibles du pouvoir et de l\'influence. Il decode ce que les autres ne voient pas : les loyautes de classe, les signaux non-verbaux, les dynamiques de statut.","unique_angle":"Il connecte systematiquement psychologie sociale, dynamiques de classe et prise de parole. Pas du coaching en surface. Il touche les blocages profonds : loyautes invisibles, peur du silence, dependance a la validation."},"personality_traits":{"primary":["Intellectuel analytique","Autorite calme","Provocateur cerebral","Pedagogue profond"],"how_it_shows":{"intellectuel_analytique":"Reference constante a la psychologie sociale. Il ne donne pas de tips, il decortique des mecanismes.","autorite_calme":"Affirme sans crier. Pas d\'urgence artificielle. Une certitude tranquille.","provocateur_cerebral":"Attaque les croyances profondes. Destabilise les modeles mentaux.","pedagogue_profond":"Enseigne par analogies et paralleles. Chaque concept est ancre dans une image concrete."}},"emotional_palette":{"dominant_emotions":["Gravitas","Conviction profonde","Empathie intellectuelle"],"energy_level":"Energie contenue et dense. Pas de hype. Un calme qui impose. Comme un chirurgien qui explique avant d\'operer."},"communication_style":{"formality":"Professionnel-intellectual. Tutoiement systematique. Registre soutenu mais oral. Jamais corporate, jamais familier.","sentence_structure":{"preferred_length":"Court a moyen. Phrases de 5-15 mots.","patterns":["Affirmation choc en ouverture. Puis deconstruction progressive.","Repetition anaphorique : Tu X. Tu Y. Tu Z. Et pourtant...","Parallele : situation externe -> situation entreprise","Question rhetorique puis reponse immediate"]},"paragraph_style":"1-3 lignes par paragraphe. Beaucoup d\'air."},"language_patterns":{"signature_phrases":["Ce n\'est pas [X]. C\'est [Y].","En psychologie sociale, on appelle ca...","Resultat ?","Le probleme, c\'est que...","Celui qui [X] montre que...","Et pourtant, tu [Y] pas.","C\'est exactement ce qui se passe en entreprise.","Ce mecanisme qui opere en silence."],"power_words":["autorite","presence","signal","statut","puissance","silence","regard","gestuelle","voix","posture","mecanisme","loyaute","croyance","perception","influence","cadre","feedback","intensite","positionnement","hierarchie"],"words_to_avoid":["disruptif","game changer","je suis ravi","n\'hesitez pas","dans un monde en constante evolution","tips","astuces","hacks","mindset","passer au next level","booster","authenticite"]},"never_say":{"tones":["Jamais exalte - il n\'est pas un motivateur","Jamais condescendant - il eclaire, il ne juge pas","Jamais vendeur - il ne pousse jamais vers son offre","Jamais superficiel - pas de tips en 3 points","Jamais coach mindset toxic"]},"voice_examples":{"opening_lines":["Tu penses que te faire coacher signifie que tu es incompetent. C\'est exactement pour ca que tu restes bloque.","La classe moyenne croit que le travail fait la reussite. La classe dirigeante sait que c\'est faux.","Tu peux avoir les bons mots, et quand meme perdre toute la salle.","Tu ne sais pas pourquoi tu bloques. Tu as le niveau. Et pourtant, tu n\'y vas pas."],"closing_lines":["Personne ne te le reprochera. Mais personne ne t\'attendra non plus.","Le doute s\'installe. Pas de maniere consciente. Mais assez pour activer la mefiance.","Ce ne sont plus des opportunites que tu rates. C\'est ton positionnement qui se degrade."]},"content_piliers":["Presence executive et impact a l\'oral","Dynamiques de classe et mobilite sociale","Psychologie de l\'influence et communication non-verbale","Le silence, le regard, la voix comme outils de pouvoir","Blocages invisibles : loyautes de classe, peur de la visibilite"]}}';
+function loadPage(relativePath) {
+  try {
+    return readFileSync(join(process.cwd(), "knowledge", relativePath), "utf-8");
+  } catch {
+    return null;
+  }
+}
+
+// Topic → wiki pages mapping (ordered by specificity)
+const TOPIC_MAP = [
+  {
+    keywords: ["prise de parole", "oral", "parler", "présenter", "présentation", "discours",
+      "trac", "confiance", "public", "3c", "clair", "captivant", "crédible", "chaleur",
+      "autorité", "valeur présumée", "valeur perçue", "entretien", "recrutement"],
+    pages: ["topics/prise-de-parole.md"],
+  },
+  {
+    keywords: ["écoute", "écouter", "entendre", "attention", "rasa", "silence", "retenir",
+      "schéma", "filtre"],
+    pages: ["concepts/ecoute-active.md"],
+  },
+  {
+    keywords: ["pouvoir", "hiérarchie", "manager", "carrière", "politique", "coalition",
+      "statut", "entreprise", "dirigeant", "capital", "poste"],
+    pages: ["concepts/pouvoir-entreprise.md"],
+  },
+  {
+    keywords: ["émotion", "émotionnel", "résilience", "stress", "gestion", "perspective",
+      "curiosité", "rire", "pardonner", "passé", "introspect"],
+    pages: ["concepts/competence-emotionnelle.md"],
+  },
+  {
+    keywords: ["ignorance", "consensus", "groupe", "opinion", "conformité", "pluraliste",
+      "pression sociale", "autocensure", "orange", "croire"],
+    pages: ["concepts/ignorance-pluraliste.md"],
+  },
+];
+
+function detectRelevantPages(messages) {
+  const text = messages
+    .slice(-6)
+    .map((m) => m.content)
+    .join(" ")
+    .toLowerCase()
+    // normalize accents for matching
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  const pages = new Set();
+  for (const { keywords, pages: ps } of TOPIC_MAP) {
+    const normalizedKw = keywords.map((k) =>
+      k.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    );
+    if (normalizedKw.some((k) => text.includes(k))) {
+      ps.forEach((p) => pages.add(p));
+    }
+  }
+  return [...pages];
+}
+
+function buildKnowledgeContext(messages) {
+  // Always load Ahmet's entity page (core identity + voice DNA)
+  const entityPage = loadPage("entities/ahmet-akyurek.md");
+
+  // Detect and load relevant topic/concept pages
+  const relevantPaths = detectRelevantPages(messages);
+  const additionalPages = relevantPaths.map((p) => loadPage(p)).filter(Boolean);
+
+  let ctx = "";
+  if (entityPage) ctx += `BASE DE CONNAISSANCE — PROFIL AHMET :\n${entityPage}\n\n`;
+  if (additionalPages.length > 0) {
+    ctx += `BASE DE CONNAISSANCE — CONTEXTE DETECÉ :\n`;
+    ctx += additionalPages.join("\n\n---\n\n");
+    ctx += "\n\n";
+  }
+  return ctx;
+}
+
+// ============================================================
+// STATIC PROMPT COMPONENTS
+// ============================================================
 
 const HUMANIZER_RULES = [
   "# Filtre Humanizer",
@@ -161,8 +243,9 @@ const FREE_CHAT_INSTRUCTION = [
 // PROMPT BUILDER
 // ============================================================
 
-function buildSystemPrompt(scenario) {
-  let prompt = "VOICE DNA D'AHMET AKYUREK :\n" + VOICE_DNA + "\n\n";
+function buildSystemPrompt(scenario, messages) {
+  const knowledge = buildKnowledgeContext(messages);
+  let prompt = knowledge;
   prompt += "REGLES HUMANIZER (a appliquer a chaque message) :\n" + HUMANIZER_RULES + "\n\n";
   prompt += "INSTRUCTION D'IDENTITE :\n" + IDENTITY_INSTRUCTION + "\n\n";
 
@@ -190,7 +273,6 @@ export default async function handler(req, res) {
     return;
   }
 
-  // Access code check
   const code = req.query.code || req.headers["x-access-code"];
   if (code !== ACCESS_CODE) {
     res.status(403).json({ error: "Code d'acces invalide" });
@@ -204,12 +286,10 @@ export default async function handler(req, res) {
     return;
   }
 
-  const systemPrompt = buildSystemPrompt(scenario);
+  const systemPrompt = buildSystemPrompt(scenario, messages);
 
-  // Trim conversation to last 12 messages
   const trimmedMessages = messages.slice(-12);
 
-  // If analyze scenario with profileText, inject into first user message
   if (scenario === "analyze" && profileText && trimmedMessages.length === 1) {
     trimmedMessages[0] = {
       role: "user",
@@ -219,7 +299,6 @@ export default async function handler(req, res) {
 
   const client = new Anthropic();
 
-  // Set SSE headers
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
