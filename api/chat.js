@@ -1,8 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { rateLimit } from "./_rateLimit.js";
 
-const ACCESS_CODE = process.env.ACCESS_CODE || "ahmet99";
+const ACCESS_CODE = process.env.ACCESS_CODE;
 
 // ============================================================
 // KNOWLEDGE BASE — Dynamic loading from /knowledge/
@@ -168,7 +169,47 @@ async function criticCheck(client, responseText, corrections) {
 // HANDLER
 // ============================================================
 
+// ============================================================
+// INPUT VALIDATION
+// ============================================================
+
+function validateInput(body) {
+  const { scenario, messages, profileText } = body || {};
+
+  if (!["free", "analyze"].includes(scenario)) {
+    return "Invalid scenario: must be 'free' or 'analyze'";
+  }
+
+  if (!Array.isArray(messages) || messages.length === 0 || messages.length > 20) {
+    return "messages must be an array of 1-20 items";
+  }
+
+  for (const msg of messages) {
+    if (!msg.role || !["user", "assistant"].includes(msg.role)) {
+      return "Each message must have role 'user' or 'assistant'";
+    }
+    if (typeof msg.content !== "string" || msg.content.length === 0 || msg.content.length > 10000) {
+      return "Each message content must be a non-empty string under 10000 chars";
+    }
+  }
+
+  if (profileText !== undefined && (typeof profileText !== "string" || profileText.length > 20000)) {
+    return "profileText must be a string under 20000 chars";
+  }
+
+  return null;
+}
+
+// ============================================================
+// HANDLER
+// ============================================================
+
 export default async function handler(req, res) {
+  // CORS headers
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-access-code");
+
   if (req.method === "OPTIONS") {
     res.status(200).end();
     return;
@@ -179,18 +220,35 @@ export default async function handler(req, res) {
     return;
   }
 
-  const code = req.query.code || req.headers["x-access-code"];
+  // Server misconfiguration guard
+  if (!ACCESS_CODE) {
+    res.status(500).json({ error: "Server misconfigured: ACCESS_CODE not set" });
+    return;
+  }
+
+  // Rate limiting
+  const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress || "unknown";
+  const rl = rateLimit(ip);
+  if (!rl.allowed) {
+    res.status(429).json({ error: "Too many requests", retryAfter: rl.retryAfter });
+    return;
+  }
+
+  // Auth — header only (no query param)
+  const code = req.headers["x-access-code"];
   if (code !== ACCESS_CODE) {
     res.status(403).json({ error: "Code d'acces invalide" });
     return;
   }
 
-  const { scenario, messages, profileText } = req.body;
-
-  if (!scenario || !messages) {
-    res.status(400).json({ error: "Missing scenario or messages" });
+  // Input validation
+  const validationError = validateInput(req.body);
+  if (validationError) {
+    res.status(400).json({ error: validationError });
     return;
   }
+
+  const { scenario, messages, profileText } = req.body;
 
   const { prompt: systemPrompt, detectedPages } = buildSystemPrompt(scenario, messages);
   const t0 = Date.now();

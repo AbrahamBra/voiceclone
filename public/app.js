@@ -49,20 +49,18 @@ async function handleAccess() {
   btnAccess.disabled = true;
 
   try {
-    const res = await fetch("/api/chat?code=" + encodeURIComponent(code), {
+    const res = await fetch("/api/verify", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        scenario: "free",
-        messages: [{ role: "user", content: "test" }],
-      }),
+      headers: { "x-access-code": code },
     });
 
     if (res.status === 403) {
       accessError.textContent = "Code invalide.";
-    } else {
+    } else if (res.ok) {
       accessCode = code;
       showScreen(screenScenario);
+    } else {
+      accessError.textContent = "Erreur serveur.";
     }
   } catch (err) {
     accessError.textContent = "Erreur de connexion.";
@@ -210,9 +208,12 @@ async function sendMessage() {
       body.profileText = text;
     }
 
-    const res = await fetch("/api/chat?code=" + encodeURIComponent(accessCode), {
+    const res = await fetch("/api/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-access-code": accessCode,
+      },
       body: JSON.stringify(body),
     });
 

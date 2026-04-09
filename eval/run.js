@@ -24,9 +24,12 @@ async function callAPI(scenario, messages, profileText) {
   const body = { scenario, messages };
   if (profileText) body.profileText = profileText;
 
-  const response = await fetch(`${API_URL}?code=${ACCESS_CODE}`, {
+  const response = await fetch(API_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-access-code": ACCESS_CODE,
+    },
     body: JSON.stringify(body),
   });
 
