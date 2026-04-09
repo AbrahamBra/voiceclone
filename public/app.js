@@ -240,7 +240,10 @@ async function sendMessage() {
         if (!line.startsWith("data: ")) continue;
         try {
           const data = JSON.parse(line.slice(6));
-          if (data.type === "delta") {
+          if (data.type === "thinking") {
+            bubble.textContent = "...";
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+          } else if (data.type === "delta") {
             fullText += data.text;
             bubble.textContent = fullText;
             chatMessages.scrollTop = chatMessages.scrollHeight;

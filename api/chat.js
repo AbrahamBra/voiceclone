@@ -269,6 +269,41 @@ function buildSystemPrompt(scenario, messages) {
 }
 
 // ============================================================
+// SELF-CRITIQUE LOOP (Level 4)
+// ============================================================
+
+async function criticCheck(client, responseText, corrections) {
+  if (!corrections) return { pass: true };
+
+  try {
+    const result = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 256,
+      system: [
+        "Tu es un reviewer strict. Voici les regles a verifier :",
+        "",
+        corrections,
+        "",
+        "Verifie si le message suivant viole une ou plusieurs de ces regles.",
+        "Reponds UNIQUEMENT en JSON valide :",
+        '{"pass": true} si aucune violation',
+        '{"pass": false, "violations": ["description de chaque violation"]} si violation(s)',
+      ].join("\n"),
+      messages: [{ role: "user", content: responseText }],
+    });
+
+    const raw = result.content[0].text.trim();
+    // Extract JSON even if wrapped in markdown code blocks
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return { pass: true };
+    return JSON.parse(jsonMatch[0]);
+  } catch {
+    // Critic failed → graceful fallback, pass through
+    return { pass: true };
+  }
+}
+
+// ============================================================
 // HANDLER
 // ============================================================
 
@@ -308,17 +343,60 @@ export default async function handler(req, res) {
   }
 
   const client = new Anthropic();
+  const corrections = loadPage("meta/corrections.md");
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
 
   try {
-    const stream = client.messages.stream({
+    // Signal: thinking (frontend can show a loading indicator)
+    res.write("data: " + JSON.stringify({ type: "thinking" }) + "\n\n");
+
+    // === PASS 1: Generate (non-streaming) ===
+    const pass1 = await client.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 1024,
       system: systemPrompt,
       messages: trimmedMessages,
+    });
+
+    const pass1Text = pass1.content[0].text;
+
+    // === PASS 2: Critic check against corrections ===
+    const verdict = await criticCheck(client, pass1Text, corrections);
+
+    if (verdict.pass) {
+      // No violations → stream pass 1 result directly
+      res.write("data: " + JSON.stringify({ type: "delta", text: pass1Text }) + "\n\n");
+      res.write("data: " + JSON.stringify({ type: "done" }) + "\n\n");
+      res.end();
+      return;
+    }
+
+    // === PASS 3: Regenerate with critic feedback ===
+    const violationFeedback = verdict.violations.join("\n- ");
+    const correctedMessages = [
+      ...trimmedMessages,
+      { role: "assistant", content: pass1Text },
+      {
+        role: "user",
+        content: [
+          "SYSTEME INTERNE — AUTOCRITIQUE :",
+          "Ton message precedent viole ces regles apprises :",
+          "- " + violationFeedback,
+          "",
+          "Reecris ton message en corrigeant ces violations. Garde le meme intent et la meme longueur.",
+          "Reponds UNIQUEMENT avec le message corrige, rien d'autre.",
+        ].join("\n"),
+      },
+    ];
+
+    const stream = client.messages.stream({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: correctedMessages,
     });
 
     stream.on("text", (text) => {
