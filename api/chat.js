@@ -78,12 +78,16 @@ function buildKnowledgeContext(messages) {
   // Always load Ahmet's entity page (core identity + voice DNA)
   const entityPage = loadPage("entities/ahmet-akyurek.md");
 
+  // Always load corrections (feedback loop from conversations)
+  const correctionsPage = loadPage("meta/corrections.md");
+
   // Detect and load relevant topic/concept pages
   const relevantPaths = detectRelevantPages(messages);
   const additionalPages = relevantPaths.map((p) => loadPage(p)).filter(Boolean);
 
   let ctx = "";
   if (entityPage) ctx += `BASE DE CONNAISSANCE — PROFIL AHMET :\n${entityPage}\n\n`;
+  if (correctionsPage) ctx += `CORRECTIONS & APPRENTISSAGES (regles apprises par feedback) :\n${correctionsPage}\n\n`;
   if (additionalPages.length > 0) {
     ctx += `BASE DE CONNAISSANCE — CONTEXTE DETECÉ :\n`;
     ctx += additionalPages.join("\n\n---\n\n");
