@@ -76,16 +76,20 @@ Single structured JSON `console.log` at the end of each request. Visible in Verc
 
 All changes in `api/chat.js`:
 
-1. Add `const t0 = Date.now()` at start of handler (after validation)
+1. Add `const t0 = Date.now()` at start of handler (after validation). Note: `totalMs` excludes cold start time by design — module loading and knowledge file reads happen before the handler runs.
 2. Add `const t1 = Date.now()` after Pass 1 completes
-3. Modify `criticCheck` to return `{ pass: true, error: true }` on catch instead of just `{ pass: true }` — surfaces silent failures
+3. Modify `criticCheck`:
+   - Return `{ pass: true, error: true }` on catch instead of just `{ pass: true }` — surfaces silent failures
+   - Add defensive validation of parsed JSON shape: ensure `pass` is boolean, `violations` is array (default to `[]` if missing). This prevents crashes when Haiku returns malformed JSON (e.g., `{"pass": false}` without violations array, or `violations` as string instead of array).
 4. Add `const t2 = Date.now()` after critic check
-5. Capture `t3 = Date.now()` at each exit point:
-   - In the `verdict.pass` branch (direct pass1 streaming)
-   - In `stream.on("end")` (after pass3 streaming)
-6. Emit `console.log(JSON.stringify(logEntry))` at each exit point
-7. In both catch blocks: emit `chat_error` log with `failedAt` and `elapsedMs`
-8. Thread `knowledge.detected` from `detectRelevantPages` result through to the log (currently discarded after use)
+5. Refactor `buildKnowledgeContext` to return `{ context, detectedPages }` instead of just the context string. Currently `detectRelevantPages` is called inside `buildKnowledgeContext` and the result is consumed internally. The handler needs the detected pages for the log.
+6. Capture `t3 = Date.now()` at each exit point. There are **4 exit points** — each one MUST emit a log:
+   - **Exit A:** `verdict.pass` branch (line ~225) — direct pass1 streaming, emit `chat_complete`
+   - **Exit B:** `stream.on("end")` (line ~262) — after pass3 streaming, emit `chat_complete`
+   - **Exit C:** `stream.on("error")` (line ~267) — pass3 streaming failure, emit `chat_error` with `failedAt: "pass3"`
+   - **Exit D:** outer `catch` block (line ~277) — pass1 or critic failure, emit `chat_error` with best-guess `failedAt`
+7. When pass3 is not triggered, explicitly set `pass3: { triggered: false, ms: 0 }` to keep JSON shape consistent for log queries.
+8. Thread `knowledge.detected` from refactored `buildKnowledgeContext` result through to the log.
 
 ## What We Don't Do
 
@@ -105,11 +109,17 @@ In Vercel Logs dashboard, filter by:
 - `"pass3.triggered":true` — requests that required regeneration
 - `"event":"chat_error"` — crashes
 
+## Known Limitations
+
+- **Violation strings are LLM-generated free text.** There is no controlled vocabulary. The same violation may be described differently across requests (e.g., "critique implicite" vs "implicit_criticism"). "Top 3 violation types" analysis requires manual clustering in a spreadsheet. Future improvement: ask the critic to return codes from a fixed enum.
+- **Dead weight analysis requires comparing logs against TOPIC_MAP.** The log records which topics were detected, but to find which are *never* triggered, you need the full list of topics. Currently 6 entries in TOPIC_MAP. Note: `knowledge/topics/non-verbal.md` exists but is not wired into TOPIC_MAP — separate follow-up item.
+- **Vercel log line size limit.** Hobby plan: 4KB, Pro: 16KB. Unlikely to hit with current schema, but if topics or violations grow significantly, consider truncation.
+
 ## Success Criteria
 
 After deploying, we should be able to answer:
 1. What % of messages get rejected by the critic?
-2. What are the top 3 violation types?
+2. What are the top 3 violation types? (with manual clustering caveat above)
 3. How much latency does the critic loop add on average?
 4. Which knowledge topics are never triggered (dead weight)?
 5. How often does the critic silently crash?
