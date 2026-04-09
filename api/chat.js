@@ -82,8 +82,8 @@ function buildKnowledgeContext(messages) {
   const correctionsPage = loadPage("meta/corrections.md");
 
   // Detect and load relevant topic/concept pages
-  const relevantPaths = detectRelevantPages(messages);
-  const additionalPages = relevantPaths.map((p) => loadPage(p)).filter(Boolean);
+  const detectedPages = detectRelevantPages(messages);
+  const additionalPages = detectedPages.map((p) => loadPage(p)).filter(Boolean);
 
   let ctx = "";
   if (entityPage) ctx += `BASE DE CONNAISSANCE — PROFIL AHMET :\n${entityPage}\n\n`;
@@ -93,7 +93,7 @@ function buildKnowledgeContext(messages) {
     ctx += additionalPages.join("\n\n---\n\n");
     ctx += "\n\n";
   }
-  return ctx;
+  return { context: ctx, detectedPages };
 }
 
 // ============================================================
@@ -110,7 +110,7 @@ const FREE_CHAT_INSTRUCTION = loadPage("scenarios/free-chat.md") || "";
 // ============================================================
 
 function buildSystemPrompt(scenario, messages) {
-  const knowledge = buildKnowledgeContext(messages);
+  const { context: knowledge, detectedPages } = buildKnowledgeContext(messages);
   let prompt = knowledge;
   prompt += "REGLES HUMANIZER (a appliquer a chaque message) :\n" + HUMANIZER_RULES + "\n\n";
   prompt += "INSTRUCTION D'IDENTITE :\n" + IDENTITY_INSTRUCTION + "\n\n";
@@ -121,7 +121,7 @@ function buildSystemPrompt(scenario, messages) {
     prompt += "INSTRUCTION SCENARIO CHAT LIBRE :\n" + FREE_CHAT_INSTRUCTION;
   }
 
-  return prompt;
+  return { prompt, detectedPages };
 }
 
 // ============================================================
@@ -129,7 +129,7 @@ function buildSystemPrompt(scenario, messages) {
 // ============================================================
 
 async function criticCheck(client, responseText, corrections) {
-  if (!corrections) return { pass: true };
+  if (!corrections) return { pass: true, violations: [], error: false };
 
   try {
     const result = await client.messages.create({
@@ -151,11 +151,16 @@ async function criticCheck(client, responseText, corrections) {
     const raw = result.content[0].text.trim();
     // Extract JSON even if wrapped in markdown code blocks
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { pass: true };
-    return JSON.parse(jsonMatch[0]);
+    if (!jsonMatch) return { pass: true, violations: [], error: false };
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    // Defensive validation — Haiku may return unexpected shapes
+    const pass = parsed.pass === true;
+    const violations = Array.isArray(parsed.violations) ? parsed.violations : [];
+    return { pass, violations, error: false };
   } catch {
     // Critic failed → graceful fallback, pass through
-    return { pass: true };
+    return { pass: true, violations: [], error: true };
   }
 }
 
@@ -187,7 +192,8 @@ export default async function handler(req, res) {
     return;
   }
 
-  const systemPrompt = buildSystemPrompt(scenario, messages);
+  const { prompt: systemPrompt, detectedPages } = buildSystemPrompt(scenario, messages);
+  const t0 = Date.now();
 
   const trimmedMessages = messages.slice(-12);
 
@@ -216,17 +222,31 @@ export default async function handler(req, res) {
       system: systemPrompt,
       messages: trimmedMessages,
     });
+    const t1 = Date.now();
 
     const pass1Text = pass1.content[0].text;
 
     // === PASS 2: Critic check against corrections ===
     const verdict = await criticCheck(client, pass1Text, corrections);
+    const t2 = Date.now();
+
+    const knowledgeLog = { detected: detectedPages, count: detectedPages.length };
 
     if (verdict.pass) {
       // No violations → stream pass 1 result directly
       res.write("data: " + JSON.stringify({ type: "delta", text: pass1Text }) + "\n\n");
       res.write("data: " + JSON.stringify({ type: "done" }) + "\n\n");
       res.end();
+      // Exit A: pass1 direct
+      const t3 = Date.now();
+      console.log(JSON.stringify({
+        event: "chat_complete", ts: new Date().toISOString(), scenario,
+        totalMs: t3 - t0,
+        pass1: { ms: t1 - t0 },
+        critic: { ms: t2 - t1, pass: true, violations: [], error: verdict.error || false },
+        pass3: { triggered: false, ms: 0 },
+        knowledge: knowledgeLog,
+      }));
       return;
     }
 
@@ -262,9 +282,25 @@ export default async function handler(req, res) {
     stream.on("end", () => {
       res.write("data: " + JSON.stringify({ type: "done" }) + "\n\n");
       res.end();
+      // Exit B: pass3 complete
+      const t3 = Date.now();
+      console.log(JSON.stringify({
+        event: "chat_complete", ts: new Date().toISOString(), scenario,
+        totalMs: t3 - t0,
+        pass1: { ms: t1 - t0 },
+        critic: { ms: t2 - t1, pass: false, violations: verdict.violations, error: false },
+        pass3: { triggered: true, ms: t3 - t2 },
+        knowledge: knowledgeLog,
+      }));
     });
 
     stream.on("error", (err) => {
+      // Exit C: pass3 streaming failure
+      const t3 = Date.now();
+      console.log(JSON.stringify({
+        event: "chat_error", ts: new Date().toISOString(), scenario,
+        error: err.message || "Stream error", failedAt: "pass3", elapsedMs: t3 - t0,
+      }));
       if (res.headersSent) {
         res.write(
           "data: " + JSON.stringify({ type: "error", text: "Erreur de generation" }) + "\n\n"
@@ -275,6 +311,12 @@ export default async function handler(req, res) {
       }
     });
   } catch (err) {
+    // Exit D: pass1 or critic failure
+    const tErr = Date.now();
+    console.log(JSON.stringify({
+      event: "chat_error", ts: new Date().toISOString(), scenario,
+      error: err.message || "Unknown error", failedAt: "pass1_or_critic", elapsedMs: tErr - t0,
+    }));
     if (res.headersSent) {
       res.write(
         "data: " + JSON.stringify({ type: "error", text: "Erreur de generation" }) + "\n\n"
