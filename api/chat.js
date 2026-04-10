@@ -269,33 +269,62 @@ export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
 
-  try {
-    // Signal: thinking (frontend can show a loading indicator)
-    res.write("data: " + JSON.stringify({ type: "thinking" }) + "\n\n");
+  // Helper to write SSE events
+  const sse = (type, data = {}) => {
+    res.write("data: " + JSON.stringify({ type, ...data }) + "\n\n");
+  };
 
-    // === PASS 1: Generate (non-streaming) ===
-    const pass1 = await client.messages.create({
+  try {
+    // === PASS 1: Generate (STREAMING to client in real time) ===
+    sse("thinking");
+
+    const stream1 = client.messages.stream({
       model: "claude-sonnet-4-20250514",
       max_tokens: 1024,
       system: systemPrompt,
       messages: trimmedMessages,
     });
+
+    let pass1Text = "";
+
+    stream1.on("text", (text) => {
+      pass1Text += text;
+      sse("delta", { text });
+    });
+
+    stream1.on("error", (err) => {
+      // Pass 1 error mid-stream — show error but keep partial text
+      console.log(JSON.stringify({
+        event: "chat_error", ts: new Date().toISOString(), scenario,
+        error: err.message || "Stream error", failedAt: "pass1", elapsedMs: Date.now() - t0,
+        partialChars: pass1Text.length,
+      }));
+      sse("error", { text: "Erreur de generation" });
+      res.end();
+    });
+
+    await stream1.finalMessage();
     const t1 = Date.now();
 
-    const pass1Text = pass1.content[0].text;
+    // === PASS 2: Critic check (with keep-alive pings) ===
+    sse("validating");
 
-    // === PASS 2: Critic check against corrections ===
+    // Keep-alive ping every 5s to prevent Vercel edge proxy from closing idle SSE
+    const keepAlive = setInterval(() => {
+      res.write(": keep-alive\n\n");
+    }, 5000);
+
     const verdict = await criticCheck(client, pass1Text, corrections);
+    clearInterval(keepAlive);
     const t2 = Date.now();
 
     const knowledgeLog = { detected: detectedPages, count: detectedPages.length };
 
     if (verdict.pass) {
-      // No violations → stream pass 1 result directly
-      res.write("data: " + JSON.stringify({ type: "delta", text: pass1Text }) + "\n\n");
-      res.write("data: " + JSON.stringify({ type: "done" }) + "\n\n");
+      // No violations → user already saw the full text via streaming, just close
+      sse("done");
       res.end();
-      // Exit A: pass1 direct
+      // Exit A: pass1 streamed + accepted
       const t3 = Date.now();
       console.log(JSON.stringify({
         event: "chat_complete", ts: new Date().toISOString(), scenario,
@@ -308,7 +337,11 @@ export default async function handler(req, res) {
       return;
     }
 
-    // === PASS 3: Regenerate with critic feedback ===
+    // === PASS 3: Critic failed — rewrite ===
+    sse("rewriting");
+    // Clear previous text on client side (pass 1 content was a draft)
+    sse("clear");
+
     const violationFeedback = verdict.violations.join("\n- ");
     const correctedMessages = [
       ...trimmedMessages,
@@ -326,19 +359,19 @@ export default async function handler(req, res) {
       },
     ];
 
-    const stream = client.messages.stream({
+    const stream3 = client.messages.stream({
       model: "claude-sonnet-4-20250514",
       max_tokens: 1024,
       system: systemPrompt,
       messages: correctedMessages,
     });
 
-    stream.on("text", (text) => {
-      res.write("data: " + JSON.stringify({ type: "delta", text }) + "\n\n");
+    stream3.on("text", (text) => {
+      sse("delta", { text });
     });
 
-    stream.on("end", () => {
-      res.write("data: " + JSON.stringify({ type: "done" }) + "\n\n");
+    stream3.on("end", () => {
+      sse("done");
       res.end();
       // Exit B: pass3 complete
       const t3 = Date.now();
@@ -352,33 +385,25 @@ export default async function handler(req, res) {
       }));
     });
 
-    stream.on("error", (err) => {
+    stream3.on("error", (err) => {
       // Exit C: pass3 streaming failure
       const t3 = Date.now();
       console.log(JSON.stringify({
         event: "chat_error", ts: new Date().toISOString(), scenario,
         error: err.message || "Stream error", failedAt: "pass3", elapsedMs: t3 - t0,
       }));
-      if (res.headersSent) {
-        res.write(
-          "data: " + JSON.stringify({ type: "error", text: "Erreur de generation" }) + "\n\n"
-        );
-        res.end();
-      } else {
-        res.status(500).json({ error: "Erreur serveur : " + err.message });
-      }
+      sse("error", { text: "Erreur de generation" });
+      res.end();
     });
   } catch (err) {
-    // Exit D: pass1 or critic failure
+    // Exit D: setup or critic failure
     const tErr = Date.now();
     console.log(JSON.stringify({
       event: "chat_error", ts: new Date().toISOString(), scenario,
-      error: err.message || "Unknown error", failedAt: "pass1_or_critic", elapsedMs: tErr - t0,
+      error: err.message || "Unknown error", failedAt: "setup_or_critic", elapsedMs: tErr - t0,
     }));
     if (res.headersSent) {
-      res.write(
-        "data: " + JSON.stringify({ type: "error", text: "Erreur de generation" }) + "\n\n"
-      );
+      sse("error", { text: "Erreur de generation" });
       res.end();
     } else {
       res.status(500).json({ error: "Erreur serveur : " + err.message });

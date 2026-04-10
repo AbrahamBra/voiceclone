@@ -248,6 +248,15 @@ async function sendMessage() {
             fullText += data.text;
             bubble.textContent = fullText;
             chatMessages.scrollTop = chatMessages.scrollHeight;
+          } else if (data.type === "validating") {
+            // Critic is checking — text already displayed, no action needed
+          } else if (data.type === "rewriting") {
+            bubble.classList.add("rewriting");
+          } else if (data.type === "clear") {
+            // Critic failed — clear pass 1 text, pass 3 will stream
+            fullText = "";
+            bubble.textContent = "";
+            bubble.classList.remove("rewriting");
           } else if (data.type === "done") {
             break;
           } else if (data.type === "error") {
