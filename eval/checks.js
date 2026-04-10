@@ -2,20 +2,36 @@
 // EVAL CHECKS — Programmatic assertions for voice clone fidelity
 // ============================================================
 
-// --- Forbidden words from voice-dna.json words_to_avoid ---
-const FORBIDDEN_WORDS = [
-  "disruptif", "game changer", "je suis ravi", "n'hesitez pas", "n'hésitez pas",
-  "dans un monde en constante evolution", "dans un monde en constante évolution",
-  "tips", "astuces", "hacks", "mindset", "passer au next level",
-  "booster", "exploser les compteurs", "authenticité", "authenticite",
-];
+import { readFileSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 
-// --- Forbidden phrases from voice-dna.json never_say.phrases ---
-const FORBIDDEN_PHRASES = [
-  "je suis ravi de partager", "en conclusion", "cher reseau", "cher réseau",
-  "force a toi", "force à toi", "j'ai l'honneur", "ca va changer ta vie",
-  "ça va changer ta vie", "le secret c'est",
-];
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// ============================================================
+// DYNAMIC LOADING — Forbidden words from voice-dna.json
+// ============================================================
+
+function loadVoiceDNA() {
+  const raw = readFileSync(join(__dirname, "..", "context", "voice-dna.json"), "utf-8");
+  const dna = JSON.parse(raw);
+  const v = dna.voice_dna;
+
+  // Handle entries like "tips / astuces / hacks - registre trop superficiel"
+  const forbiddenWords = v.language_patterns.words_to_avoid.flatMap(entry => {
+    const word = entry.split(" - ")[0].trim();
+    if (word.includes(" / ")) {
+      return word.split(" / ").map(w => w.trim());
+    }
+    return [word];
+  });
+
+  const forbiddenPhrases = v.never_say.phrases.map(p => p.split(" - ")[0].trim());
+
+  return { forbiddenWords, forbiddenPhrases };
+}
+
+const { forbiddenWords: FORBIDDEN_WORDS, forbiddenPhrases: FORBIDDEN_PHRASES } = loadVoiceDNA();
 
 // --- AI patterns from humanizer-rules.md (hardcoded, not parsed) ---
 const AI_PATTERNS = [
@@ -68,6 +84,17 @@ const PROMPT_LEAK = [
 // --- Emoji regex ---
 const EMOJI_REGEX = /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{200D}\u{20E3}\u{E0020}-\u{E007F}]/gu;
 
+// --- Signature style patterns (positive checks) ---
+const SIGNATURE_PATTERNS = [
+  /ce n'est pas .+\.\s*c'est/i,
+  /en psychologie/i,
+  /r[ée]sultat\s*\?/i,
+  /ce m[ée]canisme/i,
+  /signal/i,
+  /pr[ée]sence/i,
+  /autorit[ée]/i,
+];
+
 // ============================================================
 // CHECK FUNCTIONS
 // Each returns { pass: boolean, detail?: string }
@@ -111,7 +138,6 @@ export function noExclamation(response) {
 
 export function noEmoji(response, params) {
   let text = response;
-  // In analyze scenario, strip <analysis> block (score emoji allowed there)
   if (params?.allowAnalysisEmoji) {
     text = text.replace(/<analysis>[\s\S]*?<\/analysis>/g, "");
   }
@@ -143,14 +169,26 @@ export function containsQuestion(response) {
   return { pass: true };
 }
 
-export function vouvoiement(response) {
-  // Extract <dm> block if present, otherwise check full response
-  const dmMatch = response.match(/<dm>([\s\S]*?)<\/dm>/);
-  const text = dmMatch ? dmMatch[1] : response;
-  const lower = text.toLowerCase();
+export function vouvoiement(response, params) {
+  // Only applies to analyze scenario DMs — Ahmet tutoie in free-chat
+  if (params?.scenario && params.scenario !== "analyze") {
+    return { pass: true };
+  }
 
-  // Check for tutoiement markers (but not inside words like "tuteur")
-  const tuPatterns = [/\btu\b/, /\bton\b/, /\bta\b/, /\btes\b/, /\btoi\b/];
+  // Only check inside <dm> block
+  const dmMatch = response.match(/<dm>([\s\S]*?)<\/dm>/);
+  if (!dmMatch) return { pass: true };
+  const lower = dmMatch[1].toLowerCase();
+
+  // Match tutoiement as standalone pronouns (not inside words like "structure")
+  const tuPatterns = [
+    /(?:^|[\s,;.!?'"(])tu(?=[\s,;.!?'")\n]|$)/m,
+    /(?:^|[\s,;.!?'"(])ton(?=[\s,;.!?'")\n]|$)/m,
+    /(?:^|[\s,;.!?'"(])ta(?=[\s,;.!?'")\n]|$)/m,
+    /(?:^|[\s,;.!?'"(])tes(?=[\s,;.!?'")\n]|$)/m,
+    /(?:^|[\s,;.!?'"(])toi(?=[\s,;.!?'")\n]|$)/m,
+  ];
+
   for (const pat of tuPatterns) {
     if (pat.test(lower)) {
       return { pass: false, detail: `found tutoiement in DM` };
@@ -217,6 +255,48 @@ export function noMotivationalPatterns(response) {
 }
 
 // ============================================================
+// NEW CHECKS — Positive assertions + markdown detection
+// ============================================================
+
+export function noMarkdown(response) {
+  // Strip our custom XML tags before checking
+  const cleaned = response
+    .replace(/<analysis>[\s\S]*?<\/analysis>/g, "")
+    .replace(/<dm>[\s\S]*?<\/dm>/g, "")
+    .replace(/<transition>[\s\S]*?<\/transition>/g, "");
+
+  if (/\*\*[^*]+\*\*/.test(cleaned)) {
+    return { pass: false, detail: "found **bold** markdown" };
+  }
+  if (/^#{1,6}\s/m.test(cleaned)) {
+    return { pass: false, detail: "found # header markdown" };
+  }
+  // Detect markdown bullets (- or *) but NOT arrow lists (→) which Ahmet uses
+  if (/^[-*]\s/m.test(cleaned)) {
+    return { pass: false, detail: "found bullet list markdown" };
+  }
+  return { pass: true };
+}
+
+export function usesSignatureStyle(response) {
+  const text = response.toLowerCase();
+  const found = SIGNATURE_PATTERNS.some(pat => pat.test(text));
+  if (!found) {
+    return { pass: false, detail: "no Ahmet signature pattern detected" };
+  }
+  return { pass: true };
+}
+
+export function shortParagraphs(response) {
+  const paragraphs = response.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+  const longParagraphs = paragraphs.filter(p => p.split(/\n/).length > 4);
+  if (longParagraphs.length > 0) {
+    return { pass: false, detail: `${longParagraphs.length} paragraph(s) exceed 4 lines` };
+  }
+  return { pass: true };
+}
+
+// ============================================================
 // CHECK REGISTRY
 // ============================================================
 
@@ -235,4 +315,7 @@ export const CHECKS = {
   noSelfReveal,
   noPromptLeak,
   noMotivationalPatterns,
+  noMarkdown,
+  usesSignatureStyle,
+  shortParagraphs,
 };

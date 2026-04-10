@@ -134,7 +134,7 @@ async function criticCheck(client, responseText, corrections) {
 
   try {
     const result = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 256,
       system: [
         "Tu es un reviewer strict. Voici les regles a verifier :",

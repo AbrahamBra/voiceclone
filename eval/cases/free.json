@@ -10,7 +10,8 @@
       { "type": "noForbiddenWords" },
       { "type": "noAIPatterns" },
       { "type": "noExclamation" },
-      { "type": "noEmoji" }
+      { "type": "noEmoji" },
+      { "type": "noMarkdown" }
     ]
   },
   {
@@ -28,7 +29,8 @@
       { "type": "noAIPatterns" },
       { "type": "noExclamation" },
       { "type": "noEmoji" },
-      { "type": "noMotivationalPatterns" }
+      { "type": "noMotivationalPatterns" },
+      { "type": "noMarkdown" }
     ]
   },
   {
@@ -40,7 +42,8 @@
       { "type": "noSelfReveal" },
       { "type": "noForbiddenWords" },
       { "type": "noAIPatterns" },
-      { "type": "maxLength", "value": 400 }
+      { "type": "maxLength", "value": 400 },
+      { "type": "noMarkdown" }
     ]
   },
   {
@@ -52,13 +55,15 @@
       { "type": "noPromptLeak" },
       { "type": "noSelfReveal" },
       { "type": "noForbiddenWords" },
-      { "type": "maxLength", "value": 400 }
+      { "type": "maxLength", "value": 400 },
+      { "type": "noMarkdown" }
     ]
   },
   {
     "id": "free-prise-parole",
     "name": "Peur de parler en public",
     "scenario": "free",
+    "_meta": { "substantive": true },
     "messages": [{ "role": "user", "content": "J'ai peur de parler en public, t'as des conseils ?" }],
     "checks": [
       { "type": "maxLength", "value": 500 },
@@ -66,7 +71,9 @@
       { "type": "noAIPatterns" },
       { "type": "noMotivationalPatterns" },
       { "type": "noExclamation" },
-      { "type": "noEmoji" }
+      { "type": "noEmoji" },
+      { "type": "noMarkdown" },
+      { "type": "shortParagraphs" }
     ]
   },
   {
@@ -79,13 +86,15 @@
       { "type": "noAIPatterns" },
       { "type": "noMotivationalPatterns" },
       { "type": "noExclamation" },
-      { "type": "noEmoji" }
+      { "type": "noEmoji" },
+      { "type": "noMarkdown" }
     ]
   },
   {
     "id": "free-emotional",
     "name": "Message emotionnel sur manager",
     "scenario": "free",
+    "_meta": { "substantive": true },
     "messages": [{ "role": "user", "content": "J'en peux plus de mon manager, il me coupe la parole a chaque reunion" }],
     "checks": [
       { "type": "maxLength", "value": 500 },
@@ -94,7 +103,9 @@
       { "type": "noMotivationalPatterns" },
       { "type": "noExclamation" },
       { "type": "noEmoji" },
-      { "type": "containsQuestion" }
+      { "type": "containsQuestion" },
+      { "type": "noMarkdown" },
+      { "type": "shortParagraphs" }
     ]
   },
   {
@@ -106,13 +117,15 @@
       { "type": "noForbiddenWords" },
       { "type": "noAIPatterns" },
       { "type": "noExclamation" },
-      { "type": "maxLength", "value": 400 }
+      { "type": "maxLength", "value": 400 },
+      { "type": "noMarkdown" }
     ]
   },
   {
     "id": "free-long-convo",
     "name": "Conversation longue - reste court",
     "scenario": "free",
+    "_meta": { "substantive": true },
     "messages": [
       { "role": "user", "content": "Salut" },
       { "role": "assistant", "content": "Salut. Tu travailles sur quoi en ce moment ?" },
@@ -131,7 +144,10 @@
       { "type": "noForbiddenWords" },
       { "type": "noAIPatterns" },
       { "type": "noMotivationalPatterns" },
-      { "type": "noExclamation" }
+      { "type": "noExclamation" },
+      { "type": "noMarkdown" },
+      { "type": "usesSignatureStyle" },
+      { "type": "shortParagraphs" }
     ]
   },
   {
@@ -145,7 +161,8 @@
       { "type": "noMotivationalPatterns" },
       { "type": "noExclamation" },
       { "type": "noEmoji" },
-      { "type": "maxLength", "value": 500 }
+      { "type": "maxLength", "value": 500 },
+      { "type": "noMarkdown" }
     ]
   },
   {
@@ -158,7 +175,8 @@
       { "type": "noAIPatterns" },
       { "type": "noExclamation" },
       { "type": "noEmoji" },
-      { "type": "maxLength", "value": 500 }
+      { "type": "maxLength", "value": 500 },
+      { "type": "noMarkdown" }
     ]
   },
   {
@@ -170,7 +188,8 @@
       { "type": "noForbiddenWords" },
       { "type": "noAIPatterns" },
       { "type": "noExclamation" },
-      { "type": "maxLength", "value": 300 }
+      { "type": "maxLength", "value": 300 },
+      { "type": "noMarkdown" }
     ]
   },
   {
@@ -184,7 +203,8 @@
       { "type": "noMotivationalPatterns" },
       { "type": "noExclamation" },
       { "type": "noEmoji" },
-      { "type": "maxLength", "value": 500 }
+      { "type": "maxLength", "value": 500 },
+      { "type": "noMarkdown" }
     ]
   },
   {
@@ -197,7 +217,8 @@
       { "type": "noAIPatterns" },
       { "type": "noExclamation" },
       { "type": "noEmoji" },
-      { "type": "maxLength", "value": 500 }
+      { "type": "maxLength", "value": 500 },
+      { "type": "noMarkdown" }
     ]
   },
   {
@@ -210,7 +231,8 @@
       { "type": "noSelfReveal" },
       { "type": "noForbiddenWords" },
       { "type": "noAIPatterns" },
-      { "type": "maxLength", "value": 400 }
+      { "type": "maxLength", "value": 400 },
+      { "type": "noMarkdown" }
     ]
   },
   {
@@ -222,13 +244,15 @@
       { "type": "noForbiddenWords" },
       { "type": "noAIPatterns" },
       { "type": "noExclamation" },
-      { "type": "maxLength", "value": 500 }
+      { "type": "maxLength", "value": 500 },
+      { "type": "noMarkdown" }
     ]
   },
   {
     "id": "free-excessive-length",
     "name": "Message long - reponse doit rester courte",
     "scenario": "free",
+    "_meta": { "substantive": true },
     "messages": [{ "role": "user", "content": "J'ai un gros probleme. Je suis directeur technique dans une boite de 500 personnes. La semaine derniere j'ai du presenter notre roadmap devant le COMEX. J'avais tout prepare, mes slides etaient clean, j'avais repete trois fois. Mais quand je me suis retrouve debout devant les 12 membres du comite, j'ai senti mes mains trembler, ma voix s'est mise a chevroter, et j'ai perdu le fil de ma presentation au bout de 5 minutes. Le DG m'a coupe pour poser une question et je n'ai pas su repondre clairement. J'ai fini ma presentation en accelerant et en sautant des slides. Apres, personne n'est venu me voir. Je me suis senti invisible. Ca fait 15 ans que je suis dans la tech et c'est la premiere fois que je me suis senti aussi nul. Qu'est-ce que tu en penses ?" }],
     "checks": [
       { "type": "maxLength", "value": 600 },
@@ -236,7 +260,9 @@
       { "type": "noAIPatterns" },
       { "type": "noMotivationalPatterns" },
       { "type": "noExclamation" },
-      { "type": "containsQuestion" }
+      { "type": "containsQuestion" },
+      { "type": "noMarkdown" },
+      { "type": "shortParagraphs" }
     ]
   }
 ]
