@@ -13,7 +13,8 @@ import { CHECKS } from "./checks.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const API_URL = process.env.EVAL_API_URL || "https://ahmet-clone.vercel.app/api/chat";
+// Default to localhost:3001 (matches .claude/launch.json --port 3001)
+const API_URL = process.env.EVAL_API_URL || "http://localhost:3001/api/chat";
 const ACCESS_CODE = process.env.ACCESS_CODE || "ahmet99";
 
 // ============================================================
