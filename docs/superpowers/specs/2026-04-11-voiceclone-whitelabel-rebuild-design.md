@@ -52,9 +52,12 @@ voiceclone/
 │   ├── app.js                # Client logic (SSE, routing, formatting)
 │   └── style.css             # Design system from persona theme
 ├── eval/
-│   ├── run.js                # Test runner
+│   ├── run.js                # Test runner (all scenarios + critic)
 │   ├── checks.js             # Validation functions
-│   └── cases/                # Test case JSON files
+│   └── cases/
+│       ├── free.json          # Free chat test cases
+│       ├── audit.json         # Audit scenario test cases
+│       └── critic.json        # Critic pipeline test cases
 ├── vercel.json
 ├── package.json
 └── README.md
@@ -119,17 +122,71 @@ Single file that defines a clone. Everything reads from this.
 }
 ```
 
+### Topic detection via keywords
+
+Each knowledge markdown file uses YAML frontmatter with a `keywords` array:
+
+```markdown
+---
+keywords: ["contenu", "strategie", "content", "editorial", "publication"]
+---
+# Strategie de contenu
+...
+```
+
+At startup, `lib/knowledge.js` scans all files in `persona/knowledge/` and builds an in-memory keyword→file map. When a user message arrives, it matches against this map and loads the relevant files into the system prompt. No hardcoded topic maps.
+
 ### How persona.json is consumed
 
-- **`/api/config`** returns a sanitized version (no internal paths) for the frontend
-- **`lib/prompt.js`** reads `voice.*` fields to construct the system prompt
+- **`/api/config`** returns a sanitized version for the frontend (see Section 4 for response shape)
+- **`lib/prompt.js`** reads `voice.*` fields to construct the system prompt, loads scenario files from `persona/scenarios/`
 - **`lib/pipeline.js`** reads `voice.forbiddenWords`, `voice.writingRules`, `voice.neverDoes` for the critic pass
-- **`lib/knowledge.js`** reads `scenarios` to resolve scenario file paths
+- **`lib/knowledge.js`** scans `persona/knowledge/` files, builds keyword index, resolves topic matches
 - **`public/app.js`** reads the config response to set name, avatar, theme colors, scenario cards
 
 ---
 
-## 4. Backend — 3-pass pipeline
+## 4. Backend
+
+### Endpoint: `GET /api/config`
+
+Serves as both access validation and config delivery. The frontend sends the access code, and the endpoint either returns 403 (bad code) or 200 with the public persona config.
+
+**Request:**
+```
+Headers: x-access-code: <code>
+```
+
+**Response (200):**
+```json
+{
+  "name": "Alex Renaud",
+  "title": "Expert en strategie de contenu & storytelling",
+  "avatar": "AR",
+  "description": "Aide les entrepreneurs a transformer leur expertise en contenu...",
+  "scenarios": {
+    "default": { "label": "Discussion libre", "description": "Echangez librement avec Alex Renaud" },
+    "audit": { "label": "Audit de contenu", "description": "Alex Renaud analyse votre strategie de contenu" }
+  },
+  "theme": { "accent": "#2563eb", "background": "#0a0a0a", "surface": "#141414", "text": "#e5e5e5" }
+}
+```
+
+Note: `voice` block and scenario `file` paths are stripped — frontend doesn't need them. The `{name}` placeholder in scenario descriptions is resolved server-side.
+
+**Response (403):** `{ "error": "Invalid access code" }`
+
+### CORS
+
+All API endpoints (`/api/chat`, `/api/config`, `/api/health`) set CORS headers: `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Headers: Content-Type, x-access-code`.
+
+### Claude model
+
+- **Pass 1 (generate):** `claude-sonnet-4-20250514` — best quality/latency balance
+- **Pass 2 (critic):** `claude-sonnet-4-20250514` — same model, non-streaming for speed
+- **Pass 3 (rewrite):** `claude-sonnet-4-20250514` — same model, streaming
+
+All configurable via env var `CLAUDE_MODEL` if needed, defaults to Sonnet.
 
 ### Endpoint: `POST /api/chat`
 
@@ -205,7 +262,15 @@ Keep existing `api/_rateLimit.js` — in-memory, IP-based.
 - Streaming: text appears progressively in the clone bubble
 - Critic phase: subtle indicator ("Verification...")
 - Rewrite: clone bubble content transitions smoothly to corrected version
-- Conversation history maintained in memory (sent with each request)
+- Conversation history maintained in memory (sent with each request, max 20 messages — oldest trimmed client-side)
+
+### Error states
+
+- **Invalid access code:** inline error message under the input field, shake animation
+- **Rate limited (429):** toast notification "Trop de messages, patientez un instant"
+- **Stream failure (network error):** "Connexion perdue. Reessayez." button in the chat bubble
+- **Critic/rewrite failure:** silently show the pass 1 response as-is (graceful degradation)
+- **Empty state (first load):** placeholder message from the persona introducing themselves
 
 ### Design system
 
@@ -272,7 +337,7 @@ Everything Ahmet-specific is removed:
 - `lib/critic.js` → merged into `lib/pipeline.js`
 - `api/chat.js` — simplified, uses new pipeline
 - `README.md` — framework documentation
-- `eval/` — tests adapted to new persona format
+- `eval/` — single `run.js` runner (merges old `run-critic.js`), checks adapted to read rules from `persona.json`. Test categories: forbidden word detection, persona voice consistency, scenario-specific behavior, critic pipeline validation
 
 ## 9. What gets kept (as-is or near as-is)
 
@@ -287,6 +352,7 @@ Everything Ahmet-specific is removed:
 
 - `ACCESS_CODE` — password for API access
 - `ANTHROPIC_API_KEY` — Claude API key
+- `CLAUDE_MODEL` — (optional) override Claude model, defaults to `claude-sonnet-4-20250514`
 
 No other configuration needed. Everything else lives in `persona/persona.json`.
 
