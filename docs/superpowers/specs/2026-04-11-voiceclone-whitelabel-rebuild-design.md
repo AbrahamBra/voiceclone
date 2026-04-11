@@ -197,13 +197,14 @@ Body: { "message": "string", "history": [...], "scenario": "default" }
 ```
 
 **Response:** SSE stream with events:
-- `text` — response text chunks (pass 1 streaming)
-- `critic_start` — critic check has begun
-- `critic_done` — critic result (pass/fail + violations)
-- `rewrite_start` — rewrite has begun (only if violations)
-- `rewrite_text` — rewritten text chunks (pass 3 streaming)
+- `thinking` — generation has started
+- `delta` — response text chunk (pass 1 and pass 3 streaming)
+- `validating` — critic check has begun
+- `rewriting` — rewrite has begun (only if violations)
+- `clear` — clear current response (before rewrite starts)
 - `done` — generation complete
-- `ping` — keep-alive during critic phase
+- `error` — error occurred
+- SSE comments (`: keep-alive\n\n`) during critic phase
 
 ### Pass 1 — Generate
 
@@ -243,10 +244,10 @@ Keep existing `api/_rateLimit.js` — in-memory, IP-based.
 
 ### Screen 1: Access
 
-- Centered card with persona avatar (initials), name, title
+- Centered card with generic placeholder (avatar "?", title "Clone IA") before authentication
 - Code input field + enter button
-- On valid code → fetch `/api/config` → transition to screen 2
-- All persona info fetched dynamically, nothing hardcoded in HTML
+- On valid code → fetch `/api/config` → persona info replaces placeholders → transition to screen 2
+- All persona info is behind the access code (no unauthenticated persona data leaks)
 
 ### Screen 2: Scenario selection
 
