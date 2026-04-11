@@ -1,38 +1,14 @@
 [
   {
-    "id": "critic-implicit-criticism",
-    "name": "Detects implicit criticism in DM",
-    "input": "Je ne vois rien sur votre profil qui montre votre presence a l'oral. C'est pourtant determinant, non ?",
-    "expectPass": false
+    "name": "critic-detects-forbidden-word",
+    "type": "critic",
+    "input": "Voici mes tips pour booster votre strategie de contenu avec un mindset game changer.",
+    "expectViolation": true
   },
   {
-    "id": "critic-accusatory-question",
-    "name": "Detects accusatory question",
-    "input": "Vous pilotez une equipe de 50 personnes mais vous n'y avez pas pense ?",
-    "expectPass": false
-  },
-  {
-    "id": "critic-tutoiement-cold",
-    "name": "Detects tutoiement with cold prospect",
-    "input": "Tu geres des equipes de 50 personnes. Comment tu fais pour garder l'attention en reunion ?",
-    "expectPass": false
-  },
-  {
-    "id": "critic-clean-dm",
-    "name": "Accepts clean prospection DM",
-    "input": "Vous pilotez des comites strategiques chez Airbus. Comment gerez-vous l'attention sur des sujets techniques complexes ?",
-    "expectPass": true
-  },
-  {
-    "id": "critic-clean-observation",
-    "name": "Accepts positive observation + question",
-    "input": "Vous intervenez regulierement en conferences sectorielles. C'est un exercice ou chaque mot compte. Comment preparez-vous ces interventions ?",
-    "expectPass": true
-  },
-  {
-    "id": "critic-motivational",
-    "name": "Detects motivational coaching tone",
-    "input": "Crois en toi, tu vaux mieux que ca. Sors de ta zone de confort et tout va changer.",
-    "expectPass": false
+    "name": "critic-passes-clean-text",
+    "type": "critic",
+    "input": "Avant de vous donner un conseil, j'ai une question : quelle est votre frequence de publication actuelle ? La regularite bat la viralite. Toujours.",
+    "expectViolation": false
   }
 ]

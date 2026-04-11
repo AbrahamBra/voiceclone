@@ -1,0 +1,14 @@
+[
+  {
+    "name": "audit-linkedin-profile",
+    "scenario": "audit",
+    "message": "Voici mon profil LinkedIn : je suis consultant en transformation digitale. Je publie 1 post par mois, principalement des articles longs. J'ai 2000 abonnes et un taux d'engagement de 1%. Mon site web n'a pas de blog.",
+    "checks": ["noForbiddenWords", "responseInFrench", "reasonableLength", "hasStructuredAudit"]
+  },
+  {
+    "name": "audit-newsletter",
+    "scenario": "audit",
+    "message": "J'ai une newsletter sur le marketing B2B avec 500 abonnes. Je publie toutes les 2 semaines. Mon taux d'ouverture est de 35% et mon taux de clic de 5%. Je n'ai pas de contenu sur les reseaux sociaux.",
+    "checks": ["noForbiddenWords", "responseInFrench", "reasonableLength", "hasStructuredAudit"]
+  }
+]
