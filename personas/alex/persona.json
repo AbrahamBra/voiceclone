@@ -33,17 +33,20 @@
     "default": {
       "label": "Discussion libre",
       "description": "Echangez librement avec {name}",
-      "file": "scenarios/default.md"
+      "file": "scenarios/default.md",
+      "welcome": "Bonjour. Quelle est votre question sur le contenu ou le storytelling ?"
     },
     "audit": {
       "label": "Audit de contenu",
       "description": "{name} analyse votre strategie de contenu",
-      "file": "scenarios/audit.md"
+      "file": "scenarios/audit.md",
+      "welcome": "Bonjour. Presentez-moi votre strategie de contenu actuelle (profil LinkedIn, newsletter, site, frequence de publication) et je vous fais un audit."
     },
     "post": {
       "label": "Creer un post LinkedIn",
       "description": "{name} vous aide a ecrire un post LinkedIn percutant",
-      "file": "scenarios/post.md"
+      "file": "scenarios/post.md",
+      "welcome": "Bonjour. De quoi voulez-vous parler dans votre post ? Et qui est votre audience cible ?"
     }
   },
 

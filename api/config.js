@@ -22,6 +22,7 @@ export default function handler(req, res) {
     scenarios[key] = {
       label: val.label,
       description: val.description.replace(/\{name\}/g, persona.name),
+      welcome: val.welcome || null,
     };
   }
 

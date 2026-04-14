@@ -49,17 +49,20 @@
     "default": {
       "label": "Discussion libre",
       "description": "Discutez avec {name} de LinkedIn, acquisition, prospection",
-      "file": "scenarios/default.md"
+      "file": "scenarios/default.md",
+      "welcome": "Salut ! Pose-moi ta question sur LinkedIn, l'acquisition, la prospection ou le contenu. Je suis la ;)"
     },
     "qualification": {
       "label": "Qualification de lead",
       "description": "{name} qualifie un prospect et identifie ses besoins",
-      "file": "scenarios/qualification.md"
+      "file": "scenarios/qualification.md",
+      "welcome": "Salut ! Colle-moi le profil LinkedIn du prospect que tu veux qualifier. Le texte du profil (titre, a propos, experience) ou juste copie-colle la page."
     },
     "post": {
       "label": "Creer un post LinkedIn",
       "description": "{name} vous aide a ecrire un post LinkedIn percutant",
-      "file": "scenarios/post.md"
+      "file": "scenarios/post.md",
+      "welcome": "Salut ! On ecrit un post LinkedIn. C'est quoi le sujet ? Et c'est pour toucher quel type de personne ?"
     }
   },
 

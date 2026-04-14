@@ -98,7 +98,9 @@ function startChat(scenario) {
   $("chat-avatar").textContent = config.avatar;
   $("chat-name").textContent = config.name;
   $("chat-messages").innerHTML = "";
-  addMessage("bot", `Bonjour, je suis ${config.name}. ${config.description}\n\nComment puis-je vous aider ?`);
+  const scenarioConfig = config.scenarios[scenario];
+  const welcome = scenarioConfig?.welcome || `Bonjour, je suis ${config.name}. Comment puis-je vous aider ?`;
+  addMessage("bot", welcome);
   showScreen("screen-chat");
   $("chat-input").focus();
 }
