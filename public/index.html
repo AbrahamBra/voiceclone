@@ -36,7 +36,12 @@
       </div>
       <div class="create-step">
         <label>Documents (optionnel : methodo, offres, brand guidelines...)</label>
-        <textarea id="clone-docs" rows="4" placeholder="Collez ici toute documentation utile..."></textarea>
+        <div class="file-upload-zone">
+          <input type="file" id="clone-file" accept=".pdf,.txt,.csv,.docx" multiple hidden>
+          <button type="button" id="clone-file-btn" class="file-upload-btn">+ Ajouter des fichiers (PDF, TXT, CSV, DOCX)</button>
+          <div id="file-list" class="file-list"></div>
+        </div>
+        <textarea id="clone-docs" rows="4" placeholder="Ou collez directement le texte ici..."></textarea>
       </div>
       <button id="clone-submit">Generer le clone</button>
       <p id="clone-status" class="hidden"></p>
@@ -66,6 +71,7 @@
     <div id="chat-toast" class="toast hidden"></div>
   </div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.min.mjs" type="module"></script>
   <script src="/app.js"></script>
 </body>
 </html>

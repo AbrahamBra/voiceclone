@@ -113,6 +113,80 @@ async function selectPersona(personaId) {
 }
 
 // ---- Screen 1: Clone creation ----
+// File upload handling
+$("clone-file-btn").addEventListener("click", () => $("clone-file").click());
+$("clone-file").addEventListener("change", handleFiles);
+
+async function handleFiles(e) {
+  const files = Array.from(e.target.files);
+  const fileList = $("file-list");
+  const docsArea = $("clone-docs");
+
+  for (const file of files) {
+    const ext = file.name.split(".").pop().toLowerCase();
+    let text = "";
+
+    try {
+      if (ext === "txt" || ext === "csv") {
+        text = await file.text();
+      } else if (ext === "pdf") {
+        text = await extractPdfText(file);
+      } else if (ext === "docx") {
+        text = await extractDocxText(file);
+      } else {
+        continue;
+      }
+
+      if (text.trim()) {
+        // Show file in list
+        const tag = document.createElement("div");
+        tag.className = "file-tag";
+        tag.textContent = `${file.name} (${(text.length / 1000).toFixed(1)}k chars)`;
+        fileList.appendChild(tag);
+
+        // Append to docs textarea
+        docsArea.value += (docsArea.value ? "\n\n--- " + file.name + " ---\n\n" : "") + text.trim();
+      }
+    } catch (err) {
+      const tag = document.createElement("div");
+      tag.className = "file-tag file-tag-error";
+      tag.textContent = `${file.name} — erreur de lecture`;
+      fileList.appendChild(tag);
+    }
+  }
+  e.target.value = ""; // Reset input
+}
+
+async function extractPdfText(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  // Use pdf.js if available
+  if (window.pdfjsLib) {
+    const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let text = "";
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map(item => item.str).join(" ") + "\n";
+    }
+    return text;
+  }
+  // Fallback: try to read as text
+  return new TextDecoder().decode(arrayBuffer);
+}
+
+async function extractDocxText(file) {
+  // DOCX is a ZIP of XML files — extract text from word/document.xml
+  const arrayBuffer = await file.arrayBuffer();
+  try {
+    const blob = new Blob([arrayBuffer]);
+    const text = await blob.text();
+    // Simple XML text extraction
+    return text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  } catch {
+    return "";
+  }
+}
+
 $("clone-submit").addEventListener("click", createClone);
 
 async function createClone() {
