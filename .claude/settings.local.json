@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ':*)",
+      "WebFetch(domain:gist.github.com)",
+      "Bash(node -c api/chat.js)",
+      "Bash(node -c eval/checks.js)",
+      "Bash(node -c eval/run.js)",
+      "Bash(node eval/run.js --case free-greeting)",
+      "Bash(node eval/run.js)",
+      "Bash(find /c/Users/abrah/ThomasN -type f \\\\\\( -name \"*.md\" -o -name \"*.json\" \\\\\\) -exec grep -l \"iteration\\\\|improve\\\\|refactor\\\\|critic\" {} \\\\;)",
+      "Bash(mkdir -p \"C:/Users/abrah/ThomasN/knowledge/meta\")",
+      "Bash(mkdir -p \"C:/Users/abrah/ThomasN/eval/cases\")",
+      "Bash(mkdir -p \"C:/Users/abrah/ThomasN/eval/results\")",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git restore:*)",
+      "Bash(git commit:*)",
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('/c/Users/abrah/AhmetA/.claude/worktrees/sleepy-davinci/persona/persona.json','utf-8'\\)\\); console.log\\('Valid JSON'\\)\")",
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('C:\\\\\\\\\\\\\\\\Users\\\\\\\\\\\\\\\\abrah\\\\\\\\\\\\\\\\AhmetA\\\\\\\\\\\\\\\\.claude\\\\\\\\\\\\\\\\worktrees\\\\\\\\\\\\\\\\sleepy-davinci\\\\\\\\\\\\\\\\persona\\\\\\\\\\\\\\\\persona.json','utf-8'\\)\\); console.log\\('Valid JSON'\\)\")",
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('persona/persona.json','utf-8'\\)\\); console.log\\('Valid JSON'\\)\")",
+      "Bash(node -e \"import\\('./lib/knowledge.js'\\).then\\(m => { console.log\\('Index entries:', m.findRelevantKnowledge\\([{content:'contenu strategie'}]\\).length\\); console.log\\('Persona:', m.getPersona\\(\\).name\\) }\\)\")",
+      "Bash(node -e \"import\\('./lib/pipeline.js'\\).then\\(\\(\\) => console.log\\('pipeline.js loads OK'\\)\\)\")",
+      "Bash(node -e \"Promise.all\\([import\\('./api/config.js'\\),import\\('./api/chat.js'\\),import\\('./api/health.js'\\)]\\).then\\(\\(\\)=>console.log\\('All imports OK'\\)\\).catch\\(e=>{console.error\\('Error:',e.message\\);process.exit\\(1\\)}\\)\")",
+      "Read(//c/Users/abrah/AppData/Local/Temp/claude/C--Users-abrah-AhmetA--claude-worktrees-sleepy-davinci/a587f70b-fcc4-4418-8411-bd7f6105b0e3/tasks/**)",
+      "Bash(git rm:*)",
+      "Bash(npm install:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(curl -s http://localhost:3001/api/health)",
+      "Bash(curl -s http://127.0.0.1:3001/api/health)",
+      "Bash(git log:*)",
+      "Bash(start http://localhost:3001)",
+      "Bash(npx vercel:*)",
+      "Bash(curl -s http://localhost:3001/)",
+      "Bash(taskkill //F //IM node.exe)",
+      "Bash(git push:*)",
+      "Bash(gh pr create --title 'feat: rebuild as VoiceClone white-label framework' --body ':*)",
+      "Bash(PERSONA=thomas node -e \"import\\('./lib/knowledge.js'\\); import\\('./lib/prompt.js'\\); import\\('./lib/pipeline.js'\\); import\\('./lib/validate.js'\\); import\\('./lib/sse.js'\\); console.log\\('All modules OK with PERSONA=thomas'\\)\")",
+      "Bash(PERSONA=alex node -e \"import\\('./lib/knowledge.js'\\); import\\('./lib/prompt.js'\\); console.log\\('All modules OK with PERSONA=alex'\\)\")",
+      "Bash(git reset:*)"
+    ]
+  }
+}

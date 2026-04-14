@@ -1,8 +1,9 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 
+const PERSONA_ID = process.env.PERSONA || "alex";
 const persona = JSON.parse(
-  readFileSync(join(process.cwd(), "persona", "persona.json"), "utf-8")
+  readFileSync(join(process.cwd(), "personas", PERSONA_ID, "persona.json"), "utf-8")
 );
 const v = persona.voice;
 
