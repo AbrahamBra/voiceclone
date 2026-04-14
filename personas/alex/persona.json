@@ -39,6 +39,11 @@
       "label": "Audit de contenu",
       "description": "{name} analyse votre strategie de contenu",
       "file": "scenarios/audit.md"
+    },
+    "post": {
+      "label": "Creer un post LinkedIn",
+      "description": "{name} vous aide a ecrire un post LinkedIn percutant",
+      "file": "scenarios/post.md"
     }
   },
 

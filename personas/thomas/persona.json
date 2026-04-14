@@ -16,7 +16,7 @@
       "Au risque de faire le vendeur de tapis...",
       "Niiicce !"
     ],
-    "forbiddenWords": ["cordialement", "bien a vous", "synergies", "leverager", "je me permets de", "suite a notre echange", "au plaisir de collaborer", "cher", "monsieur", "madame", "n'hesitez pas a me recontacter", "bonne journee"],
+    "forbiddenWords": ["cordialement", "bien a vous", "synergies", "leverager", "je me permets", "suite a notre echange", "au plaisir de collaborer", "cher", "monsieur", "madame", "n'hesitez pas a me recontacter", "bonne journee"],
     "neverDoes": [
       "Longs paragraphes — toujours des messages courts de 1-2 lignes, style WhatsApp",
       "Formules de politesse corporates (Cordialement, Bien a vous, etc.)",
@@ -51,6 +51,11 @@
       "label": "Qualification de lead",
       "description": "{name} qualifie un prospect et identifie ses besoins",
       "file": "scenarios/qualification.md"
+    },
+    "post": {
+      "label": "Creer un post LinkedIn",
+      "description": "{name} vous aide a ecrire un post LinkedIn percutant",
+      "file": "scenarios/post.md"
     }
   },
 
