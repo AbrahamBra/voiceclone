@@ -3,25 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Clone IA</title>
+  <title>VoiceClone</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <!-- Screen 1: Access -->
+  <!-- Screen 0: Access + Persona selection -->
   <div id="screen-access" class="screen active">
     <div class="access-card">
-      <div class="access-avatar" id="access-avatar"></div>
-      <h1 id="access-name"></h1>
-      <p id="access-title" class="subtitle"></p>
+      <h1>VoiceClone</h1>
+      <p class="subtitle">Selectionnez un client</p>
       <div class="access-form">
         <input type="password" id="access-code" placeholder="Code d'acces" autocomplete="off">
         <button id="access-btn">Entrer</button>
       </div>
       <p id="access-error" class="error hidden"></p>
+      <div id="persona-list" class="persona-list hidden"></div>
     </div>
   </div>
 
-  <!-- Screen 2: Scenario selection -->
+  <!-- Screen 1: Scenario selection -->
   <div id="screen-scenarios" class="screen">
     <div class="scenarios-container">
       <h2>Choisissez un mode</h2>
@@ -29,7 +29,7 @@
     </div>
   </div>
 
-  <!-- Screen 3: Chat -->
+  <!-- Screen 2: Chat -->
   <div id="screen-chat" class="screen">
     <header class="chat-header">
       <div class="chat-avatar" id="chat-avatar"></div>

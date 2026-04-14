@@ -1,8 +1,9 @@
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 
+import { getDefaultPersonaId } from "../lib/knowledge.js";
+
 const ACCESS_CODE = process.env.ACCESS_CODE;
-const PERSONA_ID = process.env.PERSONA || "alex";
 
 export default function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -18,14 +19,15 @@ export default function handler(req, res) {
     return;
   }
 
-  const { correction, botMessage, userMessage } = req.body || {};
+  const { correction, botMessage, userMessage, persona: personaId } = req.body || {};
+  const pid = personaId || getDefaultPersonaId();
 
   if (!correction || typeof correction !== "string" || correction.length < 3 || correction.length > 500) {
     res.status(400).json({ error: "correction must be a string of 3-500 chars" });
     return;
   }
 
-  const correctionsPath = join(process.cwd(), "personas", PERSONA_ID, "corrections.md");
+  const correctionsPath = join(process.cwd(), "personas", pid, "corrections.md");
 
   try {
     let content = readFileSync(correctionsPath, "utf-8");

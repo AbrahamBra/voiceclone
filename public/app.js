@@ -1,6 +1,7 @@
 let config = null;
 let accessCode = "";
 let currentScenario = "";
+let currentPersonaId = "";
 let history = [];
 
 const $ = (id) => document.getElementById(id);
@@ -41,7 +42,7 @@ function showToast(msg, duration = 3000) {
   setTimeout(() => toast.classList.add("hidden"), duration);
 }
 
-// Access screen
+// Access screen — enter code, then show persona list
 $("access-btn").addEventListener("click", doAccess);
 $("access-code").addEventListener("keydown", (e) => { if (e.key === "Enter") doAccess(); });
 
@@ -53,7 +54,7 @@ async function doAccess() {
   errorEl.classList.add("hidden");
 
   try {
-    const resp = await fetch("/api/config", { headers: { "x-access-code": code } });
+    const resp = await fetch("/api/personas", { headers: { "x-access-code": code } });
     if (resp.status === 403) {
       errorEl.textContent = "Code d'acces invalide";
       errorEl.classList.remove("hidden");
@@ -63,8 +64,40 @@ async function doAccess() {
     }
     if (!resp.ok) throw new Error("Server error");
 
-    config = await resp.json();
     accessCode = code;
+    const data = await resp.json();
+    showPersonaList(data.personas);
+  } catch {
+    errorEl.textContent = "Erreur de connexion";
+    errorEl.classList.remove("hidden");
+  }
+}
+
+function showPersonaList(personas) {
+  const container = $("persona-list");
+  container.innerHTML = "";
+  container.classList.remove("hidden");
+
+  // Hide the access form
+  document.querySelector(".access-form").classList.add("hidden");
+  document.querySelector(".access-card h1").textContent = "Choisissez un client";
+  document.querySelector(".access-card .subtitle").textContent = "";
+
+  for (const p of personas) {
+    const card = document.createElement("div");
+    card.className = "persona-card";
+    card.innerHTML = `<div class="persona-card-avatar">${p.avatar}</div><div><strong>${p.name}</strong><br><span class="persona-card-title">${p.title}</span></div>`;
+    card.addEventListener("click", () => selectPersona(p.id));
+    container.appendChild(card);
+  }
+}
+
+async function selectPersona(personaId) {
+  currentPersonaId = personaId;
+  try {
+    const resp = await fetch(`/api/config?persona=${personaId}`, { headers: { "x-access-code": accessCode } });
+    if (!resp.ok) throw new Error("Failed to load persona");
+    config = await resp.json();
     document.title = `${config.name} — Clone IA`;
     applyTheme(config.theme);
     setupScenarios();
@@ -73,8 +106,7 @@ async function doAccess() {
     if (keys.length === 1) { startChat(keys[0]); }
     else { showScreen("screen-scenarios"); }
   } catch {
-    errorEl.textContent = "Erreur de connexion";
-    errorEl.classList.remove("hidden");
+    showToast("Erreur de chargement du client");
   }
 }
 
@@ -111,7 +143,6 @@ function addMessage(role, text) {
   div.className = `msg msg-${role}`;
   if (role === "bot") {
     div.innerHTML = renderMarkdown(text);
-    // Add feedback button for bot messages (not welcome)
     if (history.length > 0 || container.children.length > 1) {
       const feedbackBtn = document.createElement("button");
       feedbackBtn.className = "feedback-btn";
@@ -128,7 +159,6 @@ function addMessage(role, text) {
 }
 
 function openFeedback(msgDiv, botText) {
-  // Get the last user message for context
   const lastUserMsg = history.length > 0 ? history[history.length - 1]?.content || "" : "";
 
   const overlay = document.createElement("div");
@@ -162,7 +192,7 @@ function openFeedback(msgDiv, botText) {
       const resp = await fetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-access-code": accessCode },
-        body: JSON.stringify({ correction, botMessage: botText, userMessage: lastUserMsg }),
+        body: JSON.stringify({ correction, botMessage: botText, userMessage: lastUserMsg, persona: currentPersonaId }),
       });
 
       if (resp.ok) {
@@ -213,7 +243,7 @@ async function sendMessage() {
     const resp = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-access-code": accessCode },
-      body: JSON.stringify({ message: text, history, scenario: currentScenario }),
+      body: JSON.stringify({ message: text, history, scenario: currentScenario, persona: currentPersonaId }),
     });
 
     if (resp.status === 429) {
@@ -299,8 +329,3 @@ async function sendMessage() {
   $("chat-send").disabled = false;
   input.focus();
 }
-
-// Init placeholders
-$("access-avatar").textContent = "?";
-$("access-name").textContent = "Clone IA";
-$("access-title").textContent = "Entrez votre code d'acces";

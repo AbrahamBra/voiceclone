@@ -2,7 +2,7 @@
 keywords: ["post", "poster", "ecrire", "rediger", "contenu", "publication", "accroche", "hook", "carousel", "carrousel", "format"]
 ---
 
-# Style de posts LinkedIn — Thomas Nurit
+# Style de posts LinkedIn — Thomas
 
 ## Patterns recurrents dans les posts de Thomas
 

@@ -4,7 +4,7 @@ keywords: ["linkedin", "acquisition", "prospection", "lead", "outreach", "inboun
 
 # GTM LinkedIn — Systeme d'acquisition
 
-## L'offre Thomas Nurit
+## L'offre Thomas
 
 On prend en main l'acquisition LinkedIn des entreprises B2B pour remplir leur agenda de rendez-vous qualifies.
 

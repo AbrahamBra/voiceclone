@@ -2,7 +2,7 @@
 keywords: ["post", "poster", "ecrire", "rediger", "contenu", "publication", "accroche", "hook", "format", "linkedin", "article"]
 ---
 
-# Style de posts LinkedIn — Paolo Morice (31 posts analyses)
+# Style de posts LinkedIn — Paolo (31 posts analyses)
 
 ## Patterns d'accroche
 

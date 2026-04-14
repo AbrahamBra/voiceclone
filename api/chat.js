@@ -3,6 +3,7 @@ import { buildSystemPrompt } from "../lib/prompt.js";
 import { runPipeline } from "../lib/pipeline.js";
 import { initSSE } from "../lib/sse.js";
 import { validateInput } from "../lib/validate.js";
+import { getDefaultPersonaId } from "../lib/knowledge.js";
 
 const ACCESS_CODE = process.env.ACCESS_CODE;
 
@@ -27,19 +28,20 @@ export default async function handler(req, res) {
   const validationError = validateInput(req.body);
   if (validationError) { res.status(400).json({ error: validationError }); return; }
 
-  const { message, history, scenario } = req.body;
+  const { message, history, scenario, persona: personaId } = req.body;
+  const pid = personaId || getDefaultPersonaId();
   const messages = [...history.slice(-19), { role: "user", content: message }];
-  const { prompt: systemPrompt } = buildSystemPrompt(scenario, messages);
+  const { prompt: systemPrompt } = buildSystemPrompt(pid, scenario, messages);
 
   const sse = initSSE(res);
 
   try {
-    await runPipeline({ systemPrompt, messages, sse, res });
+    await runPipeline({ systemPrompt, messages, sse, res, personaId: pid });
     res.end();
   } catch (err) {
     console.log(JSON.stringify({
       event: "chat_error", ts: new Date().toISOString(),
-      scenario, error: err.message || "Unknown error",
+      scenario, persona: pid, error: err.message || "Unknown error",
     }));
     if (res.headersSent) {
       sse("error", { text: "Erreur de generation" });

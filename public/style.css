@@ -20,7 +20,7 @@ body {
 .screen { display: none; min-height: 100dvh; }
 .screen.active { display: flex; }
 
-/* Screen 1: Access */
+/* Screen 0: Access + Persona selection */
 #screen-access { align-items: center; justify-content: center; }
 
 .access-card { text-align: center; padding: 2rem; max-width: 360px; width: 100%; }
@@ -63,7 +63,29 @@ body {
 }
 .shake { animation: shake 0.4s ease-in-out; }
 
-/* Screen 2: Scenarios */
+/* Persona list */
+.persona-list { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1.5rem; }
+
+.persona-card {
+  display: flex; align-items: center; gap: 0.75rem;
+  background: var(--surface); border: 1px solid #222;
+  border-radius: var(--radius); padding: 1rem;
+  cursor: pointer; text-align: left;
+  transition: border-color 0.2s, transform 0.15s;
+}
+.persona-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+
+.persona-card-avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--accent); color: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.85rem; font-weight: 700; flex-shrink: 0;
+}
+
+.persona-card strong { font-size: 0.95rem; }
+.persona-card-title { font-size: 0.8rem; color: var(--text-muted); }
+
+/* Screen 1: Scenarios */
 #screen-scenarios { align-items: center; justify-content: center; }
 .scenarios-container { text-align: center; padding: 2rem; max-width: 500px; width: 100%; }
 .scenarios-container h2 { font-size: 1.25rem; margin-bottom: 1.5rem; }

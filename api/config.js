@@ -1,4 +1,5 @@
-import { getPersona } from "../lib/knowledge.js";
+import { getPersona, getDefaultPersonaId } from "../lib/knowledge.js";
+import { parse } from "url";
 
 const ACCESS_CODE = process.env.ACCESS_CODE;
 
@@ -16,22 +17,30 @@ export default function handler(req, res) {
     return;
   }
 
-  const persona = getPersona();
-  const scenarios = {};
-  for (const [key, val] of Object.entries(persona.scenarios)) {
-    scenarios[key] = {
-      label: val.label,
-      description: val.description.replace(/\{name\}/g, persona.name),
-      welcome: val.welcome || null,
-    };
-  }
+  const { query } = parse(req.url, true);
+  const personaId = query.persona || getDefaultPersonaId();
 
-  res.json({
-    name: persona.name,
-    title: persona.title,
-    avatar: persona.avatar,
-    description: persona.description,
-    scenarios,
-    theme: persona.theme,
-  });
+  try {
+    const persona = getPersona(personaId);
+    const scenarios = {};
+    for (const [key, val] of Object.entries(persona.scenarios)) {
+      scenarios[key] = {
+        label: val.label,
+        description: val.description.replace(/\{name\}/g, persona.name),
+        welcome: val.welcome || null,
+      };
+    }
+
+    res.json({
+      id: personaId,
+      name: persona.name,
+      title: persona.title,
+      avatar: persona.avatar,
+      description: persona.description,
+      scenarios,
+      theme: persona.theme,
+    });
+  } catch {
+    res.status(404).json({ error: "Persona not found: " + personaId });
+  }
 }
