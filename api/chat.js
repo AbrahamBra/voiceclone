@@ -3,45 +3,88 @@ import { buildSystemPrompt } from "../lib/prompt.js";
 import { runPipeline } from "../lib/pipeline.js";
 import { initSSE } from "../lib/sse.js";
 import { validateInput } from "../lib/validate.js";
-import { getDefaultPersonaId } from "../lib/knowledge.js";
-
-const ACCESS_CODE = process.env.ACCESS_CODE;
+import { authenticateRequest, checkBudget, getApiKey, logUsage, setCors } from "../lib/supabase.js";
+import { getPersonaFromDb, findRelevantKnowledgeFromDb, loadScenarioFromDb, getCorrectionsFromDb } from "../lib/knowledge-db.js";
 
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-access-code");
-
+  setCors(res, "POST, OPTIONS");
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
   if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
-  if (!ACCESS_CODE) { res.status(500).json({ error: "Server misconfigured: ACCESS_CODE not set" }); return; }
 
+  // Rate limiting
   const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress || "unknown";
   const rl = rateLimit(ip);
   if (!rl.allowed) { res.status(429).json({ error: "Too many requests", retryAfter: rl.retryAfter }); return; }
 
-  if (req.headers["x-access-code"] !== ACCESS_CODE) {
-    res.status(403).json({ error: "Code d'acces invalide" });
+  let client;
+  try {
+    const auth = await authenticateRequest(req);
+    client = auth.client;
+  } catch (err) {
+    res.status(err.status || 403).json({ error: err.error || "Auth failed" });
     return;
   }
 
+  // Budget check
+  const budget = checkBudget(client);
+  if (!budget.allowed) {
+    res.status(402).json({ error: "Budget depasse", action: "add_api_key", remaining_cents: 0 });
+    return;
+  }
+
+  // Validation
   const validationError = validateInput(req.body);
   if (validationError) { res.status(400).json({ error: validationError }); return; }
 
   const { message, history, scenario, persona: personaId } = req.body;
-  const pid = personaId || getDefaultPersonaId();
+  if (!personaId) { res.status(400).json({ error: "persona is required" }); return; }
+
+  // Load persona data from DB
+  const persona = await getPersonaFromDb(personaId);
+  if (!persona) { res.status(404).json({ error: "Persona not found" }); return; }
+
   const messages = [...history.slice(-19), { role: "user", content: message }];
-  const { prompt: systemPrompt } = buildSystemPrompt(pid, scenario, messages);
+
+  // Resolve scenario
+  const scenarioConfig = persona.scenarios[scenario] || persona.scenarios.default || Object.values(persona.scenarios)[0];
+  const scenarioSlug = scenarioConfig?.slug || scenario || "default";
+  const scenarioContent = await loadScenarioFromDb(personaId, scenarioSlug);
+
+  // Resolve knowledge + corrections
+  const knowledgeMatches = await findRelevantKnowledgeFromDb(personaId, messages);
+  const corrections = await getCorrectionsFromDb(personaId);
+
+  // Build system prompt (pure function)
+  const { prompt: systemPrompt } = buildSystemPrompt({
+    persona,
+    knowledgeMatches,
+    scenarioContent,
+    corrections,
+  });
 
   const sse = initSSE(res);
+  const apiKey = getApiKey(client);
 
   try {
-    await runPipeline({ systemPrompt, messages, sse, res, personaId: pid });
+    const result = await runPipeline({
+      systemPrompt,
+      messages,
+      sse,
+      res,
+      voiceRules: persona.voice,
+      corrections,
+      apiKey,
+    });
     res.end();
+
+    // Log usage (async, don't block response)
+    if (client && result.usage) {
+      logUsage(client.id, personaId, result.usage.input_tokens, result.usage.output_tokens).catch(() => {});
+    }
   } catch (err) {
     console.log(JSON.stringify({
       event: "chat_error", ts: new Date().toISOString(),
-      scenario, persona: pid, error: err.message || "Unknown error",
+      scenario, persona: personaId, error: err.message || "Unknown error",
     }));
     if (res.headersSent) {
       sse("error", { text: "Erreur de generation" });

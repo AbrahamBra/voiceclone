@@ -7,11 +7,11 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <!-- Screen 0: Access + Persona selection -->
+  <!-- Screen 0: Access -->
   <div id="screen-access" class="screen active">
     <div class="access-card">
       <h1>VoiceClone</h1>
-      <p class="subtitle">Selectionnez un client</p>
+      <p class="subtitle">Entrez votre code d'acces</p>
       <div class="access-form">
         <input type="password" id="access-code" placeholder="Code d'acces" autocomplete="off">
         <button id="access-btn">Entrer</button>
@@ -21,7 +21,29 @@
     </div>
   </div>
 
-  <!-- Screen 1: Scenario selection -->
+  <!-- Screen 1: Clone creation -->
+  <div id="screen-create" class="screen">
+    <div class="create-container">
+      <h2>Creer un clone IA</h2>
+      <p class="subtitle">Collez les infos pour generer le clone automatiquement</p>
+      <div class="create-step">
+        <label>Profil LinkedIn (titre, a propos, experience)</label>
+        <textarea id="clone-linkedin" rows="5" placeholder="Copiez-collez le texte du profil LinkedIn..."></textarea>
+      </div>
+      <div class="create-step">
+        <label>Posts LinkedIn (minimum 3, separes par ---)</label>
+        <textarea id="clone-posts" rows="8" placeholder="Post 1...&#10;---&#10;Post 2...&#10;---&#10;Post 3..."></textarea>
+      </div>
+      <div class="create-step">
+        <label>Documents (optionnel : methodo, offres, brand guidelines...)</label>
+        <textarea id="clone-docs" rows="4" placeholder="Collez ici toute documentation utile..."></textarea>
+      </div>
+      <button id="clone-submit">Generer le clone</button>
+      <p id="clone-status" class="hidden"></p>
+    </div>
+  </div>
+
+  <!-- Screen 2: Scenario selection -->
   <div id="screen-scenarios" class="screen">
     <div class="scenarios-container">
       <h2>Choisissez un mode</h2>
@@ -29,11 +51,12 @@
     </div>
   </div>
 
-  <!-- Screen 2: Chat -->
+  <!-- Screen 3: Chat -->
   <div id="screen-chat" class="screen">
     <header class="chat-header">
       <div class="chat-avatar" id="chat-avatar"></div>
       <span class="chat-name" id="chat-name"></span>
+      <button class="settings-btn" id="settings-btn" title="Parametres">&#9881;</button>
     </header>
     <div id="chat-messages" class="chat-messages"></div>
     <div class="chat-input-bar">

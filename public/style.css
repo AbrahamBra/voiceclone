@@ -85,7 +85,37 @@ body {
 .persona-card strong { font-size: 0.95rem; }
 .persona-card-title { font-size: 0.8rem; color: var(--text-muted); }
 
-/* Screen 1: Scenarios */
+.persona-card-create { border-style: dashed; }
+.persona-card-create .persona-card-avatar { background: #333; color: var(--text-muted); font-size: 1.2rem; }
+
+/* Screen 1: Clone creation */
+#screen-create { align-items: center; justify-content: center; }
+.create-container { padding: 2rem; max-width: 560px; width: 100%; }
+.create-container h2 { font-size: 1.25rem; margin-bottom: 0.25rem; }
+.create-step { margin-top: 1rem; }
+.create-step label { display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.4rem; }
+.create-step textarea {
+  width: 100%; padding: 0.6rem; background: var(--bg); border: 1px solid #333;
+  border-radius: 8px; color: var(--text); font-size: 0.9rem; font-family: inherit; resize: vertical; outline: none;
+}
+.create-step textarea:focus { border-color: var(--accent); }
+#clone-submit {
+  margin-top: 1.25rem; width: 100%; padding: 0.75rem; background: var(--accent);
+  color: #fff; border: none; border-radius: var(--radius); font-size: 0.95rem;
+  font-weight: 600; cursor: pointer; transition: opacity 0.2s;
+}
+#clone-submit:hover { opacity: 0.85; }
+#clone-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+#clone-status { margin-top: 0.75rem; font-size: 0.85rem; color: var(--accent); }
+
+/* Settings button */
+.settings-btn {
+  margin-left: auto; background: transparent; border: none; color: var(--text-muted);
+  font-size: 1.2rem; cursor: pointer; padding: 0.25rem 0.5rem; transition: color 0.2s;
+}
+.settings-btn:hover { color: var(--text); }
+
+/* Screen 2: Scenarios */
 #screen-scenarios { align-items: center; justify-content: center; }
 .scenarios-container { text-align: center; padding: 2rem; max-width: 500px; width: 100%; }
 .scenarios-container h2 { font-size: 1.25rem; margin-bottom: 1.5rem; }
