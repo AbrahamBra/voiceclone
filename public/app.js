@@ -109,11 +109,78 @@ function addMessage(role, text) {
   const container = $("chat-messages");
   const div = document.createElement("div");
   div.className = `msg msg-${role}`;
-  if (role === "bot") div.innerHTML = renderMarkdown(text);
-  else div.textContent = text;
+  if (role === "bot") {
+    div.innerHTML = renderMarkdown(text);
+    // Add feedback button for bot messages (not welcome)
+    if (history.length > 0 || container.children.length > 1) {
+      const feedbackBtn = document.createElement("button");
+      feedbackBtn.className = "feedback-btn";
+      feedbackBtn.textContent = "Corriger";
+      feedbackBtn.addEventListener("click", () => openFeedback(div, text));
+      div.appendChild(feedbackBtn);
+    }
+  } else {
+    div.textContent = text;
+  }
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
   return div;
+}
+
+function openFeedback(msgDiv, botText) {
+  // Get the last user message for context
+  const lastUserMsg = history.length > 0 ? history[history.length - 1]?.content || "" : "";
+
+  const overlay = document.createElement("div");
+  overlay.className = "feedback-overlay";
+  overlay.innerHTML = `
+    <div class="feedback-modal">
+      <h3>Corriger cette reponse</h3>
+      <p class="feedback-hint">Qu'est-ce qui ne va pas ? Le clone apprendra de cette correction.</p>
+      <textarea id="feedback-text" placeholder="Ex: Trop formel, utilise des tirets, pas assez direct..." rows="3"></textarea>
+      <div class="feedback-actions">
+        <button class="feedback-cancel">Annuler</button>
+        <button class="feedback-submit">Envoyer</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector(".feedback-cancel").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+  overlay.querySelector(".feedback-submit").addEventListener("click", async () => {
+    const correction = overlay.querySelector("#feedback-text").value.trim();
+    if (!correction) return;
+
+    const submitBtn = overlay.querySelector(".feedback-submit");
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Envoi...";
+
+    try {
+      const resp = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-access-code": accessCode },
+        body: JSON.stringify({ correction, botMessage: botText, userMessage: lastUserMsg }),
+      });
+
+      if (resp.ok) {
+        showToast("Correction enregistree. Le clone s'ameliore ;)");
+        overlay.remove();
+      } else {
+        showToast("Erreur lors de l'envoi");
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Envoyer";
+      }
+    } catch {
+      showToast("Erreur de connexion");
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Envoyer";
+    }
+  });
+
+  setTimeout(() => overlay.querySelector("#feedback-text").focus(), 100);
 }
 
 $("chat-send").addEventListener("click", sendMessage);

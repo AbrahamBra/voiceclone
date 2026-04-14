@@ -162,6 +162,97 @@ body {
   30% { opacity: 1; transform: scale(1); }
 }
 
+/* Feedback button */
+.feedback-btn {
+  display: block;
+  margin-top: 0.5rem;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, border-color 0.2s;
+}
+
+.msg-bot:hover .feedback-btn { opacity: 1; }
+.feedback-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Feedback modal */
+.feedback-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 200;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.feedback-modal {
+  background: var(--surface);
+  border: 1px solid #333;
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  max-width: 420px;
+  width: 90%;
+}
+
+.feedback-modal h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.feedback-hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+}
+
+.feedback-modal textarea {
+  width: 100%;
+  padding: 0.6rem;
+  background: var(--bg);
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+}
+
+.feedback-modal textarea:focus { border-color: var(--accent); }
+
+.feedback-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
+}
+
+.feedback-cancel {
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.feedback-submit {
+  padding: 0.5rem 1rem;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 @media (max-width: 480px) {
   .access-card { padding: 1.5rem 1rem; }
   .msg { max-width: 92%; }
