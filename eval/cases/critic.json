@@ -1,0 +1,14 @@
+[
+  {
+    "name": "critic-detects-forbidden-word",
+    "type": "critic",
+    "input": "Voici mes tips pour booster votre strategie de contenu avec un mindset game changer.",
+    "expectViolation": true
+  },
+  {
+    "name": "critic-passes-clean-text",
+    "type": "critic",
+    "input": "Avant de vous donner un conseil, j'ai une question : quelle est votre frequence de publication actuelle ? La regularite bat la viralite. Toujours.",
+    "expectViolation": false
+  }
+]
