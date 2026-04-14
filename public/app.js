@@ -403,12 +403,39 @@ async function sendMessage() {
               botDiv.innerHTML = renderMarkdown(botText);
               if (statusEl) botDiv.appendChild(statusEl);
               break;
-            case "validating":
-              statusEl = document.createElement("div"); statusEl.className = "status"; statusEl.textContent = "Verification...";
+            case "thinking":
+              if (!statusEl) {
+                statusEl = document.createElement("div"); statusEl.className = "status";
+              }
+              statusEl.textContent = "Analyse du contexte...";
               botDiv.appendChild(statusEl); break;
-            case "rewriting": if (statusEl) statusEl.textContent = "Amelioration..."; break;
+            case "scoring":
+              if (statusEl) statusEl.textContent = "Evaluation qualite...";
+              break;
+            case "score_result": {
+              const g = evt.global?.toFixed(1) || "?";
+              const color = evt.global >= 9.0 ? "#22c55e" : evt.global >= 8.5 ? "var(--accent)" : "#f59e0b";
+              const scoreHtml = `<div class="score-block"><div class="score-bar"><div class="score-fill" style="width:${evt.global*10}%;background:${color}"></div></div><span class="score-value" style="color:${color}">${g}/10</span><div class="score-dims">Voix: ${evt.voice?.toFixed(1)} | Pertinence: ${evt.knowledge?.toFixed(1)} | Naturel: ${evt.natural?.toFixed(1)} | Coherence: ${evt.coherence?.toFixed(1)}</div></div>`;
+              // Remove existing score block if rewriting
+              botDiv.querySelector(".score-block")?.remove();
+              botDiv.insertAdjacentHTML("beforeend", scoreHtml);
+              break;
+            }
+            case "rewriting":
+              if (statusEl) statusEl.textContent = `Amelioration (tentative ${evt.attempt || 1})...`;
+              break;
             case "clear": botText = ""; botDiv.innerHTML = ""; if (statusEl) botDiv.appendChild(statusEl); break;
-            case "done": if (statusEl) statusEl.remove(); statusEl = null; break;
+            case "done": {
+              if (statusEl) statusEl.remove(); statusEl = null;
+              // Show final score if available
+              if (evt.score) {
+                const g = evt.score.global?.toFixed(1) || "?";
+                const color = evt.score.global >= 9.0 ? "#22c55e" : evt.score.global >= 8.5 ? "var(--accent)" : "#f59e0b";
+                botDiv.querySelector(".score-block")?.remove();
+                botDiv.insertAdjacentHTML("beforeend", `<div class="score-block"><div class="score-bar"><div class="score-fill" style="width:${evt.score.global*10}%;background:${color}"></div></div><span class="score-value" style="color:${color}">${g}/10</span><div class="score-dims">Voix: ${evt.score.voice?.toFixed(1)} | Pertinence: ${evt.score.knowledge?.toFixed(1)} | Naturel: ${evt.score.natural?.toFixed(1)} | Coherence: ${evt.score.coherence?.toFixed(1)}</div></div>`);
+              }
+              break;
+            }
             case "error":
               botDiv.textContent = "Connexion perdue. ";
               const rb = document.createElement("button"); rb.textContent = "Reessayer";

@@ -4,7 +4,7 @@ import { runPipeline } from "../lib/pipeline.js";
 import { initSSE } from "../lib/sse.js";
 import { validateInput } from "../lib/validate.js";
 import { authenticateRequest, checkBudget, getApiKey, logUsage, setCors } from "../lib/supabase.js";
-import { getPersonaFromDb, findRelevantKnowledgeFromDb, loadScenarioFromDb, getCorrectionsFromDb } from "../lib/knowledge-db.js";
+import { getPersonaFromDb, findRelevantKnowledgeFromDb, loadScenarioFromDb, getCorrectionsFromDb, findRelevantEntities } from "../lib/knowledge-db.js";
 
 export default async function handler(req, res) {
   setCors(res, "POST, OPTIONS");
@@ -50,9 +50,20 @@ export default async function handler(req, res) {
   const scenarioSlug = scenarioConfig?.slug || scenario || "default";
   const scenarioContent = await loadScenarioFromDb(personaId, scenarioSlug);
 
-  // Resolve knowledge + corrections
+  // Resolve knowledge + corrections + ontology
   const knowledgeMatches = await findRelevantKnowledgeFromDb(personaId, messages);
   const corrections = await getCorrectionsFromDb(personaId);
+  const ontology = await findRelevantEntities(personaId, messages);
+
+  // Enrich ontology with entity names for prompt display
+  if (ontology.relations) {
+    const entityMap = {};
+    for (const e of ontology.entities) entityMap[e.id] = e.name;
+    for (const r of ontology.relations) {
+      r.from_name = entityMap[r.from_entity_id] || "?";
+      r.to_name = entityMap[r.to_entity_id] || "?";
+    }
+  }
 
   // Build system prompt (pure function)
   const { prompt: systemPrompt } = buildSystemPrompt({
@@ -60,7 +71,11 @@ export default async function handler(req, res) {
     knowledgeMatches,
     scenarioContent,
     corrections,
+    ontology,
   });
+
+  // Prepare knowledge context summary for the scorer
+  const knowledgeContext = knowledgeMatches.map(m => m.content).join("\n").slice(0, 1000);
 
   const sse = initSSE(res);
   const apiKey = getApiKey(client);
@@ -74,6 +89,7 @@ export default async function handler(req, res) {
       voiceRules: persona.voice,
       corrections,
       apiKey,
+      knowledgeContext,
     });
     res.end();
 

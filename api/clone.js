@@ -47,6 +47,24 @@ keywords: ["post", "poster", "ecrire", "rediger", "contenu", "publication", "lin
 
 Ecris en francais. Sois precis et cite des exemples reels des posts.`;
 
+const ONTOLOGY_PROMPT = `Tu es un expert en extraction de connaissances et en ontologie.
+Analyse le profil et les posts suivants. Extrais les ENTITES et RELATIONS cles qui definissent la pensee de cette personne.
+
+Types d'entites : concept, framework, person, company, metric, belief, tool
+Types de relations : equals (A = B), includes (A contient B), contradicts (A s'oppose a B), causes (A provoque B), uses (A utilise B), prerequisite (A necessite B)
+
+Reponds UNIQUEMENT en JSON valide :
+{
+  "entities": [
+    { "name": "nom de l'entite", "type": "concept|framework|...", "description": "description courte" }
+  ],
+  "relations": [
+    { "from": "nom entite source", "to": "nom entite cible", "type": "equals|includes|...", "description": "explication de la relation" }
+  ]
+}
+
+Sois precis. Extrais 15-30 entites et 10-20 relations. Les entites doivent refleter les concepts UNIQUES de cette personne, pas des generalites.`;
+
 export default async function handler(req, res) {
   setCors(res, "POST, OPTIONS");
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
@@ -143,7 +161,29 @@ export default async function handler(req, res) {
     }
     const styleBody = fmMatch ? styleContent.slice(fmMatch[0].length).trim() : styleContent;
 
-    // Step 3: Save to Supabase
+    // Step 3: Extract ontology (entities + relations)
+    let ontology = { entities: [], relations: [] };
+    try {
+      const ontologyResult = await anthropic.messages.create({
+        model: process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514",
+        max_tokens: 2048,
+        system: ONTOLOGY_PROMPT,
+        messages: [{ role: "user", content: userContent.join("\n") }],
+      });
+      const ontRaw = ontologyResult.content[0].text.trim();
+      const ontJson = ontRaw.match(/\{[\s\S]*\}/);
+      if (ontJson) ontology = JSON.parse(ontJson[0]);
+      // Track usage
+      if (ontologyResult.usage) {
+        totalInput = (totalInput || 0) + ontologyResult.usage.input_tokens;
+        totalOutput = (totalOutput || 0) + ontologyResult.usage.output_tokens;
+      }
+    } catch (e) {
+      console.log(JSON.stringify({ event: "ontology_extraction_error", error: e.message }));
+      // Non-blocking: continue without ontology
+    }
+
+    // Step 4: Save to Supabase
     const slug = personaConfig.name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
 
     const { data: persona, error: insertErr } = await supabase
@@ -194,10 +234,50 @@ export default async function handler(req, res) {
     ]);
 
     // Log usage
-    const totalInput = (configResult.usage?.input_tokens || 0) + (styleResult.usage?.input_tokens || 0);
-    const totalOutput = (configResult.usage?.output_tokens || 0) + (styleResult.usage?.output_tokens || 0);
+    let finalInput = (configResult.usage?.input_tokens || 0) + (styleResult.usage?.input_tokens || 0) + (totalInput || 0);
+    let finalOutput = (configResult.usage?.output_tokens || 0) + (styleResult.usage?.output_tokens || 0) + (totalOutput || 0);
     if (client) {
-      await logUsage(client.id, persona.id, totalInput, totalOutput);
+      await logUsage(client.id, persona.id, finalInput, finalOutput);
+    }
+
+    // Save ontology entities + relations (non-blocking, graceful if tables don't exist)
+    try {
+      if (ontology.entities?.length > 0) {
+        const entityRows = ontology.entities.map(e => ({
+          persona_id: persona.id,
+          name: e.name,
+          type: e.type || "concept",
+          description: e.description || "",
+          confidence: 1.0,
+        }));
+        const { data: insertedEntities } = await supabase
+          .from("knowledge_entities")
+          .upsert(entityRows, { onConflict: "persona_id,name" })
+          .select("id, name");
+
+        if (insertedEntities && ontology.relations?.length > 0) {
+          const entityMap = {};
+          for (const e of insertedEntities) entityMap[e.name] = e.id;
+
+          const relationRows = ontology.relations
+            .filter(r => entityMap[r.from] && entityMap[r.to])
+            .map(r => ({
+              persona_id: persona.id,
+              from_entity_id: entityMap[r.from],
+              to_entity_id: entityMap[r.to],
+              relation_type: r.type || "uses",
+              description: r.description || "",
+              confidence: 1.0,
+            }));
+
+          if (relationRows.length > 0) {
+            await supabase.from("knowledge_relations").insert(relationRows);
+          }
+        }
+      }
+    } catch (e) {
+      console.log(JSON.stringify({ event: "ontology_save_error", error: e.message }));
+      // Non-blocking
     }
 
     res.json({
