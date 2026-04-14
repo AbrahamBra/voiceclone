@@ -5,6 +5,22 @@ let history = [];
 
 const $ = (id) => document.getElementById(id);
 
+function renderMarkdown(text) {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/^---$/gm, "<hr>")
+    .replace(/^[-•] (.+)$/gm, "<li>$1</li>")
+    .replace(/^(\d+)[.)]\s+(.+)$/gm, "<li>$2</li>")
+    .replace(/((?:<li>.*<\/li>\n?)+)/g, "<ul>$1</ul>")
+    .replace(/▶/g, "&#9654;")
+    .replace(/→/g, "&#8594;")
+    .replace(/\n/g, "<br>");
+}
+
 function showScreen(id) {
   document.querySelectorAll(".screen").forEach((s) => s.classList.remove("active"));
   $(id).classList.add("active");
@@ -91,7 +107,8 @@ function addMessage(role, text) {
   const container = $("chat-messages");
   const div = document.createElement("div");
   div.className = `msg msg-${role}`;
-  div.textContent = text;
+  if (role === "bot") div.innerHTML = renderMarkdown(text);
+  else div.textContent = text;
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
   return div;
@@ -161,7 +178,7 @@ async function sendMessage() {
             case "delta":
               if (!botText && botDiv.querySelector(".typing-indicator")) botDiv.innerHTML = "";
               botText += evt.text;
-              botDiv.textContent = botText;
+              botDiv.innerHTML = renderMarkdown(botText);
               if (statusEl) botDiv.appendChild(statusEl);
               break;
             case "validating":
@@ -175,7 +192,7 @@ async function sendMessage() {
               break;
             case "clear":
               botText = "";
-              botDiv.textContent = "";
+              botDiv.innerHTML = "";
               if (statusEl) botDiv.appendChild(statusEl);
               break;
             case "done":

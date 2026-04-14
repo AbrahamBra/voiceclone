@@ -122,6 +122,13 @@ body {
 
 .msg-bot .status { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem; font-style: italic; }
 
+.msg-bot strong { font-weight: 700; }
+.msg-bot em { font-style: italic; }
+.msg-bot hr { border: none; border-top: 1px solid #333; margin: 0.75rem 0; }
+.msg-bot ul { list-style: none; padding: 0; margin: 0.25rem 0; }
+.msg-bot li { padding-left: 1em; position: relative; margin: 0.15rem 0; }
+.msg-bot li::before { content: "→"; position: absolute; left: 0; color: var(--accent); }
+
 .chat-input-bar {
   display: flex; gap: 0.5rem; padding: 1rem 1.25rem;
   border-top: 1px solid #222; background: var(--surface);
