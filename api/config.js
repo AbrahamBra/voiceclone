@@ -36,7 +36,6 @@ export default function handler(req, res) {
       name: persona.name,
       title: persona.title,
       avatar: persona.avatar,
-      description: persona.description,
       scenarios,
       theme: persona.theme,
     });
