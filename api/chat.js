@@ -92,10 +92,14 @@ export default async function handler(req, res) {
   const scenarioSlug = scenarioConfig?.slug || scenario || "default";
   const scenarioContent = await loadScenarioFromDb(personaId, scenarioSlug);
 
-  // Resolve knowledge + corrections + ontology
-  const knowledgeMatches = await findRelevantKnowledgeFromDb(personaId, messages);
-  const corrections = await getCorrectionsFromDb(personaId);
+  // Entities first (provides boostTerms for knowledge retrieval)
   const ontology = await findRelevantEntities(personaId, messages);
+
+  // Knowledge + corrections in parallel (knowledge uses boost terms from graph)
+  const [knowledgeMatches, corrections] = await Promise.all([
+    findRelevantKnowledgeFromDb(personaId, messages, ontology.boostTerms),
+    getCorrectionsFromDb(personaId),
+  ]);
 
   // Enrich ontology with entity names for prompt display
   if (ontology.relations) {
