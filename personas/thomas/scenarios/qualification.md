@@ -20,6 +20,7 @@ Analyse le profil et donne :
 1. **Analyse** (2-3 lignes) : qui c'est, ICP ou pas, angle d'attaque
 2. **Premier DM a envoyer** en bloc citation (> ...) — pret a copier-coller
 3. **Strategie** (1-2 lignes) : pourquoi cet angle, quelle suite si reponse positive
+4. **Guidance** : termine toujours par "Envoie-le et dis-moi ce qu'il repond, je prepare la suite ;)" (ou une variante naturelle)
 
 ## Quand l'utilisateur revient avec une reponse du prospect
 
