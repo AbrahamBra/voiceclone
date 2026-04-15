@@ -4,6 +4,7 @@
   import { showToast } from "$lib/stores/ui.js";
   import { groupByDate, getRelativeTime } from "$lib/utils.js";
   import IntelligencePanel from "./IntelligencePanel.svelte";
+  import KnowledgePanel from "./KnowledgePanel.svelte";
 
   let activeTab = $state("conversations");
 
@@ -117,11 +118,20 @@
       class:active={activeTab === "intelligence"}
       onclick={() => activeTab = "intelligence"}
     >Intelligence</button>
+    <button
+      class="sidebar-tab"
+      class:active={activeTab === "knowledge"}
+      onclick={() => activeTab = "knowledge"}
+    >Connaissance</button>
   </div>
 
   {#if activeTab === "intelligence"}
     <div class="sidebar-content">
       <IntelligencePanel {personaId} />
+    </div>
+  {:else if activeTab === "knowledge"}
+    <div class="sidebar-content">
+      <KnowledgePanel {personaId} />
     </div>
   {:else}
   <div class="conv-sidebar-header">
