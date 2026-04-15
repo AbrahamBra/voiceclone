@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { authenticateRequest, supabase, getApiKey, setCors } from "../lib/supabase.js";
-import { clearCache } from "../lib/knowledge-db.js";
+import { clearCache, loadPersonaData } from "../lib/knowledge-db.js";
 
 const GRAPH_EXTRACTION_PROMPT = `Tu es un expert en extraction de connaissances.
 Un utilisateur vient de corriger une reponse de son clone IA. Analyse sa correction et determine :
@@ -23,9 +23,11 @@ Reponds en JSON :
 Si la correction est juste stylistique (ton, longueur, formulation), reponds {"has_graph_update": false}. N'ajoute au graphe que des CONCEPTS substantiels.`;
 
 export default async function handler(req, res) {
-  setCors(res, "POST, OPTIONS");
+  setCors(res, "GET, POST, DELETE, OPTIONS");
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
-  if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
+  if (!["GET", "POST", "DELETE"].includes(req.method)) {
+    res.status(405).json({ error: "Method not allowed" }); return;
+  }
 
   let client, isAdmin;
   try {
@@ -35,6 +37,93 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── GET: Intelligence data ──
+  if (req.method === "GET") {
+    const personaId = req.query?.persona;
+    if (!personaId) { res.status(400).json({ error: "persona is required" }); return; }
+
+    if (!isAdmin) {
+      const { data: persona } = await supabase
+        .from("personas").select("client_id").eq("id", personaId).single();
+      if (!persona || persona.client_id !== client?.id) {
+        res.status(403).json({ error: "Forbidden" }); return;
+      }
+    }
+
+    const data = await loadPersonaData(personaId);
+    if (!data) { res.status(404).json({ error: "Persona not found" }); return; }
+
+    const entityMap = {};
+    for (const e of data.entities) entityMap[e.id] = e.name;
+
+    const entities = data.entities.map(e => ({
+      id: e.id,
+      name: e.name,
+      type: e.type,
+      description: e.description,
+      confidence: e.confidence,
+      last_matched_at: e.last_matched_at,
+      relations: data.relations
+        .filter(r => r.from_entity_id === e.id)
+        .map(r => ({
+          type: r.relation_type,
+          target: entityMap[r.to_entity_id] || "?",
+          confidence: r.confidence,
+        })),
+    }));
+
+    const confidences = entities.map(e => e.confidence || 1.0);
+    const confidenceAvg = confidences.length > 0
+      ? Math.round((confidences.reduce((a, b) => a + b, 0) / confidences.length) * 100) / 100
+      : 0;
+
+    const corrections = [...data.corrections]
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 50);
+
+    res.json({
+      stats: {
+        corrections_total: data.corrections.length,
+        entities_total: entities.length,
+        relations_total: data.relations.length,
+        confidence_avg: confidenceAvg,
+      },
+      corrections,
+      entities,
+    });
+    return;
+  }
+
+  // ── DELETE: Remove a correction ──
+  if (req.method === "DELETE") {
+    const personaId = req.query?.persona;
+    const correctionId = req.query?.correction;
+    if (!personaId || !correctionId) {
+      res.status(400).json({ error: "persona and correction are required" }); return;
+    }
+
+    if (!isAdmin) {
+      const { data: persona } = await supabase
+        .from("personas").select("client_id").eq("id", personaId).single();
+      if (!persona || persona.client_id !== client?.id) {
+        res.status(403).json({ error: "Forbidden" }); return;
+      }
+    }
+
+    const { error } = await supabase
+      .from("corrections")
+      .delete()
+      .eq("id", correctionId)
+      .eq("persona_id", personaId);
+
+    if (error) { res.status(500).json({ error: "Failed to delete" }); return; }
+
+    clearCache(personaId);
+    res.json({ ok: true });
+    return;
+  }
+
+  // ── POST: Submit correction (existing logic) ──
   const { correction, botMessage, userMessage, persona: personaId, type, original, modified } = req.body || {};
 
   if (!personaId) { res.status(400).json({ error: "persona is required" }); return; }
