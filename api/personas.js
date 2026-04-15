@@ -1,4 +1,4 @@
-import { authenticateRequest, supabase, setCors } from "../lib/supabase.js";
+import { authenticateRequest, createSession, supabase, setCors } from "../lib/supabase.js";
 
 export default async function handler(req, res) {
   setCors(res);
@@ -33,7 +33,13 @@ export default async function handler(req, res) {
       canCreateClone = personas.length < client.max_clones;
     }
 
-    res.json({ personas, isAdmin, canCreateClone });
+    // Issue session token on login (if client)
+    let session = null;
+    if (client) {
+      session = await createSession(client.id);
+    }
+
+    res.json({ personas, isAdmin, canCreateClone, session });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.error || "Server error" });
   }

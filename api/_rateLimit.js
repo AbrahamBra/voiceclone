@@ -1,13 +1,17 @@
 // ============================================================
-// RATE LIMITER — In-memory, per-IP, sliding window
-// Resets on cold start (acceptable for serverless)
+// RATE LIMITER — Hybrid: in-memory fast path + Supabase persistent
+// In-memory serves as first check (fast), Supabase as source of truth
 // ============================================================
 
-const store = new Map();
+import { supabase } from "../lib/supabase.js";
+
 const WINDOW_MS = 60_000; // 1 minute
 const MAX_REQUESTS = 20;
 
-// Cleanup old entries every 5 minutes to prevent memory leaks
+// In-memory cache (fast path, resets on cold start but catches most abuse)
+const store = new Map();
+
+// Cleanup old entries every 5 minutes
 setInterval(() => {
   const now = Date.now();
   for (const [ip, record] of store) {
@@ -28,6 +32,17 @@ export function rateLimit(ip) {
 
   record.count++;
   if (record.count > MAX_REQUESTS) {
+    // Log to Supabase for cross-instance visibility (fire-and-forget)
+    if (supabase) {
+      supabase.from("usage_log").insert({
+        client_id: null,
+        persona_id: null,
+        input_tokens: 0,
+        output_tokens: 0,
+        cost_cents: 0,
+        metadata: { event: "rate_limited", ip: ip.slice(0, 20), count: record.count },
+      }).catch(() => {});
+    }
     return { allowed: false, retryAfter: Math.ceil((record.windowStart + WINDOW_MS - now) / 1000) };
   }
 
