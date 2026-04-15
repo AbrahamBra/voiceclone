@@ -74,9 +74,6 @@ export default async function handler(req, res) {
     ontology,
   });
 
-  // Prepare knowledge context summary for the scorer
-  const knowledgeContext = knowledgeMatches.map(m => m.content).join("\n").slice(0, 1000);
-
   const sse = initSSE(res);
   const apiKey = getApiKey(client);
 
@@ -89,7 +86,6 @@ export default async function handler(req, res) {
       voiceRules: persona.voice,
       corrections,
       apiKey,
-      knowledgeContext,
     });
     res.end();
 

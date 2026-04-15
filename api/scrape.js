@@ -58,12 +58,14 @@ export default async function handler(req, res) {
     const urn = profile.urn || profile.entityUrn || profile.profileUrn;
 
     // Build profile text
+    // Build profile text from available fields
+    const positions = profile.fullPositions || profile.currentPositions || profile.experience || [];
     const profileText = [
       profile.firstName && profile.lastName ? `${profile.firstName} ${profile.lastName}` : "",
       profile.headline || "",
       profile.summary || profile.about || "",
-      ...(profile.experience || []).map(e =>
-        `${e.title || ""} chez ${e.companyName || ""} (${e.startDate || ""} - ${e.endDate || "present"}): ${e.description || ""}`
+      ...positions.map(e =>
+        `${e.title || ""} chez ${e.companyName || e.company?.name || ""}: ${e.description || ""}`
       ),
     ].filter(Boolean).join("\n\n");
 
@@ -74,7 +76,8 @@ export default async function handler(req, res) {
         const postsResp = await fetch(`${LINKDAPI_BASE}/posts/all?urn=${encodeURIComponent(urn)}`, { headers });
         if (postsResp.ok) {
           const postsData = await postsResp.json();
-          const rawPosts = postsData.data || postsData.posts || postsData || [];
+          // LinkdAPI returns { data: { posts: [...], cursor: "..." } }
+          const rawPosts = postsData.data?.posts || postsData.data || postsData.posts || postsData || [];
           posts = (Array.isArray(rawPosts) ? rawPosts : [])
             .filter(p => p.text || p.commentary || p.content)
             .slice(0, 20)
