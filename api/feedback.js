@@ -2,15 +2,21 @@ import Anthropic from "@anthropic-ai/sdk";
 import { authenticateRequest, supabase, getApiKey, setCors } from "../lib/supabase.js";
 import { clearCache, loadPersonaData } from "../lib/knowledge-db.js";
 
-const GRAPH_EXTRACTION_PROMPT = `Tu es un expert en extraction de connaissances.
-Un utilisateur vient de corriger une reponse de son clone IA. Analyse sa correction et determine :
+const GRAPH_EXTRACTION_PROMPT = `Tu es un expert en extraction de connaissances pour un clone de voix IA.
+Un utilisateur vient de corriger une reponse de son clone. Analyse sa correction et extrais TOUT ce qui peut ameliorer le clone :
 
-1. Y a-t-il de NOUVELLES entites (concepts, frameworks, croyances, outils) a ajouter au graphe de connaissances ?
-2. Y a-t-il des RELATIONS existantes a modifier ou de nouvelles relations a creer ?
-3. Y a-t-il des entites existantes dont la description doit etre mise a jour ?
+1. Regles de style (ton, longueur, formulation, mots interdits, expressions preferees)
+2. Concepts metier (frameworks, methodologies, croyances, outils)
+3. Preferences relationnelles (tutoiement, niveau de formalite, emoticons)
+4. Connaissances domaine (faits, metriques, personnes, entreprises)
 
-Types d'entites : concept, framework, person, company, metric, belief, tool
-Types de relations : equals, includes, contradicts, causes, uses, prerequisite
+Types d'entites : concept, framework, person, company, metric, belief, tool, style_rule
+Types de relations : equals, includes, contradicts, causes, uses, prerequisite, enforces
+
+IMPORTANT : Les corrections de STYLE sont aussi importantes que les corrections de fond.
+"Trop formel" → entite style_rule "tutoiement obligatoire"
+"Trop long" → entite style_rule "messages courts (5-15 mots)"
+"Pas assez direct" → entite style_rule "aller droit au but"
 
 Reponds en JSON :
 {
@@ -20,7 +26,7 @@ Reponds en JSON :
   "updated_entities": [{ "name": "...", "description": "nouvelle description" }]
 }
 
-Si la correction est juste stylistique (ton, longueur, formulation), reponds {"has_graph_update": false}. N'ajoute au graphe que des CONCEPTS substantiels.`;
+Reponds {"has_graph_update": false} UNIQUEMENT si la correction est vide ou incomprehensible.`;
 
 export default async function handler(req, res) {
   setCors(res, "GET, POST, DELETE, OPTIONS");
@@ -201,7 +207,7 @@ export default async function handler(req, res) {
       system: GRAPH_EXTRACTION_PROMPT + entityContext,
       messages: [{
         role: "user",
-        content: `Correction du client : "${correction}"\n\nContexte — message bot : "${(botMessage || "").slice(0, 200)}"\nMessage user : "${(userMessage || "").slice(0, 200)}"`,
+        content: `Correction du client : "${finalCorrection}"\n\nContexte — message bot : "${(botMessage || original || "").slice(0, 200)}"\nMessage user : "${(userMessage || "").slice(0, 200)}"`,
       }],
     });
 
