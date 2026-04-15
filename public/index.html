@@ -58,6 +58,20 @@
     </div>
   </div>
 
+  <!-- Screen: Calibration -->
+  <div id="screen-calibrate" class="screen">
+    <div class="calibrate-container">
+      <h2>Calibrer le clone</h2>
+      <p class="subtitle">Notez ces messages pour affiner la voix</p>
+      <div id="calibrate-cards" class="calibrate-cards"></div>
+      <div class="calibrate-actions">
+        <button id="calibrate-skip" class="btn-secondary">Passer</button>
+        <button id="calibrate-submit">Valider la calibration</button>
+      </div>
+      <p id="calibrate-status" class="hidden"></p>
+    </div>
+  </div>
+
   <!-- Screen: Scenario selection -->
   <div id="screen-scenarios" class="screen">
     <div class="scenarios-container">
@@ -68,17 +82,28 @@
 
   <!-- Screen: Chat -->
   <div id="screen-chat" class="screen">
-    <header class="chat-header">
-      <div class="chat-avatar" id="chat-avatar"></div>
-      <span class="chat-name" id="chat-name"></span>
-      <button class="settings-btn" id="settings-btn" title="Parametres">&#9881;</button>
-    </header>
-    <div id="chat-messages" class="chat-messages"></div>
-    <div class="chat-input-bar">
-      <textarea id="chat-input" placeholder="Message..." rows="1"></textarea>
-      <button id="chat-send">Envoyer</button>
+    <div class="chat-layout">
+      <aside class="conv-sidebar" id="conv-sidebar">
+        <div class="conv-sidebar-header">
+          <button class="conv-new-btn" id="conv-new-btn">+ Nouvelle conversation</button>
+          <input type="text" class="conv-search" id="conv-search" placeholder="Rechercher...">
+        </div>
+        <div class="conv-list" id="conv-list"></div>
+      </aside>
+      <div class="chat-main">
+        <header class="chat-header">
+          <div class="chat-avatar" id="chat-avatar"></div>
+          <span class="chat-name" id="chat-name"></span>
+          <button class="settings-btn" id="settings-btn" title="Parametres">&#9881;</button>
+        </header>
+        <div id="chat-messages" class="chat-messages"></div>
+        <div class="chat-input-bar">
+          <textarea id="chat-input" placeholder="Message..." rows="1"></textarea>
+          <button id="chat-send">Envoyer</button>
+        </div>
+        <div id="chat-toast" class="toast hidden"></div>
+      </div>
     </div>
-    <div id="chat-toast" class="toast hidden"></div>
   </div>
 
   <script src="/app.js"></script>
