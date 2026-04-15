@@ -1,10 +1,18 @@
 let config = null;
 let accessCode = "";
+let sessionToken = null;
 let currentScenario = "";
 let currentPersonaId = "";
-let history = [];
+let currentConversationId = null;
 
 const $ = (id) => document.getElementById(id);
+
+function authHeaders(extra = {}) {
+  const h = { ...extra };
+  if (sessionToken) h["x-session-token"] = sessionToken;
+  else if (accessCode) h["x-access-code"] = accessCode;
+  return h;
+}
 
 function renderMarkdown(text) {
   return text
@@ -62,6 +70,7 @@ async function doAccess() {
 
     accessCode = code;
     const data = await resp.json();
+    if (data.session?.token) sessionToken = data.session.token;
     showPersonaList(data.personas, data.canCreateClone, data.isAdmin);
   } catch {
     errorEl.textContent = "Erreur de connexion";
@@ -98,18 +107,80 @@ function showPersonaList(personas, canCreateClone, isAdmin) {
 async function selectPersona(personaId) {
   currentPersonaId = personaId;
   try {
-    const resp = await fetch(`/api/config?persona=${personaId}`, { headers: { "x-access-code": accessCode } });
+    const resp = await fetch(`/api/config?persona=${personaId}`, { headers: authHeaders() });
     if (!resp.ok) throw new Error("Failed to load persona");
     config = await resp.json();
     document.title = `${config.name} — Clone IA`;
     applyTheme(config.theme);
+
+    // Load existing conversations for picker
+    let convs = [];
+    try {
+      const convResp = await fetch(`/api/conversations?persona=${personaId}`, { headers: authHeaders() });
+      if (convResp.ok) { const d = await convResp.json(); convs = d.conversations || []; }
+    } catch {}
+    if (convs.length > 0) {
+      showConversationPicker(convs);
+    } else {
+      setupScenarios();
+      const keys = Object.keys(config.scenarios);
+      if (keys.length === 1) startChat(keys[0]);
+      else showScreen("screen-scenarios");
+    }
+  } catch {
+    showToast("Erreur de chargement du client");
+  }
+}
+
+function showConversationPicker(convs) {
+  const container = $("scenario-cards");
+  container.innerHTML = "";
+
+  // "New conversation" card
+  const newCard = document.createElement("div");
+  newCard.className = "scenario-card";
+  newCard.innerHTML = `<h3>+ Nouvelle conversation</h3><p>Commencer une discussion</p>`;
+  newCard.addEventListener("click", () => {
+    currentConversationId = null;
     setupScenarios();
     const keys = Object.keys(config.scenarios);
     if (keys.length === 1) startChat(keys[0]);
     else showScreen("screen-scenarios");
-  } catch {
-    showToast("Erreur de chargement du client");
+  });
+  container.appendChild(newCard);
+
+  // Existing conversations
+  for (const conv of convs.slice(0, 10)) {
+    const card = document.createElement("div");
+    card.className = "scenario-card";
+    const date = new Date(conv.updated_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    card.innerHTML = `<h3>${conv.title || "Conversation"}</h3><p>${date}</p>`;
+    card.addEventListener("click", async () => {
+      // Load full conversation with messages
+      try {
+        const resp = await fetch(`/api/conversations?id=${conv.id}`, {
+          headers: authHeaders(),
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.conversation) {
+            currentScenario = conv.scenario || "default";
+            $("chat-avatar").textContent = config.avatar;
+            $("chat-name").textContent = config.name;
+            showScreen("screen-chat");
+            resumeConversation(data.conversation);
+            $("chat-input").focus();
+            return;
+          }
+        }
+      } catch { }
+      showToast("Erreur de chargement");
+    });
+    container.appendChild(card);
   }
+
+  document.querySelector("#screen-scenarios h2").textContent = config.name;
+  showScreen("screen-scenarios");
 }
 
 // ---- Screen 1: Clone creation ----
@@ -130,7 +201,7 @@ async function scrapeLinkedIn() {
   try {
     const resp = await fetch("/api/scrape", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-access-code": accessCode },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ linkedin_url: url }),
     });
 
@@ -259,7 +330,7 @@ async function createClone() {
   try {
     const resp = await fetch("/api/clone", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-access-code": accessCode },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ linkedin_text: linkedin, posts, documents: docs || undefined }),
     });
 
@@ -280,8 +351,8 @@ async function createClone() {
     showStatus(`Clone "${data.persona.name}" cree avec succes !`);
     btn.textContent = "Clone cree !";
 
-    // Go to persona selection after 1.5s
-    setTimeout(() => { doAccess(); }, 1500);
+    // Start calibration instead of going back
+    setTimeout(() => { startCalibration(data.persona.id); }, 1000);
   } catch (err) {
     showStatus("Erreur: " + err.message);
     btn.disabled = false;
@@ -311,7 +382,6 @@ function setupScenarios() {
 // ---- Screen 3: Chat ----
 function startChat(scenario) {
   currentScenario = scenario;
-  history = [];
   $("chat-avatar").textContent = config.avatar;
   $("chat-name").textContent = config.name;
   $("chat-messages").innerHTML = "";
@@ -319,6 +389,13 @@ function startChat(scenario) {
   addMessage("bot", sc?.welcome || `Bonjour, je suis ${config.name}. Comment puis-je vous aider ?`);
   showScreen("screen-chat");
   $("chat-input").focus();
+
+  // Load conversation sidebar
+  loadConversations(currentPersonaId);
+
+  // Resume last conversation from localStorage
+  const savedConvId = localStorage.getItem("conv_" + currentPersonaId);
+  if (savedConvId) loadConversation(savedConvId);
 }
 
 function addMessage(role, text) {
@@ -327,12 +404,39 @@ function addMessage(role, text) {
   div.className = `msg msg-${role}`;
   if (role === "bot") {
     div.innerHTML = renderMarkdown(text);
-    if (history.length > 0 || container.children.length > 1) {
+    if (container.children.length > 0) {
+      const actions = document.createElement("div");
+      actions.className = "msg-actions";
+
+      const copyBtn = document.createElement("button");
+      copyBtn.className = "action-btn";
+      copyBtn.textContent = "Copier";
+      copyBtn.addEventListener("click", () => {
+        navigator.clipboard.writeText(text);
+        copyBtn.textContent = "Copie !";
+        lastCopiedMessage = { text, personaId: currentPersonaId };
+        // Show diff link
+        const diffLink = div.querySelector(".diff-link");
+        if (diffLink) diffLink.classList.remove("hidden");
+        setTimeout(() => { copyBtn.textContent = "Copier"; }, 1500);
+      });
+      actions.appendChild(copyBtn);
+
       const fb = document.createElement("button");
-      fb.className = "feedback-btn";
+      fb.className = "action-btn";
       fb.textContent = "Corriger";
       fb.addEventListener("click", () => openFeedback(div, text));
-      div.appendChild(fb);
+      actions.appendChild(fb);
+
+      div.appendChild(actions);
+
+      // Hidden diff link (appears after copy)
+      const diffLink = document.createElement("a");
+      diffLink.className = "diff-link hidden";
+      diffLink.href = "#";
+      diffLink.textContent = "Tu l'as modifie ? Colle ta version ici";
+      diffLink.addEventListener("click", (e) => { e.preventDefault(); openImplicitFeedback(text); });
+      div.appendChild(diffLink);
     }
   } else div.textContent = text;
   container.appendChild(div);
@@ -341,7 +445,7 @@ function addMessage(role, text) {
 }
 
 function openFeedback(msgDiv, botText) {
-  const lastUser = history.length > 0 ? history[history.length - 1]?.content || "" : "";
+  const lastUser = "";
   const overlay = document.createElement("div");
   overlay.className = "feedback-overlay";
   overlay.innerHTML = `<div class="feedback-modal"><h3>Corriger cette reponse</h3><p class="feedback-hint">Le clone apprendra de cette correction.</p><textarea id="feedback-text" placeholder="Ex: Trop formel, pas assez direct..." rows="3"></textarea><div class="feedback-actions"><button class="feedback-cancel">Annuler</button><button class="feedback-submit">Envoyer</button></div></div>`;
@@ -356,7 +460,7 @@ function openFeedback(msgDiv, botText) {
     try {
       const resp = await fetch("/api/feedback", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-access-code": accessCode },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ correction, botMessage: botText, userMessage: lastUser, persona: currentPersonaId }),
       });
       if (resp.ok) { showToast("Correction enregistree ;)"); overlay.remove(); }
@@ -373,7 +477,7 @@ async function openSettings() {
   // Fetch usage
   let usage = { budget_cents: 0, spent_cents: 0, remaining_cents: 0, has_own_key: false };
   try {
-    const resp = await fetch("/api/usage", { headers: { "x-access-code": accessCode } });
+    const resp = await fetch("/api/usage", { headers: authHeaders() });
     if (resp.ok) usage = await resp.json();
   } catch { }
 
@@ -392,12 +496,140 @@ async function openSettings() {
     try {
       const resp = await fetch("/api/settings", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-access-code": accessCode },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ anthropic_api_key: key }),
       });
       if (resp.ok) { showToast("Cle API sauvegardee"); overlay.remove(); }
     } catch { }
   });
+}
+
+// ---- Calibration ----
+let calibratePersonaId = null;
+let calibrateMessages = [];
+
+async function startCalibration(personaId) {
+  calibratePersonaId = personaId;
+  showScreen("screen-calibrate");
+  $("calibrate-status").textContent = "Generation des messages de test...";
+  $("calibrate-status").classList.remove("hidden");
+
+  try {
+    const resp = await fetch("/api/calibrate", {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ persona: personaId }),
+    });
+    if (!resp.ok) throw new Error("Calibration failed");
+
+    const data = await resp.json();
+    calibrateMessages = data.messages;
+    $("calibrate-status").classList.add("hidden");
+    renderCalibrateCards(data.messages);
+  } catch (err) {
+    $("calibrate-status").textContent = "Calibration indisponible. Vous pouvez passer.";
+    $("calibrate-status").style.color = "var(--warning)";
+  }
+}
+
+function renderCalibrateCards(messages) {
+  const container = $("calibrate-cards");
+  container.innerHTML = "";
+  messages.forEach((msg, i) => {
+    const card = document.createElement("div");
+    card.className = "calibrate-card";
+    card.innerHTML = `
+      <div class="calibrate-context">${msg.context}</div>
+      <div class="calibrate-response">${renderMarkdown(msg.response)}</div>
+      <div class="calibrate-rating" data-index="${i}">
+        ${[1,2,3,4,5].map(n => `<button class="star-btn" data-score="${n}">${n <= 3 ? "&#9734;" : "&#9733;"}</button>`).join("")}
+      </div>
+      <textarea class="calibrate-correction" placeholder="Correction (optionnel)" rows="2"></textarea>
+    `;
+    // Star click handler
+    card.querySelectorAll(".star-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const score = parseInt(btn.dataset.score);
+        card.querySelectorAll(".star-btn").forEach((b, j) => {
+          b.classList.toggle("active", j < score);
+          b.innerHTML = j < score ? "&#9733;" : "&#9734;";
+        });
+        card.dataset.score = score;
+      });
+    });
+    container.appendChild(card);
+  });
+}
+
+$("calibrate-submit").addEventListener("click", async () => {
+  const cards = document.querySelectorAll(".calibrate-card");
+  const ratings = [];
+  cards.forEach((card, i) => {
+    ratings.push({
+      index: i,
+      score: parseInt(card.dataset.score) || 3,
+      correction: card.querySelector(".calibrate-correction").value.trim(),
+      response: calibrateMessages[i]?.response?.slice(0, 300) || "",
+    });
+  });
+
+  const btn = $("calibrate-submit");
+  btn.disabled = true;
+  btn.textContent = "Envoi...";
+
+  try {
+    const resp = await fetch("/api/calibrate-feedback", {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ persona: calibratePersonaId, ratings }),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      showToast(data.message);
+    }
+  } catch { }
+
+  // Go to persona selection
+  setTimeout(() => { doAccess(); }, 500);
+});
+
+$("calibrate-skip").addEventListener("click", () => { doAccess(); });
+
+// ---- Implicit feedback (diff) ----
+let lastCopiedMessage = null;
+
+function openImplicitFeedback(originalText) {
+  const overlay = document.createElement("div");
+  overlay.className = "feedback-overlay";
+  overlay.innerHTML = `<div class="feedback-modal"><h3>Version modifiee</h3><p class="feedback-hint">Collez la version que vous avez envoyee. On detecte les differences automatiquement.</p><textarea id="implicit-text" rows="5" placeholder="Collez votre version modifiee ici...">${originalText}</textarea><div class="feedback-actions"><button class="feedback-cancel">Annuler</button><button class="feedback-submit">Envoyer le diff</button></div></div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector(".feedback-cancel").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector(".feedback-submit").addEventListener("click", async () => {
+    const modified = overlay.querySelector("#implicit-text").value.trim();
+    if (!modified || modified === originalText) { overlay.remove(); return; }
+    const btn = overlay.querySelector(".feedback-submit");
+    btn.disabled = true; btn.textContent = "Envoi...";
+    try {
+      const resp = await fetch("/api/feedback", {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          type: "implicit",
+          original: originalText,
+          modified,
+          persona: currentPersonaId,
+        }),
+      });
+      if (resp.ok) { showToast("Diff enregistre, le clone va s'ameliorer"); overlay.remove(); }
+      else { btn.disabled = false; btn.textContent = "Envoyer le diff"; }
+    } catch { btn.disabled = false; btn.textContent = "Envoyer le diff"; }
+  });
+  setTimeout(() => {
+    const ta = overlay.querySelector("#implicit-text");
+    ta.focus();
+    ta.setSelectionRange(0, 0);
+  }, 100);
 }
 
 // Chat send
@@ -424,8 +656,13 @@ async function sendMessage() {
   try {
     const resp = await fetch("/api/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-access-code": accessCode },
-      body: JSON.stringify({ message: text, history, scenario: currentScenario, persona: currentPersonaId }),
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        message: text,
+        scenario: currentScenario,
+        persona: currentPersonaId,
+        conversation_id: currentConversationId || undefined,
+      }),
     });
 
     if (resp.status === 429) { showToast("Trop de messages, patientez"); botDiv.remove(); sending = false; $("chat-send").disabled = false; return; }
@@ -462,33 +699,25 @@ async function sendMessage() {
               }
               statusEl.textContent = "Analyse du contexte...";
               botDiv.appendChild(statusEl); break;
-            case "scoring":
-              if (statusEl) statusEl.textContent = "Evaluation qualite...";
-              break;
-            case "score_result": {
-              const g = evt.global?.toFixed(1) || "?";
-              const color = evt.global >= 9.0 ? "#22c55e" : evt.global >= 8.5 ? "var(--accent)" : "#f59e0b";
-              const scoreHtml = `<div class="score-block"><div class="score-bar"><div class="score-fill" style="width:${evt.global*10}%;background:${color}"></div></div><span class="score-value" style="color:${color}">${g}/10</span><div class="score-dims">Voix: ${evt.voice?.toFixed(1)} | Pertinence: ${evt.knowledge?.toFixed(1)} | Naturel: ${evt.natural?.toFixed(1)} | Coherence: ${evt.coherence?.toFixed(1)}</div></div>`;
-              // Remove existing score block if rewriting
-              botDiv.querySelector(".score-block")?.remove();
-              botDiv.insertAdjacentHTML("beforeend", scoreHtml);
-              break;
-            }
+            case "scoring": break; // legacy, ignored
             case "rewriting":
               if (statusEl) statusEl.textContent = `Amelioration (tentative ${evt.attempt || 1})...`;
               break;
             case "clear": botText = ""; botDiv.innerHTML = ""; if (statusEl) botDiv.appendChild(statusEl); break;
             case "done": {
               if (statusEl) statusEl.remove(); statusEl = null;
-              // Show final score if available
-              if (evt.score) {
-                const g = evt.score.global?.toFixed(1) || "?";
-                const color = evt.score.global >= 9.0 ? "#22c55e" : evt.score.global >= 8.5 ? "var(--accent)" : "#f59e0b";
-                botDiv.querySelector(".score-block")?.remove();
-                botDiv.insertAdjacentHTML("beforeend", `<div class="score-block"><div class="score-bar"><div class="score-fill" style="width:${evt.score.global*10}%;background:${color}"></div></div><span class="score-value" style="color:${color}">${g}/10</span><div class="score-dims">Voix: ${evt.score.voice?.toFixed(1)} | Pertinence: ${evt.score.knowledge?.toFixed(1)} | Naturel: ${evt.score.natural?.toFixed(1)} | Coherence: ${evt.score.coherence?.toFixed(1)}</div></div>`);
+              if (evt.rewritten) {
+                botDiv.insertAdjacentHTML("beforeend", `<div class="rewrite-badge">Corrige automatiquement</div>`);
               }
               break;
             }
+            case "conversation":
+              if (evt.id && !currentConversationId) {
+                currentConversationId = evt.id;
+                localStorage.setItem("conv_" + currentPersonaId, evt.id);
+                loadConversations(currentPersonaId);
+              }
+              break;
             case "error":
               botDiv.textContent = "Connexion perdue. ";
               const rb = document.createElement("button"); rb.textContent = "Reessayer";
@@ -501,11 +730,136 @@ async function sendMessage() {
       $("chat-messages").scrollTop = $("chat-messages").scrollHeight;
     }
 
-    history.push({ role: "user", content: text });
-    history.push({ role: "assistant", content: botText });
-    if (history.length > 20) history = history.slice(history.length - 20);
+    // Auto-save conversation
+    saveConversation();
   } catch {
     if (!botDiv.querySelector("button")) botDiv.textContent = "Connexion perdue. Reessayez.";
   }
   sending = false; $("chat-send").disabled = false; input.focus();
 }
+
+// ---- Conversation persistence ----
+async function saveConversation() {
+  try {
+    const resp = await fetch("/api/conversations", {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        id: currentConversationId || undefined,
+        persona_id: currentPersonaId,
+        scenario: currentScenario,
+      }),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (!currentConversationId) currentConversationId = data.id;
+    }
+  } catch { /* silent — don't break chat UX */ }
+}
+
+async function loadConversations(personaId) {
+  try {
+    const resp = await fetch(`/api/conversations?persona=${personaId}`, {
+      headers: { "x-access-code": accessCode },
+    });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    renderConversationList(data.conversations);
+  } catch {}
+}
+
+function renderConversationList(conversations) {
+  const list = $("conv-list");
+  list.innerHTML = "";
+  for (const conv of conversations) {
+    const item = document.createElement("div");
+    item.className = "conv-item" + (conv.id === currentConversationId ? " active" : "");
+    const timeAgo = getRelativeTime(conv.last_message_at);
+    item.innerHTML = '<div class="conv-item-title">' + (conv.title || "Sans titre") + '</div>' +
+      '<div class="conv-item-meta">' + timeAgo + ' · ' + (conv.message_count || 0) + ' msg</div>';
+    item.addEventListener("click", () => loadConversation(conv.id));
+    list.appendChild(item);
+  }
+}
+
+function getRelativeTime(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return "il y a " + mins + "m";
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return "il y a " + hours + "h";
+  const days = Math.floor(hours / 24);
+  return "il y a " + days + "j";
+}
+
+async function loadConversation(convId) {
+  currentConversationId = convId;
+  localStorage.setItem("conv_" + currentPersonaId, convId);
+
+  try {
+    const resp = await fetch("/api/conversations?id=" + convId, {
+      headers: { "x-access-code": accessCode },
+    });
+    if (!resp.ok) return;
+    const data = await resp.json();
+
+    $("chat-messages").innerHTML = "";
+    const sc = config.scenarios[currentScenario];
+    addMessage("bot", sc?.welcome || "Bonjour, je suis " + config.name + ".");
+
+    for (const msg of data.messages) {
+      addMessage(msg.role === "user" ? "user" : "bot", msg.content);
+    }
+
+    loadConversations(currentPersonaId);
+  } catch {}
+}
+
+function resumeConversation(conv) {
+  currentConversationId = conv.id;
+  const messages = conv.messages || [];
+  // Re-render all messages
+  $("chat-messages").innerHTML = "";
+  const sc = config.scenarios[conv.scenario || "default"];
+  addMessage("bot", sc?.welcome || `Bonjour, je suis ${config.name}.`);
+  for (const msg of messages) {
+    addMessage(msg.role === "user" ? "user" : "bot", msg.content);
+  }
+}
+
+// Conversation sidebar
+$("conv-new-btn").addEventListener("click", () => {
+  currentConversationId = null;
+  localStorage.removeItem("conv_" + currentPersonaId);
+  $("chat-messages").innerHTML = "";
+  const sc = config.scenarios[currentScenario];
+  addMessage("bot", sc?.welcome || "Bonjour, je suis " + config.name + ".");
+  $("chat-input").focus();
+  document.querySelectorAll(".conv-item").forEach(el => el.classList.remove("active"));
+});
+
+let searchTimeout;
+$("conv-search").addEventListener("input", (e) => {
+  clearTimeout(searchTimeout);
+  const query = e.target.value.trim();
+  if (query.length < 2) { loadConversations(currentPersonaId); return; }
+  searchTimeout = setTimeout(async () => {
+    try {
+      const resp = await fetch("/api/conversations?search=" + encodeURIComponent(query) + "&persona=" + currentPersonaId, {
+        headers: { "x-access-code": accessCode },
+      });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const list = $("conv-list");
+      list.innerHTML = "";
+      for (const r of data.results) {
+        const item = document.createElement("div");
+        item.className = "conv-item";
+        item.innerHTML = '<div class="conv-item-title">' + (r.conversation_title || "Sans titre") + '</div>' +
+          '<div class="conv-item-meta">' + r.message_content_snippet.slice(0, 80) + '...</div>';
+        item.addEventListener("click", () => loadConversation(r.conversation_id));
+        list.appendChild(item);
+      }
+    } catch {}
+  }, 300);
+});
