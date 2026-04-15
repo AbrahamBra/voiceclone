@@ -967,3 +967,88 @@ $("conv-switch-btn").addEventListener("click", () => {
     doAccess();
   }
 });
+
+// Lead scraping
+$("lead-btn").addEventListener("click", () => {
+  $("lead-overlay").style.display = "flex";
+  $("lead-url").value = "";
+  $("lead-status").classList.add("hidden");
+  $("lead-status").style.color = "";
+  $("lead-submit").disabled = false;
+  $("lead-submit").textContent = "Analyser";
+  setTimeout(() => $("lead-url").focus(), 100);
+});
+
+$("lead-cancel").addEventListener("click", () => { $("lead-overlay").style.display = "none"; });
+$("lead-overlay").addEventListener("click", (e) => { if (e.target === $("lead-overlay")) $("lead-overlay").style.display = "none"; });
+
+$("lead-submit").addEventListener("click", async () => {
+  const url = $("lead-url").value.trim();
+  if (!url) return;
+
+  if (!url.match(/linkedin\.com\/in\/[^/?#]+/)) {
+    $("lead-status").textContent = "URL invalide. Format : linkedin.com/in/username";
+    $("lead-status").classList.remove("hidden");
+    $("lead-status").style.color = "";
+    return;
+  }
+
+  const btn = $("lead-submit");
+  const status = $("lead-status");
+  btn.disabled = true;
+  btn.textContent = "Analyse en cours...";
+  status.textContent = "Recuperation du profil et des posts...";
+  status.classList.remove("hidden");
+  status.style.color = "";
+
+  try {
+    const resp = await fetch("/api/scrape", {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ linkedin_url: url }),
+    });
+
+    if (resp.status === 501) {
+      status.textContent = "Analyse non disponible (scraping non configure)";
+      btn.disabled = false; btn.textContent = "Analyser";
+      return;
+    }
+    if (!resp.ok) {
+      const err = await resp.json();
+      status.textContent = err.error || "Erreur d'analyse";
+      btn.disabled = false; btn.textContent = "Analyser";
+      return;
+    }
+
+    const data = await resp.json();
+    const profile = data.profile;
+
+    const posts = data.posts.slice(0, 3);
+    let postSection = "";
+    if (posts.length > 0) {
+      const freq = data.postCount >= 10 ? "actif (10+ posts)" :
+                   data.postCount >= 5 ? "regulier (5-10 posts)" :
+                   data.postCount >= 2 ? "occasionnel (2-4 posts)" : "rare (1 post)";
+      postSection = "SUJETS DU MOMENT (priorite pour l'opening) :\n" +
+        "Frequence de publication : " + freq + "\n" +
+        "3 derniers posts :\n" +
+        posts.map((p, i) => (i + 1) + ". " + p.slice(0, 250)).join("\n\n");
+    }
+
+    const leadMsg = [
+      "[Contexte lead \u2014 " + profile.name + "]",
+      postSection,
+      "PROFIL :\nTitre: " + profile.headline + "\n" + profile.text.slice(0, 500),
+      "Aide-moi a preparer une approche personnalisee pour ce prospect. Utilise ses sujets recents comme angle d'ouverture.",
+    ].filter(Boolean).join("\n\n");
+
+    $("lead-overlay").style.display = "none";
+    $("chat-input").value = leadMsg;
+    sendMessage();
+
+  } catch {
+    status.textContent = "Erreur de connexion";
+    btn.disabled = false;
+    btn.textContent = "Analyser";
+  }
+});
