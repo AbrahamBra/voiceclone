@@ -7,6 +7,30 @@ const KEYWORD_PROMPT = `Extrais 5 à 15 mots-clés représentatifs de ce documen
 Retourne UNIQUEMENT un tableau JSON de strings, sans aucun autre texte ni balises markdown.
 Exemple: ["stratégie", "linkedin", "contenu", "audience", "engagement"]`;
 
+const FILE_GRAPH_PROMPT = `Tu es un expert en extraction de connaissances business.
+Analyse ce document et extrais toutes les entités et relations utiles pour enrichir la connaissance d'un clone IA.
+
+Concentre-toi sur :
+1. Entreprises et organisations (clients actuels, prospects, concurrents, partenaires)
+2. Personas et cibles (ICP, segments, décideurs, utilisateurs)
+3. Positionnement et proposition de valeur
+4. Concepts métier, frameworks, méthodologies propres au domaine
+5. Métriques et objectifs clés
+6. Croyances et principes (ce que la personne croit fermement)
+
+Types d'entités : concept, framework, person, company, metric, belief, tool, style_rule
+Types de relations : equals, includes, contradicts, causes, uses, prerequisite, enforces
+
+Reponds en JSON :
+{
+  "has_graph_update": true/false,
+  "new_entities": [{ "name": "...", "type": "...", "description": "..." }],
+  "new_relations": [{ "from": "...", "to": "...", "type": "...", "description": "..." }],
+  "updated_entities": [{ "name": "...", "description": "nouvelle description" }]
+}
+
+Reponds {"has_graph_update": false} si le document ne contient aucune entité exploitable.`;
+
 export default async function handler(req, res) {
   setCors(res, "GET, POST, DELETE, OPTIONS");
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
@@ -165,6 +189,91 @@ export default async function handler(req, res) {
     res.status(500).json({ error: "Failed to save file" }); return;
   }
 
+  // Extract graph knowledge from file content (fire-and-forget)
+  extractGraphKnowledgeFromFile(personaId, content, client).catch(() => {});
+
   clearCache(personaId);
   res.json({ file: { path, chunk_count: chunkCount } });
+}
+
+/**
+ * Extract entities/relations from a document and upsert into knowledge graph.
+ * Entities from files get confidence 0.7 (lower than corrections at 0.8 — not user-validated).
+ * Runs async — caller doesn't wait.
+ */
+async function extractGraphKnowledgeFromFile(personaId, content, client) {
+  try {
+    const anthropic = new Anthropic({ apiKey: getApiKey(client) });
+
+    const { data: existingEntities } = await supabase
+      .from("knowledge_entities")
+      .select("name, type, description")
+      .eq("persona_id", personaId);
+
+    const entityContext = existingEntities?.length > 0
+      ? `\n\nEntités déjà dans le graphe :\n${existingEntities.map(e => `- ${e.name} (${e.type}): ${e.description}`).join("\n")}`
+      : "";
+
+    const result = await anthropic.messages.create({
+      model: process.env.CLAUDE_MODEL || "claude-sonnet-4-6",
+      max_tokens: 512,
+      system: FILE_GRAPH_PROMPT + entityContext,
+      messages: [{
+        role: "user",
+        content: `Document :\n${content.slice(0, 6000)}`,
+      }],
+    });
+
+    const raw = result.content[0].text.trim();
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return;
+    const graphData = JSON.parse(jsonMatch[0]);
+    if (!graphData.has_graph_update) return;
+
+    if (graphData.new_entities?.length > 0) {
+      const entityRows = graphData.new_entities.map(e => ({
+        persona_id: personaId,
+        name: e.name,
+        type: e.type || "concept",
+        description: e.description || "",
+        confidence: 0.7,
+      }));
+
+      const { data: inserted } = await supabase
+        .from("knowledge_entities")
+        .upsert(entityRows, { onConflict: "persona_id,name" })
+        .select("id, name");
+
+      if (inserted?.length > 0 && graphData.new_relations?.length > 0) {
+        const { data: allEntities } = await supabase
+          .from("knowledge_entities").select("id, name").eq("persona_id", personaId);
+        const entityMap = {};
+        for (const e of (allEntities || [])) entityMap[e.name] = e.id;
+
+        const relationRows = graphData.new_relations
+          .filter(r => entityMap[r.from] && entityMap[r.to])
+          .map(r => ({
+            persona_id: personaId,
+            from_entity_id: entityMap[r.from],
+            to_entity_id: entityMap[r.to],
+            relation_type: r.type || "uses",
+            description: r.description || "",
+            confidence: 0.7,
+          }));
+        if (relationRows.length > 0) {
+          await supabase.from("knowledge_relations").insert(relationRows);
+        }
+      }
+    }
+
+    if (graphData.updated_entities?.length > 0) {
+      for (const upd of graphData.updated_entities) {
+        await supabase.from("knowledge_entities")
+          .update({ description: upd.description })
+          .eq("persona_id", personaId).eq("name", upd.name);
+      }
+    }
+  } catch (e) {
+    console.log(JSON.stringify({ event: "file_graph_extraction_error", persona: personaId, error: e.message }));
+  }
 }
