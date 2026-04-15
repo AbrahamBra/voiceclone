@@ -2,7 +2,7 @@
 
 Clone IA de style d'ecriture LinkedIn. Analysez le profil et les posts d'une personne pour creer un chatbot qui ecrit exactement comme elle.
 
-**Demo :** [ahmet-clone.vercel.app](https://ahmet-clone.vercel.app)
+**Demo :** [voiceclone-lake.vercel.app](https://voiceclone-lake.vercel.app)
 
 ## Fonctionnalites
 
