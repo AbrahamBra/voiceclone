@@ -113,44 +113,43 @@ export default async function handler(req, res) {
   const anthropic = new Anthropic({ apiKey });
 
   try {
-    // Step 1: Generate persona config
+    const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514";
+
     const userContent = [
       "PROFIL LINKEDIN :",
       linkedin_text,
       "",
       "POSTS LINKEDIN (" + posts.length + " posts) :",
-      posts.map((p, i) => `--- POST ${i + 1} ---\n${p}`).join("\n\n"),
+      posts.slice(0, 30).map((p, i) => `--- POST ${i + 1} ---\n${p}`).join("\n\n"),
     ];
     if (documents) {
       userContent.push("", "DOCUMENTATION CLIENT :", documents);
     }
 
-    const configResult = await anthropic.messages.create({
-      model: process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514",
-      max_tokens: 2048,
-      system: CLONE_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: userContent.join("\n") }],
-    });
+    const postsContent = posts.slice(0, 30).map((p, i) => `--- POST ${i + 1} ---\n${p}`).join("\n\n");
+
+    // Step 1+2: Generate persona config AND style analysis IN PARALLEL
+    const [configResult, styleResult] = await Promise.all([
+      anthropic.messages.create({
+        model: MODEL, max_tokens: 2048,
+        system: CLONE_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userContent.join("\n") }],
+      }),
+      anthropic.messages.create({
+        model: MODEL, max_tokens: 2048,
+        system: STYLE_ANALYSIS_PROMPT,
+        messages: [{ role: "user", content: postsContent }],
+      }),
+    ]);
 
     const configRaw = configResult.content[0].text.trim();
     const jsonMatch = configRaw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("Failed to parse persona config JSON");
     const personaConfig = JSON.parse(jsonMatch[0]);
 
-    // Override name if provided
     if (name) personaConfig.name = name;
 
-    // Step 2: Generate style analysis
-    const styleResult = await anthropic.messages.create({
-      model: process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514",
-      max_tokens: 2048,
-      system: STYLE_ANALYSIS_PROMPT,
-      messages: [{ role: "user", content: posts.map((p, i) => `--- POST ${i + 1} ---\n${p}`).join("\n\n") }],
-    });
-
     const styleContent = styleResult.content[0].text.trim();
-
-    // Extract keywords from style analysis frontmatter
     const fmMatch = styleContent.match(/^---\n([\s\S]*?)\n---/);
     let keywords = ["post", "poster", "ecrire", "rediger", "contenu", "linkedin"];
     if (fmMatch) {
@@ -160,28 +159,6 @@ export default async function handler(req, res) {
       }
     }
     const styleBody = fmMatch ? styleContent.slice(fmMatch[0].length).trim() : styleContent;
-
-    // Step 3: Extract ontology (entities + relations)
-    let ontology = { entities: [], relations: [] };
-    try {
-      const ontologyResult = await anthropic.messages.create({
-        model: process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514",
-        max_tokens: 2048,
-        system: ONTOLOGY_PROMPT,
-        messages: [{ role: "user", content: userContent.join("\n") }],
-      });
-      const ontRaw = ontologyResult.content[0].text.trim();
-      const ontJson = ontRaw.match(/\{[\s\S]*\}/);
-      if (ontJson) ontology = JSON.parse(ontJson[0]);
-      // Track usage
-      if (ontologyResult.usage) {
-        totalInput = (totalInput || 0) + ontologyResult.usage.input_tokens;
-        totalOutput = (totalOutput || 0) + ontologyResult.usage.output_tokens;
-      }
-    } catch (e) {
-      console.log(JSON.stringify({ event: "ontology_extraction_error", error: e.message }));
-      // Non-blocking: continue without ontology
-    }
 
     // Step 4: Save to Supabase
     const slug = personaConfig.name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
@@ -234,56 +211,62 @@ export default async function handler(req, res) {
     ]);
 
     // Log usage
-    let finalInput = (configResult.usage?.input_tokens || 0) + (styleResult.usage?.input_tokens || 0) + (totalInput || 0);
-    let finalOutput = (configResult.usage?.output_tokens || 0) + (styleResult.usage?.output_tokens || 0) + (totalOutput || 0);
+    const finalInput = (configResult.usage?.input_tokens || 0) + (styleResult.usage?.input_tokens || 0);
+    const finalOutput = (configResult.usage?.output_tokens || 0) + (styleResult.usage?.output_tokens || 0);
     if (client) {
       await logUsage(client.id, persona.id, finalInput, finalOutput);
     }
 
-    // Save ontology entities + relations (non-blocking, graceful if tables don't exist)
-    try {
-      if (ontology.entities?.length > 0) {
-        const entityRows = ontology.entities.map(e => ({
-          persona_id: persona.id,
-          name: e.name,
-          type: e.type || "concept",
-          description: e.description || "",
-          confidence: 1.0,
-        }));
-        const { data: insertedEntities } = await supabase
-          .from("knowledge_entities")
-          .upsert(entityRows, { onConflict: "persona_id,name" })
-          .select("id, name");
-
-        if (insertedEntities && ontology.relations?.length > 0) {
-          const entityMap = {};
-          for (const e of insertedEntities) entityMap[e.name] = e.id;
-
-          const relationRows = ontology.relations
-            .filter(r => entityMap[r.from] && entityMap[r.to])
-            .map(r => ({
-              persona_id: persona.id,
-              from_entity_id: entityMap[r.from],
-              to_entity_id: entityMap[r.to],
-              relation_type: r.type || "uses",
-              description: r.description || "",
-              confidence: 1.0,
-            }));
-
-          if (relationRows.length > 0) {
-            await supabase.from("knowledge_relations").insert(relationRows);
-          }
-        }
-      }
-    } catch (e) {
-      console.log(JSON.stringify({ event: "ontology_save_error", error: e.message }));
-      // Non-blocking
-    }
-
+    // Respond immediately — clone is usable
     res.json({
       ok: true,
       persona: { id: persona.id, slug: persona.slug, name: persona.name, title: persona.title, avatar: persona.avatar },
     });
+
+    // Step 3: Extract ontology AFTER response (fire-and-forget, non-blocking)
+    (async () => {
+      try {
+        const ontologyResult = await anthropic.messages.create({
+          model: MODEL, max_tokens: 2048,
+          system: ONTOLOGY_PROMPT,
+          messages: [{ role: "user", content: userContent.join("\n") }],
+        });
+        const ontRaw = ontologyResult.content[0].text.trim();
+        const ontJson = ontRaw.match(/\{[\s\S]*\}/);
+        if (!ontJson) return;
+        const ontology = JSON.parse(ontJson[0]);
+
+        if (ontology.entities?.length > 0) {
+          const entityRows = ontology.entities.map(e => ({
+            persona_id: persona.id, name: e.name,
+            type: e.type || "concept", description: e.description || "", confidence: 1.0,
+          }));
+          const { data: inserted } = await supabase
+            .from("knowledge_entities")
+            .upsert(entityRows, { onConflict: "persona_id,name" })
+            .select("id, name");
+
+          if (inserted && ontology.relations?.length > 0) {
+            const entityMap = {};
+            for (const e of inserted) entityMap[e.name] = e.id;
+            const relationRows = ontology.relations
+              .filter(r => entityMap[r.from] && entityMap[r.to])
+              .map(r => ({
+                persona_id: persona.id, from_entity_id: entityMap[r.from],
+                to_entity_id: entityMap[r.to], relation_type: r.type || "uses",
+                description: r.description || "", confidence: 1.0,
+              }));
+            if (relationRows.length > 0) {
+              await supabase.from("knowledge_relations").insert(relationRows);
+            }
+          }
+        }
+        console.log(JSON.stringify({ event: "ontology_extracted", persona: persona.id, entities: ontology.entities?.length || 0 }));
+      } catch (e) {
+        console.log(JSON.stringify({ event: "ontology_error", persona: persona.id, error: e.message }));
+      }
+    })();
+
   } catch (err) {
     console.log(JSON.stringify({ event: "clone_error", ts: new Date().toISOString(), error: err.message }));
     res.status(500).json({ error: "Erreur lors de la creation du clone: " + err.message });

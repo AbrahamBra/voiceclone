@@ -80,7 +80,7 @@ export default async function handler(req, res) {
           const rawPosts = postsData.data?.posts || postsData.data || postsData.posts || postsData || [];
           posts = (Array.isArray(rawPosts) ? rawPosts : [])
             .filter(p => p.text || p.commentary || p.content)
-            .slice(0, 20)
+            .slice(0, 50)
             .map(p => p.text || p.commentary || p.content || "");
         }
       } catch {

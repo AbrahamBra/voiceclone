@@ -36,10 +36,35 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { correction, botMessage, userMessage, persona: personaId } = req.body || {};
+  const { correction, botMessage, userMessage, persona: personaId, type, original, modified } = req.body || {};
 
   if (!personaId) { res.status(400).json({ error: "persona is required" }); return; }
-  if (!correction || typeof correction !== "string" || correction.length < 3 || correction.length > 500) {
+
+  // Handle implicit feedback (diff between original and modified message)
+  let finalCorrection = correction;
+  if (type === "implicit") {
+    if (!original || !modified || original === modified) {
+      res.status(400).json({ error: "original and modified are required for implicit feedback" });
+      return;
+    }
+    // Generate a correction description from the diff
+    try {
+      const apiKey = getApiKey(client);
+      const anthropic = new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY });
+      const diffResult = await anthropic.messages.create({
+        model: process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514",
+        max_tokens: 256,
+        system: "Compare ces deux versions d'un message. Decris en 1-2 phrases les modifications de style effectuees par l'utilisateur. Sois concis et actionnable.",
+        messages: [{ role: "user", content: `ORIGINAL :\n${original.slice(0, 500)}\n\nMODIFIE :\n${modified.slice(0, 500)}` }],
+      });
+      finalCorrection = diffResult.content[0].text.trim();
+    } catch (e) {
+      // Fallback: simple description
+      finalCorrection = `L'utilisateur a modifie le message avant de l'envoyer.`;
+    }
+  }
+
+  if (!finalCorrection || typeof finalCorrection !== "string" || finalCorrection.length < 3 || finalCorrection.length > 500) {
     res.status(400).json({ error: "correction must be a string of 3-500 chars" });
     return;
   }
@@ -47,9 +72,9 @@ export default async function handler(req, res) {
   // 1. Save the correction (always)
   const { error } = await supabase.from("corrections").insert({
     persona_id: personaId,
-    correction,
-    user_message: userMessage?.slice(0, 200) || null,
-    bot_message: botMessage?.slice(0, 300) || null,
+    correction: finalCorrection,
+    user_message: type === "implicit" ? "[diff implicite]" : userMessage?.slice(0, 200) || null,
+    bot_message: type === "implicit" ? original?.slice(0, 300) : botMessage?.slice(0, 300) || null,
   });
 
   if (error) {
