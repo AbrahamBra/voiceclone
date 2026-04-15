@@ -12,13 +12,14 @@ export default async function handler(req, res) {
     let canCreateClone = false;
 
     if (isAdmin) {
-      // Admin sees all personas
+      // Admin sees all personas and can always create
       const { data } = await supabase
         .from("personas")
         .select("id, slug, client_id, name, title, avatar")
         .eq("is_active", true)
         .order("created_at", { ascending: true });
       personas = data || [];
+      canCreateClone = true;
     } else {
       // Client sees only their own personas
       const { data } = await supabase
