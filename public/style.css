@@ -946,6 +946,44 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   outline: none;
 }
 
+.copyable-block {
+  position: relative;
+  padding-right: 28px;
+}
+
+.copyable-block + .copyable-block {
+  margin-top: 0.5rem;
+}
+
+.block-copy-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 22px;
+  height: 22px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, border-color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.copyable-block:hover .block-copy-btn {
+  opacity: 0.7;
+  border-color: var(--border);
+}
+
+.block-copy-btn:hover {
+  opacity: 1 !important;
+  color: var(--text-secondary);
+}
+
 .lead-btn {
   background: transparent;
   border: none;

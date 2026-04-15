@@ -410,7 +410,30 @@ function addMessage(role, text) {
   const div = document.createElement("div");
   div.className = `msg msg-${role}`;
   if (role === "bot") {
-    div.innerHTML = renderMarkdown(text);
+    const blocks = text.split(/\n\n+/);
+    if (blocks.length > 1) {
+      for (const block of blocks) {
+        if (!block.trim()) continue;
+        const wrapper = document.createElement("div");
+        wrapper.className = "copyable-block";
+        wrapper.innerHTML = renderMarkdown(block);
+        const cpBtn = document.createElement("button");
+        cpBtn.className = "block-copy-btn";
+        cpBtn.textContent = "\u29C9";
+        cpBtn.title = "Copier ce bloc";
+        cpBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          navigator.clipboard.writeText(block);
+          cpBtn.textContent = "\u2713";
+          setTimeout(() => { cpBtn.textContent = "\u29C9"; }, 1500);
+        });
+        wrapper.appendChild(cpBtn);
+        div.appendChild(wrapper);
+      }
+    } else {
+      div.innerHTML = renderMarkdown(text);
+    }
+
     if (container.children.length > 0) {
       const actions = document.createElement("div");
       actions.className = "msg-actions";
@@ -422,7 +445,6 @@ function addMessage(role, text) {
         navigator.clipboard.writeText(text);
         copyBtn.textContent = "Copie !";
         lastCopiedMessage = { text, personaId: currentPersonaId };
-        // Show diff link
         const diffLink = div.querySelector(".diff-link");
         if (diffLink) diffLink.classList.remove("hidden");
         setTimeout(() => { copyBtn.textContent = "Copier"; }, 1500);
@@ -437,7 +459,6 @@ function addMessage(role, text) {
 
       div.appendChild(actions);
 
-      // Hidden diff link (appears after copy)
       const diffLink = document.createElement("a");
       diffLink.className = "diff-link hidden";
       diffLink.href = "#";
