@@ -29,3 +29,9 @@ body {
 }
 
 .hidden { display: none !important; }
+
+html, body { overflow-x: hidden; }
+
+@media (max-width: 480px) {
+  body { font-size: 14px; }
+}

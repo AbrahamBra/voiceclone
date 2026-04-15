@@ -185,4 +185,9 @@
     flex-shrink: 0;
     margin-left: 0.5rem;
   }
+
+  @media (max-width: 480px) {
+    .palette { width: 95%; }
+    .palette-overlay { padding-top: 10vh; }
+  }
 </style>

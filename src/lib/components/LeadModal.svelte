@@ -207,4 +207,8 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
+
+  @media (max-width: 480px) {
+    .modal { width: 95%; }
+  }
 </style>

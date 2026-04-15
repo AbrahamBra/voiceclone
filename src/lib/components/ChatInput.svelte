@@ -94,4 +94,17 @@
 
   .chat-send:hover { opacity: 0.85; }
   .chat-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  @media (max-width: 768px) {
+    .chat-input-bar {
+      position: sticky;
+      bottom: 0;
+      padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    }
+  }
+
+  @media (max-width: 480px) {
+    .chat-input-bar { padding: 0.5rem; }
+    .chat-send { padding: 0.5rem 0.625rem; font-size: 0.75rem; }
+  }
 </style>

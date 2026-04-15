@@ -263,4 +263,10 @@
       padding: 0 1rem 3rem;
     }
   }
+
+  @media (max-width: 480px) {
+    .calibrate-page { padding-top: 1.5rem; }
+    .calibrate-container { padding: 0 0.75rem 2rem; }
+    .calibrate-card { padding: 0.75rem; }
+  }
 </style>

@@ -566,4 +566,11 @@
       padding: 1.5rem;
     }
   }
+
+  @media (max-width: 480px) {
+    .create-page { padding: 1rem; }
+    .create-container { padding: 1rem; }
+    .scrape-row { flex-direction: column; }
+    .scrape-row input { margin-bottom: 0; }
+  }
 </style>
