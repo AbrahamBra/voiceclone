@@ -1,4 +1,7 @@
 {
+  "framework": "sveltekit",
+  "buildCommand": "vite build",
+  "outputDirectory": ".svelte-kit/output",
   "functions": {
     "api/chat.js": { "maxDuration": 60 },
     "api/clone.js": { "maxDuration": 60 }
