@@ -764,6 +764,10 @@ function renderConversationList(conversations) {
     titleDiv.className = "conv-item-title";
     titleDiv.textContent = conv.title || "Sans titre";
     titleDiv.dataset.convId = conv.id;
+    titleDiv.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      startTitleEdit(titleDiv, conv.id);
+    });
     const metaDiv = document.createElement("div");
     metaDiv.className = "conv-item-meta";
     metaDiv.textContent = getRelativeTime(conv.last_message_at) + " \u00b7 " + (conv.message_count || 0) + " msg";
@@ -772,6 +776,58 @@ function renderConversationList(conversations) {
     item.addEventListener("click", () => loadConversation(conv.id));
     list.appendChild(item);
   }
+}
+
+function startTitleEdit(titleDiv, convId) {
+  const original = titleDiv.textContent;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "conv-title-edit";
+  input.value = original;
+  input.maxLength = 100;
+  titleDiv.replaceWith(input);
+  input.focus();
+  input.select();
+
+  async function save() {
+    const val = input.value.trim();
+    if (!val || val === original) {
+      const restored = document.createElement("div");
+      restored.className = "conv-item-title";
+      restored.textContent = original;
+      restored.dataset.convId = convId;
+      restored.addEventListener("dblclick", () => startTitleEdit(restored, convId));
+      input.replaceWith(restored);
+      return;
+    }
+    const newTitle = document.createElement("div");
+    newTitle.className = "conv-item-title";
+    newTitle.textContent = val;
+    newTitle.dataset.convId = convId;
+    newTitle.addEventListener("dblclick", () => startTitleEdit(newTitle, convId));
+    input.replaceWith(newTitle);
+
+    try {
+      const resp = await fetch("/api/conversations?id=" + convId, {
+        method: "PATCH",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ title: val }),
+      });
+      if (!resp.ok) {
+        newTitle.textContent = original;
+        showToast("Erreur de renommage");
+      }
+    } catch {
+      newTitle.textContent = original;
+      showToast("Erreur de renommage");
+    }
+  }
+
+  input.addEventListener("blur", save);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+    if (e.key === "Escape") { input.value = original; input.blur(); }
+  });
 }
 
 function getRelativeTime(dateStr) {

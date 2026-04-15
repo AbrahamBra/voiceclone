@@ -1,9 +1,8 @@
 import { authenticateRequest, supabase, setCors } from "../lib/supabase.js";
 
 export default async function handler(req, res) {
-  setCors(res, "GET, OPTIONS");
+  setCors(res, "GET, PATCH, OPTIONS");
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
-  if (req.method !== "GET") { res.status(405).json({ error: "Method not allowed" }); return; }
 
   let client, isAdmin;
   try {
@@ -12,6 +11,30 @@ export default async function handler(req, res) {
     res.status(err.status || 403).json({ error: err.error || "Auth failed" });
     return;
   }
+
+  // --- PATCH: rename conversation ---
+  if (req.method === "PATCH") {
+    const { id } = req.query || {};
+    const { title } = req.body || {};
+
+    if (!id) { res.status(400).json({ error: "id query param required" }); return; }
+    if (!title || !title.trim()) { res.status(400).json({ error: "title required" }); return; }
+    const cleanTitle = title.trim().slice(0, 100);
+
+    const { data: conv, error: convErr } = await supabase
+      .from("conversations").select("id, client_id").eq("id", id).single();
+    if (convErr || !conv) { res.status(404).json({ error: "Not found" }); return; }
+    if (!isAdmin && conv.client_id !== client.id) { res.status(403).json({ error: "Forbidden" }); return; }
+
+    const { error: updateErr } = await supabase
+      .from("conversations").update({ title: cleanTitle }).eq("id", id);
+    if (updateErr) { res.status(500).json({ error: updateErr.message }); return; }
+
+    res.json({ ok: true, title: cleanTitle });
+    return;
+  }
+
+  if (req.method !== "GET") { res.status(405).json({ error: "Method not allowed" }); return; }
 
   const { id, search, persona, before } = req.query || {};
 

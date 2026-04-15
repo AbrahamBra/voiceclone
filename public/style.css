@@ -934,6 +934,18 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .conv-switch-btn:hover { color: var(--text-secondary); border-color: var(--text-tertiary); }
 
+.conv-title-edit {
+  width: 100%;
+  padding: 0.125rem 0.25rem;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: inherit;
+  outline: none;
+}
+
 .lead-btn {
   background: transparent;
   border: none;
