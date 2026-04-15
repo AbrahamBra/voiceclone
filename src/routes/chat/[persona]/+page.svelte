@@ -291,8 +291,20 @@
     } catch {}
   }
 
+  let feedbackMessageId = $state(null);
+
   function handleCorrect(message) {
     feedbackTarget = message.content;
+    feedbackMessageId = message.id;
+  }
+
+  function handleReplace(newText) {
+    // Replace the bot message in the messages list with the accepted alternative
+    if (feedbackMessageId) {
+      messages.update(msgs => msgs.map(m =>
+        m.id === feedbackMessageId ? { ...m, content: newText } : m
+      ));
+    }
   }
 
   function handleLeadAnalyzed(msg) {
@@ -396,7 +408,7 @@
   </div>
 
   {#if feedbackTarget}
-    <FeedbackModal botMessage={feedbackTarget} onclose={() => (feedbackTarget = null)} />
+    <FeedbackModal botMessage={feedbackTarget} onclose={() => { feedbackTarget = null; feedbackMessageId = null; }} onreplace={handleReplace} />
   {/if}
 
   {#if showSettings}

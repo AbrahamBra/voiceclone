@@ -129,8 +129,8 @@ export default async function handler(req, res) {
     return;
   }
 
-  // ── POST: Submit correction (existing logic) ──
-  const { correction, botMessage, userMessage, persona: personaId, type, original, modified } = req.body || {};
+  // ── POST: Submit correction ──
+  const { correction, botMessage, userMessage, persona: personaId, type, original, modified, accepted } = req.body || {};
 
   if (!personaId) { res.status(400).json({ error: "persona is required" }); return; }
 
@@ -141,6 +141,68 @@ export default async function handler(req, res) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
+  }
+
+  // ── Type "regenerate": generate 2 alternatives based on correction ──
+  if (type === "regenerate") {
+    if (!correction || !botMessage) {
+      res.status(400).json({ error: "correction and botMessage required for regenerate" });
+      return;
+    }
+    try {
+      const apiKey = getApiKey(client);
+      const anthropic = new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY });
+
+      // Load persona for voice context
+      const { getPersonaFromDb } = await import("../lib/knowledge-db.js");
+      const persona = await getPersonaFromDb(personaId);
+      const voiceContext = persona
+        ? `Ton: ${persona.voice.tone.join(", ")}. Regles: ${persona.voice.writingRules.join("; ")}. Mots interdits: ${persona.voice.forbiddenWords.join(", ")}.`
+        : "";
+
+      const result = await anthropic.messages.create({
+        model: process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514",
+        max_tokens: 1024,
+        system: `Tu es un assistant qui reecrit des messages. ${voiceContext}`,
+        messages: [{
+          role: "user",
+          content: `Message original du bot :\n"${botMessage.slice(0, 500)}"\n\nCorrection demandee par l'utilisateur :\n"${correction}"\n\nGenere exactement 2 alternatives qui corrigent le probleme. Reponds en JSON :\n{"alternatives": ["alternative 1", "alternative 2"]}`,
+        }],
+      });
+
+      const raw = result.content[0].text.trim();
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const data = JSON.parse(jsonMatch[0]);
+        res.json({ ok: true, alternatives: data.alternatives || [] });
+      } else {
+        res.json({ ok: true, alternatives: [] });
+      }
+    } catch (e) {
+      res.status(500).json({ error: "Failed to generate alternatives: " + e.message });
+    }
+    return;
+  }
+
+  // ── Type "accept": user picked an alternative — save correction + knowledge ──
+  if (type === "accept" && accepted) {
+    const finalCorrection = correction || `L'utilisateur a prefere cette version : "${accepted.slice(0, 200)}"`;
+
+    // Save correction
+    await supabase.from("corrections").insert({
+      persona_id: personaId,
+      correction: finalCorrection,
+      user_message: userMessage?.slice(0, 200) || null,
+      bot_message: botMessage?.slice(0, 300) || null,
+    });
+
+    // Extract graph knowledge (same as existing flow below)
+    // Fire-and-forget for speed
+    extractGraphKnowledge(personaId, finalCorrection, botMessage, userMessage, client).catch(() => {});
+
+    clearCache(personaId);
+    res.json({ ok: true, message: "Correction enregistree et clone ameliore", accepted });
+    return;
   }
 
   // Handle implicit feedback (diff between original and modified message)
@@ -185,13 +247,26 @@ export default async function handler(req, res) {
     return;
   }
 
-  // 2. Extract graph updates from the correction (async, non-blocking for the response)
-  let graphUpdated = false;
+  // 2. Extract graph knowledge (fire-and-forget for speed)
+  extractGraphKnowledge(personaId, finalCorrection, botMessage || original, userMessage, client).catch(() => {});
+
+  clearCache(personaId);
+
+  res.json({
+    ok: true,
+    message: "Correction enregistree",
+  });
+}
+
+/**
+ * Extract entities/relations from a correction and upsert into knowledge graph.
+ * Runs async — caller doesn't wait for this to complete.
+ */
+async function extractGraphKnowledge(personaId, correctionText, botMsg, userMsg, client) {
   try {
     const apiKey = getApiKey(client);
     const anthropic = new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY });
 
-    // Load existing entities for context
     const { data: existingEntities } = await supabase
       .from("knowledge_entities")
       .select("name, type, description")
@@ -207,89 +282,60 @@ export default async function handler(req, res) {
       system: GRAPH_EXTRACTION_PROMPT + entityContext,
       messages: [{
         role: "user",
-        content: `Correction du client : "${finalCorrection}"\n\nContexte — message bot : "${(botMessage || original || "").slice(0, 200)}"\nMessage user : "${(userMessage || "").slice(0, 200)}"`,
+        content: `Correction du client : "${correctionText}"\n\nContexte — message bot : "${(botMsg || "").slice(0, 200)}"\nMessage user : "${(userMsg || "").slice(0, 200)}"`,
       }],
     });
 
     const raw = result.content[0].text.trim();
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const graphData = JSON.parse(jsonMatch[0]);
+    if (!jsonMatch) return;
+    const graphData = JSON.parse(jsonMatch[0]);
+    if (!graphData.has_graph_update) return;
 
-      if (graphData.has_graph_update) {
-        // Insert new entities
-        if (graphData.new_entities?.length > 0) {
-          const entityRows = graphData.new_entities.map(e => ({
+    if (graphData.new_entities?.length > 0) {
+      const entityRows = graphData.new_entities.map(e => ({
+        persona_id: personaId,
+        name: e.name,
+        type: e.type || "concept",
+        description: e.description || "",
+        confidence: 0.8,
+      }));
+
+      const { data: inserted } = await supabase
+        .from("knowledge_entities")
+        .upsert(entityRows, { onConflict: "persona_id,name" })
+        .select("id, name");
+
+      if (inserted?.length > 0 && graphData.new_relations?.length > 0) {
+        const { data: allEntities } = await supabase
+          .from("knowledge_entities").select("id, name").eq("persona_id", personaId);
+        const entityMap = {};
+        for (const e of (allEntities || [])) entityMap[e.name] = e.id;
+
+        const relationRows = graphData.new_relations
+          .filter(r => entityMap[r.from] && entityMap[r.to])
+          .map(r => ({
             persona_id: personaId,
-            name: e.name,
-            type: e.type || "concept",
-            description: e.description || "",
-            confidence: 0.8, // slightly lower confidence for feedback-derived entities
+            from_entity_id: entityMap[r.from],
+            to_entity_id: entityMap[r.to],
+            relation_type: r.type || "uses",
+            description: r.description || "",
+            confidence: 0.8,
           }));
-
-          const { data: inserted } = await supabase
-            .from("knowledge_entities")
-            .upsert(entityRows, { onConflict: "persona_id,name" })
-            .select("id, name");
-
-          if (inserted?.length > 0) {
-            graphUpdated = true;
-
-            // Insert new relations
-            if (graphData.new_relations?.length > 0) {
-              // Need to get all entity IDs (existing + new)
-              const { data: allEntities } = await supabase
-                .from("knowledge_entities")
-                .select("id, name")
-                .eq("persona_id", personaId);
-
-              const entityMap = {};
-              for (const e of (allEntities || [])) entityMap[e.name] = e.id;
-
-              const relationRows = graphData.new_relations
-                .filter(r => entityMap[r.from] && entityMap[r.to])
-                .map(r => ({
-                  persona_id: personaId,
-                  from_entity_id: entityMap[r.from],
-                  to_entity_id: entityMap[r.to],
-                  relation_type: r.type || "uses",
-                  description: r.description || "",
-                  confidence: 0.8,
-                }));
-
-              if (relationRows.length > 0) {
-                await supabase.from("knowledge_relations").insert(relationRows);
-              }
-            }
-          }
+        if (relationRows.length > 0) {
+          await supabase.from("knowledge_relations").insert(relationRows);
         }
+      }
+    }
 
-        // Update existing entities descriptions
-        if (graphData.updated_entities?.length > 0) {
-          for (const upd of graphData.updated_entities) {
-            await supabase
-              .from("knowledge_entities")
-              .update({ description: upd.description })
-              .eq("persona_id", personaId)
-              .eq("name", upd.name);
-          }
-          graphUpdated = true;
-        }
+    if (graphData.updated_entities?.length > 0) {
+      for (const upd of graphData.updated_entities) {
+        await supabase.from("knowledge_entities")
+          .update({ description: upd.description })
+          .eq("persona_id", personaId).eq("name", upd.name);
       }
     }
   } catch (e) {
     console.log(JSON.stringify({ event: "graph_extraction_error", persona: personaId, error: e.message }));
-    // Non-blocking — correction is already saved
   }
-
-  // Clear cache
-  clearCache(personaId);
-
-  res.json({
-    ok: true,
-    message: graphUpdated
-      ? "Correction enregistree + graphe de connaissances enrichi"
-      : "Correction enregistree",
-    graphUpdated,
-  });
 }
