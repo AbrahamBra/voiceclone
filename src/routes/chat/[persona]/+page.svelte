@@ -298,6 +298,20 @@
     feedbackMessageId = message.id;
   }
 
+  async function handleValidate(message) {
+    try {
+      await api("/api/feedback", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "validate",
+          botMessage: message.content,
+          persona: get(currentPersonaId),
+        }),
+      });
+      showToast("Noté ✓");
+    } catch {}
+  }
+
   function handleReplace(newText) {
     // Replace the bot message in the messages list with the accepted alternative
     if (feedbackMessageId) {
@@ -397,6 +411,7 @@
           <ChatMessage
             {message}
             onCorrect={handleCorrect}
+            onValidate={handleValidate}
             onCopyBlock={() => {}}
           />
         {/each}

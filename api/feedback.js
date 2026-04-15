@@ -143,6 +143,40 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── Type "validate": positive reinforcement — boost graph entities ──
+  if (type === "validate") {
+    if (!botMessage) { res.status(400).json({ error: "botMessage required" }); return; }
+
+    // Save as positive example
+    await supabase.from("corrections").insert({
+      persona_id: personaId,
+      correction: "[VALIDATED] Reponse validee par l'utilisateur",
+      bot_message: botMessage.slice(0, 300),
+      user_message: userMessage?.slice(0, 200) || null,
+    });
+
+    // Boost confidence of entities that match this message
+    const { data: entities } = await supabase
+      .from("knowledge_entities")
+      .select("id, name, confidence")
+      .eq("persona_id", personaId);
+
+    if (entities?.length > 0) {
+      const msgLower = botMessage.toLowerCase();
+      const matched = entities.filter(e => msgLower.includes(e.name.toLowerCase()));
+      for (const e of matched) {
+        const newConf = Math.min(1.0, (e.confidence || 0.8) + 0.05);
+        await supabase.from("knowledge_entities")
+          .update({ confidence: newConf, last_matched_at: new Date().toISOString() })
+          .eq("id", e.id);
+      }
+    }
+
+    clearCache(personaId);
+    res.json({ ok: true, message: "Validated" });
+    return;
+  }
+
   // ── Type "regenerate": generate 2 alternatives based on correction ──
   if (type === "regenerate") {
     if (!correction || !botMessage) {
