@@ -27,6 +27,10 @@ function renderMarkdown(text) {
     .replace(/\n/g, "<br>");
 }
 
+function escapeHtml(str) {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 function showScreen(id) {
   document.querySelectorAll(".screen").forEach((s) => s.classList.remove("active"));
   $(id).classList.add("active");
@@ -756,9 +760,15 @@ function renderConversationList(conversations) {
   for (const conv of conversations) {
     const item = document.createElement("div");
     item.className = "conv-item" + (conv.id === currentConversationId ? " active" : "");
-    const timeAgo = getRelativeTime(conv.last_message_at);
-    item.innerHTML = '<div class="conv-item-title">' + (conv.title || "Sans titre") + '</div>' +
-      '<div class="conv-item-meta">' + timeAgo + ' · ' + (conv.message_count || 0) + ' msg</div>';
+    const titleDiv = document.createElement("div");
+    titleDiv.className = "conv-item-title";
+    titleDiv.textContent = conv.title || "Sans titre";
+    titleDiv.dataset.convId = conv.id;
+    const metaDiv = document.createElement("div");
+    metaDiv.className = "conv-item-meta";
+    metaDiv.textContent = getRelativeTime(conv.last_message_at) + " \u00b7 " + (conv.message_count || 0) + " msg";
+    item.appendChild(titleDiv);
+    item.appendChild(metaDiv);
     item.addEventListener("click", () => loadConversation(conv.id));
     list.appendChild(item);
   }
@@ -837,8 +847,14 @@ $("conv-search").addEventListener("input", (e) => {
       for (const r of data.results) {
         const item = document.createElement("div");
         item.className = "conv-item";
-        item.innerHTML = '<div class="conv-item-title">' + (r.conversation_title || "Sans titre") + '</div>' +
-          '<div class="conv-item-meta">' + r.message_content_snippet.slice(0, 80) + '...</div>';
+        const titleDiv = document.createElement("div");
+        titleDiv.className = "conv-item-title";
+        titleDiv.textContent = r.conversation_title || "Sans titre";
+        const metaDiv = document.createElement("div");
+        metaDiv.className = "conv-item-meta";
+        metaDiv.textContent = r.message_content_snippet.slice(0, 80) + "...";
+        item.appendChild(titleDiv);
+        item.appendChild(metaDiv);
         item.addEventListener("click", () => loadConversation(r.conversation_id));
         list.appendChild(item);
       }
