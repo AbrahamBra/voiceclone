@@ -5,28 +5,67 @@
   import { fly } from "svelte/transition";
 
   let step = $state(1);
-  let direction = $state(1); // 1 = forward, -1 = back
+  let direction = $state(1);
+  const TOTAL = 4;
 
-  // Step 1
+  // Step 1: Infos générales
   let linkedinUrl = $state("");
   let scraping = $state(false);
   let scrapeStatus = $state("");
   let scrapeSuccess = $state(false);
-  let scrapePreview = $state(null);
-
-  // Step 2
+  let personaName = $state("");
+  let personaTitle = $state("");
   let profileText = $state("");
+
+  // Step 2: Posts LinkedIn
   let postsText = $state("");
+
+  // Step 3: DMs LinkedIn
+  let dmsText = $state("");
+
+  // Step 4: Documents + Génération
   let docsText = $state("");
   let showDocs = $state(false);
   let fileTags = $state([]);
   let fileInputEl;
-
-  // Text blocks
-  let docBlocks = $state([]); // [{ title, content }]
+  let docBlocks = $state([]);
   let currentDocTitle = $state("");
   let currentDocContent = $state("");
+  let generating = $state(false);
+  let generateStatus = $state("");
 
+  // --- Scrape ---
+  async function scrapeLinkedIn() {
+    const url = linkedinUrl.trim();
+    if (!url) return;
+    scraping = true;
+    scrapeStatus = "Récupération du profil et des posts...";
+    scrapeSuccess = false;
+    try {
+      const data = await api("/api/scrape", {
+        method: "POST",
+        body: JSON.stringify({ linkedin_url: url }),
+      });
+      personaName = data.profile.name || "";
+      personaTitle = data.profile.headline || "";
+      profileText = data.profile.text || "";
+      if (data.posts.length > 0) {
+        postsText = data.posts.slice(0, 15).join("\n---\n");
+      }
+      scrapeStatus = `${data.profile.name} — profil + ${data.postCount} posts récupérés`;
+      scrapeSuccess = true;
+    } catch (err) {
+      if (err.status === 501) {
+        scrapeStatus = "Scraping non disponible. Remplissez manuellement.";
+      } else {
+        scrapeStatus = err.data?.error || err.message || "Erreur de scraping";
+      }
+    } finally {
+      scraping = false;
+    }
+  }
+
+  // --- Doc blocks ---
   function addDocBlock() {
     const content = currentDocContent.trim();
     if (!content) return;
@@ -42,59 +81,12 @@
     docsText = docBlocks.map(b => `## ${b.title}\n\n${b.content}`).join("\n\n---\n\n");
   }
 
-  // Step 3
-  let generating = $state(false);
-  let generateStatus = $state("");
-
-  // --- Step 1: Scrape ---
-  async function scrapeLinkedIn() {
-    const url = linkedinUrl.trim();
-    if (!url) return;
-
-    scraping = true;
-    scrapeStatus = "Recuperation du profil et des posts...";
-    scrapeSuccess = false;
-    scrapePreview = null;
-
-    try {
-      const data = await api("/api/scrape", {
-        method: "POST",
-        body: JSON.stringify({ linkedin_url: url }),
-      });
-
-      profileText = data.profile.text;
-      if (data.posts.length > 0) {
-        postsText = data.posts.slice(0, 15).join("\n---\n");
-      }
-
-      scrapePreview = {
-        name: data.profile.name,
-        headline: data.profile.headline || "",
-        postCount: data.postCount,
-      };
-      scrapeStatus = `${data.profile.name} — profil + ${data.postCount} posts recuperes`;
-      scrapeSuccess = true;
-
-      setTimeout(() => { goToStep(2); }, 1000);
-    } catch (err) {
-      if (err.status === 501) {
-        scrapeStatus = "Scraping non disponible. Remplissez manuellement.";
-      } else {
-        scrapeStatus = err.data?.error || err.message || "Erreur de scraping";
-      }
-    } finally {
-      scraping = false;
-    }
-  }
-
-  // --- Step 2: File handling ---
+  // --- File handling ---
   async function handleFiles(e) {
     const files = Array.from(e.target.files);
-
     for (const file of files) {
       const ext = file.name.split(".").pop().toLowerCase();
       let text = "";
-
       try {
         if (ext === "txt" || ext === "csv") {
           text = await file.text();
@@ -102,10 +94,7 @@
           text = await extractPdfText(file);
         } else if (ext === "docx") {
           text = await extractDocxText(file);
-        } else {
-          continue;
-        }
-
+        } else { continue; }
         if (text.trim()) {
           fileTags = [...fileTags, { name: file.name, chars: (text.length / 1000).toFixed(1) }];
           docsText += (docsText ? "\n\n--- " + file.name + " ---\n\n" : "") + text.trim();
@@ -138,43 +127,47 @@
       const blob = new Blob([arrayBuffer]);
       const text = await blob.text();
       return text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    } catch {
-      return "";
-    }
+    } catch { return ""; }
   }
 
-  // --- Step 3: Generate ---
+  // --- Generate ---
   async function createClone() {
-    const linkedin = profileText.trim();
-    const postsRaw = postsText.trim();
-    const docs = docsText.trim();
+    const linkedin = [
+      personaName.trim() && `Nom: ${personaName.trim()}`,
+      personaTitle.trim() && `Titre: ${personaTitle.trim()}`,
+      profileText.trim(),
+    ].filter(Boolean).join("\n\n");
 
-    if (linkedin.length < 50) {
-      showToast("Profil LinkedIn trop court (min 50 caracteres)");
-      return;
-    }
-    const posts = postsRaw.split(/\n---\n/).map(p => p.trim()).filter(p => p.length > 30);
+    const posts = postsText.trim().split(/\n---\n/).map(p => p.trim()).filter(p => p.length > 30);
     if (posts.length < 3) {
-      showToast("Minimum 3 posts (separes par ---)");
+      showToast("Minimum 3 posts (séparés par ---)");
       return;
     }
+
+    const dms = dmsText.trim()
+      ? dmsText.trim().split(/\n---\n/).map(d => d.trim()).filter(d => d.length > 20)
+      : [];
 
     generating = true;
-    generateStatus = "Analyse du style en cours, ca prend 20-30 secondes...";
+    generateStatus = "Analyse du style en cours, ça prend 20-30 secondes...";
 
     try {
       const data = await api("/api/clone", {
         method: "POST",
-        body: JSON.stringify({ linkedin_text: linkedin, posts, documents: docs || undefined }),
+        body: JSON.stringify({
+          linkedin_text: linkedin,
+          posts,
+          dms: dms.length > 0 ? dms : undefined,
+          documents: docsText.trim() || undefined,
+          name: personaName.trim() || undefined,
+        }),
       });
 
-      generateStatus = `Clone "${data.persona.name}" cree avec succes !`;
-      setTimeout(() => {
-        goto(`/calibrate/${data.persona.id}`);
-      }, 1000);
+      generateStatus = `Clone "${data.persona.name}" créé avec succès !`;
+      setTimeout(() => { goto(`/calibrate/${data.persona.id}`); }, 1000);
     } catch (err) {
       if (err.status === 402) {
-        generateStatus = "Budget depasse. Ajoutez votre cle API dans les parametres.";
+        generateStatus = "Budget dépassé. Ajoutez votre clé API dans les paramètres.";
       } else if (err.status === 403) {
         generateStatus = err.data?.error || "Limite de clones atteinte";
       } else {
@@ -184,17 +177,24 @@
     }
   }
 
-  // --- Navigation ---
   function goToStep(n) {
     direction = n > step ? 1 : -1;
     step = n;
   }
+
+  $derived: postsCount = postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length;
+  $derived: dmsCount = dmsText.trim().split(/\n---\n/).filter(d => d.trim().length > 20).length;
 </script>
 
 <div class="create-page">
   <div class="create-container">
-    <h2>Creer un clone</h2>
-    <p class="create-subtitle">Importez un profil LinkedIn ou remplissez manuellement</p>
+    <h2>Créer un clone</h2>
+    <p class="create-subtitle">Étape {step}/{TOTAL}</p>
+    <div class="step-bar">
+      {#each Array(TOTAL) as _, i}
+        <div class="step-bar-item" class:active={i + 1 <= step}></div>
+      {/each}
+    </div>
 
     {#key step}
       <div
@@ -203,77 +203,109 @@
         out:fly={{ x: -100 * direction, duration: 200 }}
       >
         {#if step === 1}
-          <!-- Step 1: Source -->
+          <!-- Step 1: Infos générales -->
           <div class="create-step">
-            <label>URL LinkedIn</label>
-            <div class="scrape-row">
-              <input
-                type="text"
-                placeholder="Coller une URL LinkedIn"
-                bind:value={linkedinUrl}
-                disabled={scraping}
-              />
-              <button
-                class="btn-secondary"
-                onclick={scrapeLinkedIn}
-                disabled={scraping || !linkedinUrl.trim()}
-              >
-                {scraping ? "Scraping..." : "Scraper"}
-              </button>
+            <div class="step-header">
+              <strong>Informations générales</strong>
+              <span>Qui est ce clone ?</span>
             </div>
 
+            <div class="scrape-row">
+              <input type="text" placeholder="URL LinkedIn (optionnel — auto-remplit tout)" bind:value={linkedinUrl} disabled={scraping} />
+              <button class="btn-secondary" onclick={scrapeLinkedIn} disabled={scraping || !linkedinUrl.trim()}>
+                {scraping ? "..." : "Auto-remplir"}
+              </button>
+            </div>
             {#if scrapeStatus}
-              <div class="scrape-status" class:scrape-status-success={scrapeSuccess}>
-                {scrapeStatus}
-              </div>
+              <div class="scrape-status" class:scrape-status-success={scrapeSuccess}>{scrapeStatus}</div>
             {/if}
 
-            {#if scrapePreview}
-              <div class="scrape-preview">
-                <strong>{scrapePreview.name}</strong>
-                {#if scrapePreview.headline}
-                  <span class="scrape-preview-headline">{scrapePreview.headline}</span>
-                {/if}
-                <span class="scrape-preview-posts">{scrapePreview.postCount} posts</span>
-              </div>
-            {/if}
+            <label>Prénom</label>
+            <input type="text" placeholder="Ex: Thomas" bind:value={personaName} />
 
-            <div class="create-divider">ou</div>
+            <label>Titre & entreprise</label>
+            <input type="text" placeholder="Ex: CEO @Offbound · GTM LinkedIn" bind:value={personaTitle} />
 
-            <button class="btn-link" onclick={() => goToStep(2)}>
-              Remplir manuellement
-            </button>
+            <label>Bio & positionnement</label>
+            <textarea rows="4" bind:value={profileText} placeholder="Expertise, thèmes abordés, valeur ajoutée..."></textarea>
+
+            <div class="create-actions">
+              <button onclick={() => goToStep(2)} disabled={!personaName.trim() && !profileText.trim()}>
+                Suivant →
+              </button>
+            </div>
           </div>
 
         {:else if step === 2}
-          <!-- Step 2: Review & Enrich -->
+          <!-- Step 2: Posts LinkedIn -->
           <div class="create-step">
-            <div class="step-indicator">Etape 2/3</div>
+            <div class="step-header">
+              <strong>Posts LinkedIn de référence</strong>
+              <span>Le style d'écriture public du clone</span>
+            </div>
+            <p class="step-desc">
+              Copiez-collez les meilleurs posts. Séparez chaque post par <code>---</code> sur une ligne seule. Minimum 3 posts, idéalement 10-20.
+            </p>
 
-            <label>Profil LinkedIn</label>
-            <textarea rows="5" bind:value={profileText} placeholder="Bio, headline, experience..."></textarea>
+            <textarea rows="14" bind:value={postsText} placeholder="Premier post ici...&#10;---&#10;Deuxième post ici...&#10;---&#10;Troisième post ici..."></textarea>
 
-            <label>Posts (separes par ---)</label>
-            <textarea rows="8" bind:value={postsText} placeholder="Post 1&#10;---&#10;Post 2&#10;---&#10;Post 3"></textarea>
+            <div class="count-badge" class:count-ok={postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length >= 3}>
+              {postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length} post(s) détecté(s)
+              {#if postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length < 3}— minimum 3{/if}
+            </div>
+
+            <div class="create-actions">
+              <button class="btn-secondary" onclick={() => goToStep(1)}>← Retour</button>
+              <button onclick={() => goToStep(3)} disabled={postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length < 3}>
+                Suivant →
+              </button>
+            </div>
+          </div>
+
+        {:else if step === 3}
+          <!-- Step 3: DMs LinkedIn -->
+          <div class="create-step">
+            <div class="step-header">
+              <strong>DMs LinkedIn de référence</strong>
+              <span>Le style de conversation 1:1 du clone</span>
+            </div>
+            <p class="step-desc">
+              Copiez-collez des échanges DM réels. Séparez chaque conversation par <code>---</code>. Cette étape génère une intelligence séparée pour les scénarios de prospection et de qualification.
+            </p>
+
+            <textarea rows="14" bind:value={dmsText} placeholder="[Conversation 1]&#10;Prospect: Bonjour, j'ai vu votre post sur...&#10;Moi: Salut ! Oui exactement, ...&#10;---&#10;[Conversation 2]&#10;..."></textarea>
+
+            {#if dmsText.trim()}
+              <div class="count-badge count-ok">
+                {dmsText.trim().split(/\n---\n/).filter(d => d.trim().length > 20).length} conversation(s) détectée(s)
+              </div>
+            {/if}
+
+            <div class="create-actions">
+              <button class="btn-secondary" onclick={() => goToStep(2)}>← Retour</button>
+              <button class="btn-secondary" onclick={() => goToStep(4)}>Passer</button>
+              <button onclick={() => goToStep(4)} disabled={!dmsText.trim()}>Suivant →</button>
+            </div>
+          </div>
+
+        {:else if step === 4}
+          <!-- Step 4: Documents + Génération -->
+          <div class="create-step">
+            <div class="step-header">
+              <strong>Documents & Génération</strong>
+              <span>Enrichissez la base de connaissances (optionnel)</span>
+            </div>
 
             <button class="btn-link" onclick={() => showDocs = !showDocs}>
-              {showDocs ? "Masquer" : "Ajouter des documents"}
+              {showDocs ? "Masquer les documents" : "+ Ajouter des documents (offre, méthode, bio longue...)"}
             </button>
 
             {#if showDocs}
               <div class="file-upload-zone">
-                <label>Documents supplementaires</label>
                 <button class="file-upload-btn" onclick={() => fileInputEl.click()}>
                   + Ajouter des fichiers (.txt, .pdf, .docx)
                 </button>
-                <input
-                  type="file"
-                  accept=".txt,.csv,.pdf,.docx"
-                  multiple
-                  hidden
-                  bind:this={fileInputEl}
-                  onchange={handleFiles}
-                />
+                <input type="file" accept=".txt,.csv,.pdf,.docx" multiple hidden bind:this={fileInputEl} onchange={handleFiles} />
                 {#if fileTags.length > 0 || docBlocks.length > 0}
                   <div class="file-list">
                     {#each fileTags as tag}
@@ -289,48 +321,37 @@
                     {/each}
                   </div>
                 {/if}
-                <input
-                  type="text"
-                  placeholder="Titre du texte (ex: Offre, Bio, Méthode...)"
-                  bind:value={currentDocTitle}
-                />
+                <input type="text" placeholder="Titre du texte (ex: Offre, Méthode...)" bind:value={currentDocTitle} />
                 <textarea rows="4" bind:value={currentDocContent} placeholder="Collez votre texte ici..."></textarea>
-                <button
-                  class="btn-add-block"
-                  onclick={addDocBlock}
-                  disabled={!currentDocContent.trim()}
-                >
+                <button class="btn-add-block" onclick={addDocBlock} disabled={!currentDocContent.trim()}>
                   + Valider et ajouter ce texte
                 </button>
               </div>
             {/if}
 
-            <div class="create-actions">
-              <button class="btn-secondary" onclick={() => goToStep(1)}>Retour</button>
-              <button onclick={() => goToStep(3)}>Suivant</button>
-            </div>
-          </div>
-
-        {:else if step === 3}
-          <!-- Step 3: Generate -->
-          <div class="create-step">
-            <div class="step-indicator">Etape 3/3</div>
-
-            <p class="generate-summary">
-              Profil: {profileText.trim().length} caracteres
-              &middot;
-              Posts: {postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length}
+            <div class="generate-recap">
+              <div class="recap-item">
+                <span class="recap-label">Infos</span>
+                <span>{personaName || "—"}{personaTitle ? ` · ${personaTitle}` : ""}</span>
+              </div>
+              <div class="recap-item">
+                <span class="recap-label">Posts</span>
+                <span>{postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length} posts</span>
+              </div>
+              <div class="recap-item">
+                <span class="recap-label">DMs</span>
+                <span>{dmsText.trim() ? `${dmsText.trim().split(/\n---\n/).filter(d => d.trim().length > 20).length} conversations` : "non renseigné"}</span>
+              </div>
               {#if docsText.trim()}
-                &middot; Documents: {(docsText.trim().length / 1000).toFixed(1)}k chars
+                <div class="recap-item">
+                  <span class="recap-label">Docs</span>
+                  <span>{(docsText.trim().length / 1000).toFixed(1)}k chars</span>
+                </div>
               {/if}
-            </p>
+            </div>
 
-            <button
-              class="generate-btn"
-              onclick={createClone}
-              disabled={generating}
-            >
-              {generating ? "Generation en cours..." : "Generer le clone"}
+            <button class="generate-btn" onclick={createClone} disabled={generating}>
+              {generating ? "Génération en cours..." : "Générer le clone"}
             </button>
 
             {#if generateStatus}
@@ -338,7 +359,7 @@
             {/if}
 
             <div class="create-actions">
-              <button class="btn-secondary" onclick={() => goToStep(2)} disabled={generating}>Retour</button>
+              <button class="btn-secondary" onclick={() => goToStep(3)} disabled={generating}>← Retour</button>
             </div>
           </div>
         {/if}
@@ -371,7 +392,25 @@
   .create-subtitle {
     font-size: 0.75rem;
     color: var(--text-tertiary);
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.625rem;
+  }
+
+  .step-bar {
+    display: flex;
+    gap: 0.25rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .step-bar-item {
+    flex: 1;
+    height: 2px;
+    background: var(--border);
+    border-radius: 2px;
+    transition: background 0.2s;
+  }
+
+  .step-bar-item.active {
+    background: var(--text-secondary);
   }
 
   .create-step-wrap {
@@ -380,6 +419,38 @@
 
   .create-step {
     margin-top: 1.25rem;
+  }
+
+  .step-header {
+    margin-bottom: 1rem;
+  }
+
+  .step-header strong {
+    display: block;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.125rem;
+  }
+
+  .step-header span {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+  }
+
+  .step-desc {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.75rem;
+    line-height: 1.5;
+  }
+
+  .step-desc code {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0.05em 0.35em;
+    font-size: 0.7rem;
   }
 
   .create-step label {
@@ -407,13 +478,15 @@
     margin-bottom: 0.75rem;
   }
 
-  .create-step textarea:focus {
+  .create-step textarea:focus,
+  .create-step input[type="text"]:focus {
     border-color: var(--text-tertiary);
   }
 
   .scrape-row {
     display: flex;
     gap: 0.375rem;
+    margin-bottom: 0.375rem;
   }
 
   .scrape-row input {
@@ -429,13 +502,25 @@
     transition: border-color 0.15s;
   }
 
-  .scrape-row input:focus {
-    border-color: var(--text-tertiary);
+  .scrape-row input:focus { border-color: var(--text-tertiary); }
+  .scrape-row input::placeholder { color: var(--text-tertiary); }
+
+  .scrape-status {
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+    margin-bottom: 0.75rem;
   }
 
-  .scrape-row input::placeholder {
+  .scrape-status-success { color: var(--success); }
+
+  .count-badge {
+    font-size: 0.6875rem;
     color: var(--text-tertiary);
+    margin-top: -0.375rem;
+    margin-bottom: 0.75rem;
   }
+
+  .count-badge.count-ok { color: var(--success, #4ade80); }
 
   .btn-secondary {
     padding: 0.5rem 0.75rem;
@@ -451,62 +536,7 @@
     white-space: nowrap;
   }
 
-  .btn-secondary:hover {
-    border-color: var(--text-secondary);
-    color: var(--text);
-  }
-
-  .scrape-status {
-    font-size: 0.6875rem;
-    color: var(--text-tertiary);
-    margin-top: 0.375rem;
-  }
-
-  .scrape-status-success {
-    color: var(--success);
-  }
-
-  .scrape-preview {
-    margin-top: 0.75rem;
-    padding: 0.75rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  .scrape-preview strong {
-    font-size: 0.8125rem;
-  }
-
-  .scrape-preview-headline {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-  }
-
-  .scrape-preview-posts {
-    font-size: 0.6875rem;
-    color: var(--text-tertiary);
-  }
-
-  .create-divider {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin: 1.25rem 0 0.25rem;
-    color: var(--text-tertiary);
-    font-size: 0.6875rem;
-  }
-
-  .create-divider::before,
-  .create-divider::after {
-    content: "";
-    flex: 1;
-    height: 1px;
-    background: var(--border);
-  }
+  .btn-secondary:hover { border-color: var(--text-secondary); color: var(--text); }
 
   .btn-link {
     background: none;
@@ -517,21 +547,15 @@
     padding: 0.25rem 0;
     text-decoration: underline;
     text-underline-offset: 2px;
+    margin-bottom: 0.5rem;
+    display: block;
   }
 
-  .btn-link:hover {
-    color: var(--text-secondary);
-  }
-
-  .step-indicator {
-    font-size: 0.6875rem;
-    color: var(--text-tertiary);
-    margin-bottom: 0.75rem;
-    font-weight: 500;
-  }
+  .btn-link:hover { color: var(--text-secondary); }
 
   .file-upload-zone {
     margin-bottom: 0.5rem;
+    margin-top: 0.5rem;
   }
 
   .file-upload-btn {
@@ -542,21 +566,18 @@
     border-radius: var(--radius);
     color: var(--text-tertiary);
     font-size: 0.75rem;
+    font-family: var(--font);
     cursor: pointer;
     transition: border-color 0.15s, color 0.15s;
     margin-bottom: 0.5rem;
   }
 
-  .file-upload-btn:hover {
-    border-color: var(--text-secondary);
-    color: var(--text-secondary);
-  }
+  .file-upload-btn:hover { border-color: var(--text-secondary); color: var(--text-secondary); }
 
   .file-list {
     display: flex;
     flex-wrap: wrap;
     gap: 0.25rem;
-    margin-top: 0.375rem;
     margin-bottom: 0.5rem;
   }
 
@@ -569,16 +590,9 @@
     color: var(--text-tertiary);
   }
 
-  .file-tag-error {
-    border-color: var(--error);
-    color: var(--error);
-  }
+  .file-tag-error { border-color: var(--error); color: var(--error); }
 
-  .doc-block-tag {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-  }
+  .doc-block-tag { display: flex; align-items: center; gap: 0.25rem; }
 
   .doc-block-remove {
     background: none;
@@ -590,9 +604,7 @@
     line-height: 1;
   }
 
-  .doc-block-remove:hover {
-    color: var(--text);
-  }
+  .doc-block-remove:hover { color: var(--text); }
 
   .btn-add-block {
     width: 100%;
@@ -608,14 +620,35 @@
     margin-top: 0.375rem;
   }
 
-  .btn-add-block:hover:not(:disabled) {
-    border-color: var(--text-secondary);
-    color: var(--text);
+  .btn-add-block:hover:not(:disabled) { border-color: var(--text-secondary); color: var(--text); }
+  .btn-add-block:disabled { opacity: 0.4; cursor: default; }
+
+  .generate-recap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.75rem;
+    margin-bottom: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
   }
 
-  .btn-add-block:disabled {
-    opacity: 0.4;
-    cursor: default;
+  .recap-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+  }
+
+  .recap-label {
+    color: var(--text-tertiary);
+    font-weight: 500;
+    min-width: 3.5rem;
+  }
+
+  .recap-item span:last-child {
+    color: var(--text-secondary);
+    text-align: right;
   }
 
   .create-actions {
@@ -626,15 +659,8 @@
   }
 
   .generate-btn {
-    margin-top: 1rem;
     width: 100%;
     padding: 0.625rem;
-  }
-
-  .generate-summary {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    margin-bottom: 0.25rem;
   }
 
   .generate-status {
@@ -643,16 +669,8 @@
     color: var(--text-secondary);
   }
 
-  @media (max-width: 640px) {
-    .create-container {
-      padding: 1.5rem;
-    }
-  }
-
   @media (max-width: 480px) {
     .create-page { padding: 1rem; }
-    .create-container { padding: 1rem; }
     .scrape-row { flex-direction: column; }
-    .scrape-row input { margin-bottom: 0; }
   }
 </style>

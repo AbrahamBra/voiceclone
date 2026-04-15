@@ -48,6 +48,25 @@ keywords: ["post", "poster", "ecrire", "rediger", "contenu", "publication", "lin
 
 Ecris en francais. Sois precis et cite des exemples reels des posts.`;
 
+const DM_ANALYSIS_PROMPT = `Tu es un analyste de style de communication LinkedIn.
+Analyse les conversations DM (messages directs) suivantes et génère un document markdown détaillé sur le style de conversation 1:1.
+Inclus :
+- Style d'ouverture (comment cette personne initie ou répond au premier contact)
+- Ton dans les échanges privés (vs posts publics)
+- Longueur et rythme typiques des messages
+- Formules et expressions récurrentes en DM
+- Comment elle gère les objections ou questions
+- Patterns de qualification (quelles questions elle pose, dans quel ordre)
+- Style des CTAs et relances
+- Ce qu'elle ne fait JAMAIS en DM
+
+Commence par un frontmatter YAML :
+---
+keywords: ["dm", "message", "conversation", "qualification", "prospection", "réponse", "relance", "rdv", "appel"]
+---
+
+Écris en français. Cite des exemples réels tirés des conversations.`;
+
 const ONTOLOGY_PROMPT = `Tu es un expert en extraction de connaissances et en ontologie.
 Analyse le profil et les posts suivants. Extrais les ENTITES et RELATIONS cles qui definissent la pensee de cette personne.
 
@@ -99,7 +118,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { linkedin_text, posts, documents, name } = req.body || {};
+  const { linkedin_text, posts, dms, documents, name } = req.body || {};
 
   if (!linkedin_text || typeof linkedin_text !== "string" || linkedin_text.length < 50) {
     res.status(400).json({ error: "linkedin_text required (min 50 chars)" });
@@ -129,8 +148,12 @@ export default async function handler(req, res) {
 
     const postsContent = posts.slice(0, 30).map((p, i) => `--- POST ${i + 1} ---\n${p}`).join("\n\n");
 
-    // Step 1+2: Generate persona config AND style analysis IN PARALLEL
-    const [configResult, styleResult] = await Promise.all([
+    const dmsContent = dms?.length > 0
+      ? dms.map((d, i) => `--- CONVERSATION ${i + 1} ---\n${d}`).join("\n\n")
+      : null;
+
+    // Step 1+2(+3): Generate persona config, style analysis, and DM analysis IN PARALLEL
+    const analysisPromises = [
       anthropic.messages.create({
         model: MODEL, max_tokens: 2048,
         system: CLONE_SYSTEM_PROMPT,
@@ -141,7 +164,17 @@ export default async function handler(req, res) {
         system: STYLE_ANALYSIS_PROMPT,
         messages: [{ role: "user", content: postsContent }],
       }),
-    ]);
+    ];
+
+    if (dmsContent) {
+      analysisPromises.push(anthropic.messages.create({
+        model: MODEL, max_tokens: 2048,
+        system: DM_ANALYSIS_PROMPT,
+        messages: [{ role: "user", content: dmsContent }],
+      }));
+    }
+
+    const [configResult, styleResult, dmResult] = await Promise.all(analysisPromises);
 
     const configRaw = configResult.content[0].text.trim();
     const jsonMatch = configRaw.match(/\{[\s\S]*\}/);
@@ -191,6 +224,27 @@ export default async function handler(req, res) {
       source_type: "auto",
     });
 
+    // Insert DM style knowledge file if DMs were provided
+    if (dmResult) {
+      const dmContent = dmResult.content[0].text.trim();
+      const dmFmMatch = dmContent.match(/^---\n([\s\S]*?)\n---/);
+      let dmKeywords = ["dm", "message", "conversation", "qualification", "prospection", "relance", "rdv"];
+      if (dmFmMatch) {
+        const kwMatch = dmFmMatch[1].match(/keywords:\s*\[(.*?)\]/);
+        if (kwMatch) {
+          dmKeywords = kwMatch[1].split(",").map(k => k.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+        }
+      }
+      const dmBody = dmFmMatch ? dmContent.slice(dmFmMatch[0].length).trim() : dmContent;
+      await supabase.from("knowledge_files").insert({
+        persona_id: persona.id,
+        path: "topics/style-conversations.md",
+        keywords: dmKeywords,
+        content: dmBody,
+        source_type: "auto",
+      });
+    }
+
     // Insert document knowledge file if provided
     if (documents && documents.length > 50) {
       await supabase.from("knowledge_files").insert({
@@ -212,8 +266,8 @@ export default async function handler(req, res) {
     ]);
 
     // Log usage
-    const finalInput = (configResult.usage?.input_tokens || 0) + (styleResult.usage?.input_tokens || 0);
-    const finalOutput = (configResult.usage?.output_tokens || 0) + (styleResult.usage?.output_tokens || 0);
+    const finalInput = (configResult.usage?.input_tokens || 0) + (styleResult.usage?.input_tokens || 0) + (dmResult?.usage?.input_tokens || 0);
+    const finalOutput = (configResult.usage?.output_tokens || 0) + (styleResult.usage?.output_tokens || 0) + (dmResult?.usage?.output_tokens || 0);
     if (client) {
       await logUsage(client.id, persona.id, finalInput, finalOutput);
     }
