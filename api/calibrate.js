@@ -22,9 +22,9 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
   if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
 
+  let client, isAdmin;
   try {
-    const auth = await authenticateRequest(req);
-    var client = auth.client;
+    ({ client, isAdmin } = await authenticateRequest(req));
   } catch (err) {
     res.status(err.status || 403).json({ error: err.error || "Auth failed" });
     return;
@@ -35,6 +35,11 @@ export default async function handler(req, res) {
 
   const persona = await getPersonaFromDb(personaId);
   if (!persona) { res.status(404).json({ error: "Persona not found" }); return; }
+
+  if (!isAdmin && persona.client_id !== client?.id) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
 
   const { prompt: systemPrompt } = buildSystemPrompt({ persona });
 

@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   if (req.method !== "GET") { res.status(405).json({ error: "Method not allowed" }); return; }
 
   try {
-    await authenticateRequest(req);
+    const { client, isAdmin } = await authenticateRequest(req);
 
     const { query } = parse(req.url, true);
     const personaId = query.persona;
@@ -16,6 +16,11 @@ export default async function handler(req, res) {
 
     const persona = await getPersonaFromDb(personaId);
     if (!persona) { res.status(404).json({ error: "Persona not found" }); return; }
+
+    if (!isAdmin && persona.client_id !== client?.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
 
     // Build public config (strip voice, file paths)
     const scenarios = {};

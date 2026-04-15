@@ -27,10 +27,9 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
   if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
 
-  let client;
+  let client, isAdmin;
   try {
-    const auth = await authenticateRequest(req);
-    client = auth.client;
+    ({ client, isAdmin } = await authenticateRequest(req));
   } catch (err) {
     res.status(err.status || 403).json({ error: err.error || "Auth failed" });
     return;
@@ -39,6 +38,15 @@ export default async function handler(req, res) {
   const { correction, botMessage, userMessage, persona: personaId, type, original, modified } = req.body || {};
 
   if (!personaId) { res.status(400).json({ error: "persona is required" }); return; }
+
+  // Ownership check
+  if (!isAdmin && supabase) {
+    const { data: persona } = await supabase.from("personas").select("client_id").eq("id", personaId).single();
+    if (!persona || persona.client_id !== client?.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+  }
 
   // Handle implicit feedback (diff between original and modified message)
   let finalCorrection = correction;
