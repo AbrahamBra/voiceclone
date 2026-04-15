@@ -100,15 +100,22 @@ Four targeted UX improvements to the existing VoiceClone chat interface. All cha
 
 **Flow on success:**
 1. Receives `{ profile: { name, headline, text }, posts, postCount }` from `POST /api/scrape`
-2. Builds a lead context message (trimmed to reasonable length):
+2. Builds a lead context message — **posts first** (opener material), then profile/company:
    ```
    [Contexte lead — {name}]
-   Titre: {headline}
-   Profil: {text (first 500 chars)}
-   Posts récents ({min(postCount, 5)}):
-   {top 5 posts, each truncated to 200 chars}
    
-   Aide-moi à préparer une approche personnalisée pour ce prospect.
+   SUJETS DU MOMENT (priorité pour l'opening) :
+   Fréquence de publication : {déduit du postCount: actif/régulier/occasionnel/rare}
+   3 derniers posts :
+   1. {post1, 250 chars max}
+   2. {post2, 250 chars max}
+   3. {post3, 250 chars max}
+   
+   PROFIL :
+   Titre: {headline}
+   {text (first 500 chars)}
+   
+   Aide-moi à préparer une approche personnalisée pour ce prospect. Utilise ses sujets récents comme angle d'ouverture.
    ```
 3. Sends as a normal user message via the existing `sendMessage()` flow
 4. The message gets stored in conversation history (feature, not bug — provides context for follow-up)
