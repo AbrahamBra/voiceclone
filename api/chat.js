@@ -3,7 +3,7 @@ import { buildSystemPrompt } from "../lib/prompt.js";
 import { runPipeline } from "../lib/pipeline.js";
 import { initSSE } from "../lib/sse.js";
 import { validateInput } from "../lib/validate.js";
-import { authenticateRequest, checkBudget, getApiKey, logUsage, setCors } from "../lib/supabase.js";
+import { authenticateRequest, checkBudget, getApiKey, logUsage, setCors, supabase } from "../lib/supabase.js";
 import { getPersonaFromDb, findRelevantKnowledgeFromDb, loadScenarioFromDb, getCorrectionsFromDb, findRelevantEntities } from "../lib/knowledge-db.js";
 
 export default async function handler(req, res) {
@@ -36,14 +36,56 @@ export default async function handler(req, res) {
   const validationError = validateInput(req.body);
   if (validationError) { res.status(400).json({ error: validationError }); return; }
 
-  const { message, history, scenario, persona: personaId } = req.body;
+  const { message, history: bodyHistory, scenario, persona: personaId, conversation_id } = req.body;
   if (!personaId) { res.status(400).json({ error: "persona is required" }); return; }
 
   // Load persona data from DB
   const persona = await getPersonaFromDb(personaId);
   if (!persona) { res.status(404).json({ error: "Persona not found" }); return; }
 
-  const messages = [...history.slice(-19), { role: "user", content: message }];
+  // Resolve conversation
+  let convId = conversation_id || null;
+  let messages;
+
+  if (convId) {
+    // Load existing conversation
+    const { data: conv, error: convErr } = await supabase
+      .from("conversations").select("id, client_id, scenario")
+      .eq("id", convId).single();
+
+    if (convErr || !conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+
+    // Ownership check
+    if (client && conv.client_id !== client.id) {
+      res.status(403).json({ error: "Access denied" });
+      return;
+    }
+
+    // Load last 19 messages from DB
+    const { data: dbMessages } = await supabase
+      .from("messages").select("role, content")
+      .eq("conversation_id", convId)
+      .order("created_at", { ascending: false })
+      .limit(19);
+
+    const history = (dbMessages || []).reverse();
+    messages = [...history, { role: "user", content: message }];
+  } else {
+    // Create new conversation
+    const clientId = client?.id || null;
+    const { data: newConv } = await supabase
+      .from("conversations").insert({
+        client_id: clientId,
+        persona_id: personaId,
+        scenario: scenario || "default",
+      }).select("id").single();
+
+    convId = newConv?.id || null;
+
+    // Use body history (deprecated path) or empty
+    const history = Array.isArray(bodyHistory) ? bodyHistory.slice(-19) : [];
+    messages = [...history, { role: "user", content: message }];
+  }
 
   // Resolve scenario
   const scenarioConfig = persona.scenarios[scenario] || persona.scenarios.default || Object.values(persona.scenarios)[0];
@@ -87,6 +129,22 @@ export default async function handler(req, res) {
       corrections,
       apiKey,
     });
+    // Persist messages + update conversation (async, non-blocking)
+    if (convId && supabase) {
+      const botText = result.text || "";
+      Promise.all([
+        supabase.from("messages").insert([
+          { conversation_id: convId, role: "user", content: message },
+          { conversation_id: convId, role: "assistant", content: botText },
+        ]),
+        supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
+        supabase.from("conversations")
+          .update({ title: message.slice(0, 50).replace(/\s+\S*$/, "") })
+          .eq("id", convId).is("title", null),
+      ]).catch(() => {});
+    }
+
+    if (convId) sse("conversation", { id: convId });
     res.end();
 
     // Log usage (async, don't block response)
