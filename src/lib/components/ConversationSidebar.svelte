@@ -3,6 +3,9 @@
   import { api, authHeaders } from "$lib/api.js";
   import { showToast } from "$lib/stores/ui.js";
   import { groupByDate, getRelativeTime } from "$lib/utils.js";
+  import IntelligencePanel from "./IntelligencePanel.svelte";
+
+  let activeTab = $state("conversations");
 
   let {
     personaId,
@@ -103,6 +106,24 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <aside class="conv-sidebar" class:open>
+  <div class="sidebar-tabs">
+    <button
+      class="sidebar-tab"
+      class:active={activeTab === "conversations"}
+      onclick={() => activeTab = "conversations"}
+    >Conversations</button>
+    <button
+      class="sidebar-tab"
+      class:active={activeTab === "intelligence"}
+      onclick={() => activeTab = "intelligence"}
+    >Intelligence</button>
+  </div>
+
+  {#if activeTab === "intelligence"}
+    <div class="sidebar-content">
+      <IntelligencePanel {personaId} />
+    </div>
+  {:else}
   <div class="conv-sidebar-header">
     <button class="conv-switch-btn" onclick={onswitchclone}>
       &larr; Changer de clone
@@ -182,6 +203,7 @@
       {/each}
     {/if}
   </div>
+  {/if}
 </aside>
 
 <style>
@@ -193,6 +215,33 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  .sidebar-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-tab {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-tertiary);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    padding: 0.5rem 0;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    font-family: inherit;
+  }
+  .sidebar-tab:hover { color: var(--text-secondary); }
+  .sidebar-tab.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+  }
+  .sidebar-content {
+    flex: 1;
+    overflow-y: auto;
   }
 
   .conv-sidebar-header {
