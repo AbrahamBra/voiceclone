@@ -42,7 +42,6 @@ CREATE TABLE IF NOT EXISTS conversations (
   persona_id uuid REFERENCES personas(id) ON DELETE CASCADE NOT NULL,
   scenario text NOT NULL DEFAULT 'default',
   title text,
-  message_count int DEFAULT 0,
   last_message_at timestamptz DEFAULT now(),
   created_at timestamptz DEFAULT now()
 );
@@ -94,7 +93,8 @@ New body: `{ message, scenario, persona, conversation_id? }`
 
 Logic:
 1. If `conversation_id` provided:
-   - Load conversation (verify ownership)
+   - Load conversation from DB
+   - **Ownership check**: verify `conversation.client_id === client.id` (or admin). Return 403 if mismatch.
    - Load last 19 messages from `messages` table as history
    - `history` field in body is **ignored** (server is source of truth)
 2. If no `conversation_id`:
@@ -102,9 +102,9 @@ Logic:
    - Return `conversation_id` in SSE `done` event
 3. After pipeline completes:
    - Insert user message + assistant message into `messages`
-   - Update conversation: `message_count += 2`, `last_message_at = now()`
-   - If `title` is null and this is the first exchange: set title = first 50 chars of user message
-4. The `history` array param is **removed from the API contract** — the server builds it from DB
+   - Update conversation: `last_message_at = now()` (no message_count column — use COUNT(*) at read time to avoid drift)
+   - If `title` is null and this is the first exchange: set title = first 50 chars of user message, truncated at last word boundary
+4. The `history` field becomes **deprecated** — accepted but ignored when `conversation_id` is present. If neither `history` nor `conversation_id` is provided, a new conversation is created with empty history.
 
 ### 1.4 Frontend Changes (`public/app.js`)
 
@@ -132,11 +132,29 @@ Logic:
 - Settings modal (unchanged)
 - Theme application (unchanged)
 
-### 1.5 Migration path
+### 1.5 Changes to `lib/validate.js`
 
-- `history` field in chat body becomes optional/ignored (backwards compatible)
+Current: `history` is required (must be an array).
+
+New: `history` becomes optional when `conversation_id` is present.
+- If `conversation_id` provided: skip `history` validation entirely
+- If no `conversation_id` and no `history`: accept (new conversation with empty history)
+- If `history` provided: validate as before (backwards compat for old clients)
+- Add: `conversation_id` validation — if present, must be a non-empty string
+
+### 1.6 Frontend conversation state persistence
+
+On page refresh, the user should return to their last conversation:
+- Store `currentConversationId` in `localStorage` (keyed by persona: `conv_{personaId}`)
+- On chat screen load: check localStorage, if conversation_id exists, load it
+- On "Nouvelle conversation": clear localStorage entry
+
+### 1.7 Migration path
+
+- `history` field in chat body becomes **deprecated** — accepted but ignored when `conversation_id` is present
 - Frontend stops sending `history`, sends `conversation_id` instead
 - Old clients without update still work (server creates conversation silently)
+- Welcome messages are NOT persisted — they are UI-only, displayed by the frontend from scenario config
 
 ---
 
@@ -151,10 +169,18 @@ Logic:
 ALTER TABLE knowledge_entities
   ADD COLUMN IF NOT EXISTS last_matched_at timestamptz DEFAULT now();
 
+-- Add source_path to chunks for RRF fusion (link chunks back to knowledge files)
+ALTER TABLE chunks
+  ADD COLUMN IF NOT EXISTS source_path text;
+
 -- Index for efficient decay queries
 CREATE INDEX IF NOT EXISTS idx_entities_last_matched
   ON knowledge_entities(persona_id, last_matched_at);
+CREATE INDEX IF NOT EXISTS idx_chunks_source_path
+  ON chunks(persona_id, source_path);
 ```
+
+**Note**: `embedAndStore()` in `lib/embeddings.js` must be updated to pass `source_path` when inserting chunks. This allows RRF fusion to detect when a keyword-matched file and a RAG chunk come from the same source.
 
 ### 2.2 Entity Matching: `findRelevantEntities()` rewrite
 
@@ -170,12 +196,15 @@ Output: { entities: [...], relations: [...], boostTerms: string[] }
 2. MATCH: normalize message text, string-match entity names (existing logic)
 3. SCORE each matched entity:
      score = confidence × recency_factor
-     recency_factor = max(0.5, 1.0 - (days_since_last_match / 60))
+     recency_factor = max(0.1, 1.0 - (days_since_last_match / 90))
    where days_since_last_match uses entity.last_matched_at
+   (floor at 0.1 allows entities unused for 80+ days to effectively disappear from results)
 4. SORT by score DESC
 5. EXPAND: 1-hop graph walk from top 8 entities (existing logic)
 6. COLLECT relations: only those connecting entities in the result set, top 6
-7. UPDATE: set last_matched_at = now() for all directly matched entities (async, non-blocking)
+7. UPDATE: set last_matched_at = now() for all directly matched entities (async, non-blocking).
+   Also update the cached entity objects in-memory so subsequent requests within the 5-min cache window
+   use fresh recency values.
 8. RETURN:
    - entities: top 8, sorted by score
    - relations: top 6 between those entities
@@ -212,7 +241,7 @@ Output: top 3 knowledge matches
    - Each result: { path, content, source: 'keyword'|'rag'|'hybrid' }
 ```
 
-**Important**: RAG results are chunks, keyword results are full files. For fusion, a chunk matches a file if it was chunked from that file's content. If a chunk doesn't map to a file, it's treated as its own result.
+**Important**: RAG results are chunks, keyword results are full files. For fusion, a chunk is linked to its source file via `chunks.source_path` (matches `knowledge_files.path`). When a keyword-matched file and a RAG chunk share the same `source_path`, they are treated as the same item for RRF scoring (boosted). Chunks without a `source_path` (legacy data) are treated as standalone results.
 
 ### 2.4 Prompt Builder: `buildSystemPrompt()` changes
 
@@ -267,14 +296,22 @@ This adds ~100-200ms vs current (entity matching must complete before knowledge 
 | File | Change Type | Scope |
 |------|------------|-------|
 | `supabase/004_conversations.sql` | **NEW** | conversations + messages tables |
-| `supabase/005_smart_graph.sql` | **NEW** | last_matched_at column |
+| `supabase/005_smart_graph.sql` | **NEW** | last_matched_at + source_path columns |
 | `api/conversations.js` | **NEW** | list, load, search conversations |
 | `api/chat.js` | **MODIFY** | conversation_id support, message persistence, entity→knowledge ordering |
 | `lib/knowledge-db.js` | **MODIFY** | rewrite findRelevantEntities() + findRelevantKnowledgeFromDb() |
 | `lib/prompt.js` | **MODIFY** | token budget, correction consolidation |
-| `public/app.js` | **MODIFY** | conversation sidebar, remove history array, search UI |
+| `lib/validate.js` | **MODIFY** | make history optional when conversation_id present |
+| `lib/embeddings.js` | **MODIFY** | pass source_path when inserting chunks |
+| `public/app.js` | **MODIFY** | conversation sidebar, remove history array, search UI, localStorage |
 | `public/index.html` | **MODIFY** | sidebar HTML structure |
 | `public/style.css` | **MODIFY** | sidebar styling |
+
+### Latency risk: Voyage AI
+
+The 1s retrieval budget assumes Voyage AI responds in < 500ms for query embedding. If Voyage is slow:
+- **Timeout**: set a 800ms timeout on `embedQuery()`. If it times out, fall back to keyword-only results.
+- This is graceful degradation — the system works without RAG, just with reduced context quality.
 
 ---
 
