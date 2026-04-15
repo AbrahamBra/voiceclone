@@ -1,50 +1,52 @@
-# VoiceClone — White-Label Text Clone Framework
+# VoiceClone
 
-Create an AI-powered text clone that reproduces someone's writing voice, tone, and domain expertise.
+Clone IA de style d'ecriture LinkedIn. Analysez le profil et les posts d'une personne pour creer un chatbot qui ecrit exactement comme elle.
 
-## Quick Start
+**Demo :** [ahmet-clone.vercel.app](https://ahmet-clone.vercel.app)
 
-1. Clone this repo
-2. Copy `persona/persona.json` and customize for your persona
-3. Add knowledge files in `persona/knowledge/` with YAML frontmatter keywords
-4. Set environment variables:
-   - `ACCESS_CODE` — password for the app
-   - `ANTHROPIC_API_KEY` — your Anthropic API key
-5. Deploy to Vercel: `vercel --prod`
+## Fonctionnalites
 
-## How It Works
+- **Clonage de voix** — Collez un profil LinkedIn + posts, l'IA extrait le style d'ecriture (ton, expressions, regles)
+- **Chat en temps reel** — Streaming SSE avec Claude, conversations persistantes
+- **Scenarios** — Discussion libre, creation de posts LinkedIn, prospection, etc.
+- **Calibration continue** — Feedback implicite/explicite pour affiner le style au fil du temps
+- **Multi-personas** — Gerez plusieurs clones avec themes personnalises
+- **Scraping LinkedIn** — Extraction automatique depuis une URL de profil
+- **Knowledge base** — Upload de documents (PDF, TXT, CSV) pour enrichir le contexte
+- **Metriques & qualite** — Suivi d'utilisation, scores de qualite, rate limiting
 
-1. **persona.json** defines identity, voice rules (tone, forbidden words, writing rules), scenarios, and theme
-2. **Knowledge base** (markdown files with keyword frontmatter) provides domain expertise
-3. **3-pass pipeline**: generate response → critic check against rules → rewrite if violations found
-4. **Frontend** adapts automatically: name, avatar, colors, scenarios all from config
+## Stack
 
-## Project Structure
+- **Frontend** — Vanilla JS, CSS (SPA legere, pas de framework)
+- **Backend** — Vercel Serverless Functions (Node.js)
+- **IA** — Claude (Anthropic API)
+- **Base de donnees** — Supabase (PostgreSQL + pgvector pour embeddings)
+- **Deploy** — Vercel
 
-- `persona/` — All persona configuration (persona.json + knowledge + scenarios)
-- `api/` — Vercel serverless endpoints (chat, config, health)
-- `lib/` — Core logic (pipeline, prompt builder, knowledge loader)
-- `public/` — Frontend SPA
-- `eval/` — Test suite
+## Structure
 
-## Customization
+```
+api/            Endpoints serverless (chat, clone, calibrate, feedback, scrape...)
+lib/            Logique metier (prompt builder, pipeline, embeddings, validation)
+public/         Frontend (index.html, app.js, style.css)
+personas/       Configurations de personas (JSON)
+knowledge/      Documents de contexte par persona
+supabase/       Migrations et seed SQL
+eval/           Tests et evaluation
+```
 
-Edit `persona/persona.json` to change:
-- `name`, `title`, `avatar`, `description` — identity
-- `voice.tone`, `voice.personality` — character traits
-- `voice.forbiddenWords` — words the clone must never use
-- `voice.writingRules` — writing style constraints
-- `voice.signaturePhrases` — characteristic expressions
-- `scenarios` — available chat modes
-- `theme` — UI colors (accent, background, surface, text)
+## Setup local
 
-## Adding Knowledge
+```bash
+npm install
+vercel dev
+```
 
-Create `.md` files in `persona/knowledge/` with YAML frontmatter:
+## Variables d'environnement
 
-    ---
-    keywords: ["topic", "related", "terms"]
-    ---
-    # Your content here
-
-The system automatically detects relevant knowledge based on user message keywords.
+| Variable | Description |
+|----------|-------------|
+| `ANTHROPIC_API_KEY` | Cle API Anthropic |
+| `SUPABASE_URL` | URL du projet Supabase |
+| `SUPABASE_SERVICE_KEY` | Cle service Supabase |
+| `ACCESS_CODES` | Codes d'acces autorises (JSON) |
