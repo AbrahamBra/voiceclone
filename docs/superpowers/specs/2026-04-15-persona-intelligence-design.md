@@ -153,10 +153,11 @@ DELETE calls `clearCache(personaId)` in `knowledge-db.js` (same pattern as `feed
 
 ## Files Changed
 
+**Note:** Frontend targets the Svelte 5 rewrite (see `docs/superpowers/plans/2026-04-15-ui-revolution.md`). The Intelligence panel integrates into the ConversationSidebar component from that plan.
+
 | File | Change |
 |------|--------|
 | `api/feedback.js` | Add GET + DELETE handlers alongside existing POST |
-| `public/index.html` | Add tab switcher buttons + intelligence panel container |
-| `public/style.css` | Tab switcher styles, intelligence panel styles, stats/corrections/entities blocks |
-| `public/app.js` | Tab switching logic, fetch + render intelligence data, delete flow |
 | `lib/knowledge-db.js` | (1) Export `loadPersonaData()` for use by feedback.js GET handler. (2) Add `id` to corrections select clause (currently selects `correction, user_message, bot_message, created_at` — needs `id` for delete flow). |
+| `src/lib/components/IntelligencePanel.svelte` | New — main panel with stats, corrections list, entities list |
+| `src/lib/components/ConversationSidebar.svelte` | Add tab switcher (Conversations / Intelligence) and mount IntelligencePanel |

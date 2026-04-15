@@ -17,6 +17,10 @@
   import ChatMessage from "$lib/components/ChatMessage.svelte";
   import ChatInput from "$lib/components/ChatInput.svelte";
   import ConversationSidebar from "$lib/components/ConversationSidebar.svelte";
+  import FeedbackModal from "$lib/components/FeedbackModal.svelte";
+  import SettingsModal from "$lib/components/SettingsModal.svelte";
+  import LeadModal from "$lib/components/LeadModal.svelte";
+  import CommandPalette from "$lib/components/CommandPalette.svelte";
 
   let personaId = $derived($page.data.personaId);
   let scenario = $derived($page.data.scenario);
@@ -25,6 +29,12 @@
   let sidebarOpen = $state(false);
   let messagesEl = $state(undefined);
   let scrollAnchor = $state(undefined);
+
+  // Modal state
+  let feedbackTarget = $state(null);
+  let showSettings = $state(false);
+  let showLead = $state(false);
+  let showCommandPalette = $state(false);
 
   // Scroll to bottom when messages change
   $effect(() => {
@@ -282,23 +292,30 @@
   }
 
   function handleCorrect(message) {
-    // Open a simple prompt-based correction flow
-    const correction = prompt("Correction pour cette reponse :");
-    if (!correction?.trim()) return;
+    feedbackTarget = message.content;
+  }
 
-    fetch("/api/feedback", {
-      method: "POST",
-      headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({
-        correction,
-        botMessage: message.content,
-        persona: personaId,
-      }),
-    })
-      .then((resp) => {
-        if (resp.ok) showToast("Correction enregistree ;)");
-      })
-      .catch(() => {});
+  function handleLeadAnalyzed(msg) {
+    handleSend(msg);
+  }
+
+  function handleKeyboard(e) {
+    const mod = e.metaKey || e.ctrlKey;
+    if (e.key === "Escape") {
+      if (showCommandPalette) showCommandPalette = false;
+      else if (feedbackTarget) feedbackTarget = null;
+      else if (showSettings) showSettings = false;
+      else if (showLead) showLead = false;
+      return;
+    }
+    if (mod && e.key === "k") {
+      e.preventDefault();
+      showCommandPalette = !showCommandPalette;
+    }
+    if (mod && e.key === "n") {
+      e.preventDefault();
+      handleNewConversation();
+    }
   }
 
   function handleNewConversation() {
@@ -327,6 +344,8 @@
     goto("/");
   }
 </script>
+
+<svelte:window onkeydown={handleKeyboard} />
 
 {#if loading}
   <div class="loading-screen">
@@ -357,8 +376,8 @@
         <button class="back-btn" onclick={handleBack}>&larr;</button>
         <div class="chat-avatar">{$personaConfig?.avatar || "?"}</div>
         <div class="chat-name">{$personaConfig?.name || "Clone"}</div>
-        <button class="lead-btn" title="Analyser un prospect">&#128269;</button>
-        <button class="settings-btn" title="Parametres">&#9881;</button>
+        <button class="lead-btn" title="Analyser un prospect" onclick={() => (showLead = true)}>&#128269;</button>
+        <button class="settings-btn" title="Parametres" onclick={() => (showSettings = true)}>&#9881;</button>
       </div>
 
       <div class="chat-messages" bind:this={messagesEl}>
@@ -375,6 +394,26 @@
       <ChatInput onsend={handleSend} disabled={$sending} />
     </div>
   </div>
+
+  {#if feedbackTarget}
+    <FeedbackModal botMessage={feedbackTarget} onclose={() => (feedbackTarget = null)} />
+  {/if}
+
+  {#if showSettings}
+    <SettingsModal onclose={() => (showSettings = false)} />
+  {/if}
+
+  {#if showLead}
+    <LeadModal onclose={() => (showLead = false)} onanalyzed={handleLeadAnalyzed} />
+  {/if}
+
+  {#if showCommandPalette}
+    <CommandPalette
+      conversations={$conversations}
+      onselect={(id) => { showCommandPalette = false; handleSelectConversation(id); }}
+      onclose={() => (showCommandPalette = false)}
+    />
+  {/if}
 {/if}
 
 <style>
