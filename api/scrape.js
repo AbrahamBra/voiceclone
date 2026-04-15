@@ -7,6 +7,13 @@ const LINKDAPI_BASE = "https://linkdapi.com/api/v1";
  * Extract LinkedIn username from a URL.
  * Handles: linkedin.com/in/username, linkedin.com/in/username/, with query params
  */
+/** Strip lone surrogates and other chars that break JSON serialization */
+function sanitizeText(str) {
+  if (typeof str !== "string") return str;
+  // Remove lone surrogates (high without low, or low without high)
+  return str.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "");
+}
+
 function extractUsername(input) {
   const trimmed = input.trim();
   // Direct username (no URL)
@@ -91,11 +98,11 @@ export default async function handler(req, res) {
     res.json({
       ok: true,
       profile: {
-        name: [profile.firstName, profile.lastName].filter(Boolean).join(" "),
-        headline: profile.headline || "",
-        text: profileText,
+        name: sanitizeText([profile.firstName, profile.lastName].filter(Boolean).join(" ")),
+        headline: sanitizeText(profile.headline || ""),
+        text: sanitizeText(profileText),
       },
-      posts,
+      posts: posts.map(sanitizeText),
       postCount: posts.length,
     });
   } catch (err) {
