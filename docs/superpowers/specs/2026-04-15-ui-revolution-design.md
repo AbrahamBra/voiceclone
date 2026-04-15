@@ -179,8 +179,11 @@ src/
 │   ├── chat/
 │   │   └── [persona]/
 │   │       └── +page.svelte      # Chat view
-│   └── create/
-│       └── +page.svelte          # Clone creation wizard
+│   ├── create/
+│   │   └── +page.svelte          # Clone creation wizard
+│   └── calibrate/
+│       └── [persona]/
+│           └── +page.svelte      # Calibration after clone creation
 ├── lib/
 │   ├── stores/
 │   │   ├── auth.js               # accessCode, sessionToken, client
