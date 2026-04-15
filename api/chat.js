@@ -71,8 +71,13 @@ export default async function handler(req, res) {
     const history = (dbMessages || []).reverse();
     messages = [...history, { role: "user", content: message }];
   } else {
-    // Create new conversation
+    // Create new conversation (skip for admin without client)
     const clientId = client?.id || null;
+    if (!clientId) {
+      // Admin without client — run without conversation persistence
+      const history = Array.isArray(bodyHistory) ? bodyHistory.slice(-19) : [];
+      messages = [...history, { role: "user", content: message }];
+    } else {
     const { data: newConv } = await supabase
       .from("conversations").insert({
         client_id: clientId,
@@ -85,6 +90,7 @@ export default async function handler(req, res) {
     // Use body history (deprecated path) or empty
     const history = Array.isArray(bodyHistory) ? bodyHistory.slice(-19) : [];
     messages = [...history, { role: "user", content: message }];
+    }
   }
 
   // Resolve scenario

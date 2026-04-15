@@ -142,6 +142,7 @@ function showConversationPicker(convs) {
   newCard.innerHTML = `<h3>+ Nouvelle conversation</h3><p>Commencer une discussion</p>`;
   newCard.addEventListener("click", () => {
     currentConversationId = null;
+    localStorage.removeItem("conv_" + currentPersonaId);
     setupScenarios();
     const keys = Object.keys(config.scenarios);
     if (keys.length === 1) startChat(keys[0]);
@@ -153,7 +154,7 @@ function showConversationPicker(convs) {
   for (const conv of convs.slice(0, 10)) {
     const card = document.createElement("div");
     card.className = "scenario-card";
-    const date = new Date(conv.updated_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    const date = new Date(conv.last_message_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
     card.innerHTML = `<h3>${conv.title || "Conversation"}</h3><p>${date}</p>`;
     card.addEventListener("click", async () => {
       // Load full conversation with messages
@@ -393,9 +394,11 @@ function startChat(scenario) {
   // Load conversation sidebar
   loadConversations(currentPersonaId);
 
-  // Resume last conversation from localStorage
-  const savedConvId = localStorage.getItem("conv_" + currentPersonaId);
-  if (savedConvId) loadConversation(savedConvId);
+  // Resume last conversation from localStorage (only if not explicitly starting new)
+  if (currentConversationId === null) {
+    const savedConvId = localStorage.getItem("conv_" + currentPersonaId);
+    if (savedConvId) loadConversation(savedConvId);
+  }
 }
 
 function addMessage(role, text) {
@@ -730,37 +733,16 @@ async function sendMessage() {
       $("chat-messages").scrollTop = $("chat-messages").scrollHeight;
     }
 
-    // Auto-save conversation
-    saveConversation();
   } catch {
     if (!botDiv.querySelector("button")) botDiv.textContent = "Connexion perdue. Reessayez.";
   }
   sending = false; $("chat-send").disabled = false; input.focus();
 }
 
-// ---- Conversation persistence ----
-async function saveConversation() {
-  try {
-    const resp = await fetch("/api/conversations", {
-      method: "POST",
-      headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({
-        id: currentConversationId || undefined,
-        persona_id: currentPersonaId,
-        scenario: currentScenario,
-      }),
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      if (!currentConversationId) currentConversationId = data.id;
-    }
-  } catch { /* silent — don't break chat UX */ }
-}
-
 async function loadConversations(personaId) {
   try {
     const resp = await fetch(`/api/conversations?persona=${personaId}`, {
-      headers: { "x-access-code": accessCode },
+      headers: authHeaders(),
     });
     if (!resp.ok) return;
     const data = await resp.json();
@@ -798,7 +780,7 @@ async function loadConversation(convId) {
 
   try {
     const resp = await fetch("/api/conversations?id=" + convId, {
-      headers: { "x-access-code": accessCode },
+      headers: authHeaders(),
     });
     if (!resp.ok) return;
     const data = await resp.json();
@@ -846,7 +828,7 @@ $("conv-search").addEventListener("input", (e) => {
   searchTimeout = setTimeout(async () => {
     try {
       const resp = await fetch("/api/conversations?search=" + encodeURIComponent(query) + "&persona=" + currentPersonaId, {
-        headers: { "x-access-code": accessCode },
+        headers: authHeaders(),
       });
       if (!resp.ok) return;
       const data = await resp.json();
