@@ -22,6 +22,26 @@
   let fileTags = $state([]);
   let fileInputEl;
 
+  // Text blocks
+  let docBlocks = $state([]); // [{ title, content }]
+  let currentDocTitle = $state("");
+  let currentDocContent = $state("");
+
+  function addDocBlock() {
+    const content = currentDocContent.trim();
+    if (!content) return;
+    const title = currentDocTitle.trim() || `Texte ${docBlocks.length + 1}`;
+    docBlocks = [...docBlocks, { title, content }];
+    docsText = docBlocks.map(b => `## ${b.title}\n\n${b.content}`).join("\n\n---\n\n");
+    currentDocTitle = "";
+    currentDocContent = "";
+  }
+
+  function removeDocBlock(i) {
+    docBlocks = docBlocks.filter((_, idx) => idx !== i);
+    docsText = docBlocks.map(b => `## ${b.title}\n\n${b.content}`).join("\n\n---\n\n");
+  }
+
   // Step 3
   let generating = $state(false);
   let generateStatus = $state("");
@@ -254,16 +274,34 @@
                   bind:this={fileInputEl}
                   onchange={handleFiles}
                 />
-                {#if fileTags.length > 0}
+                {#if fileTags.length > 0 || docBlocks.length > 0}
                   <div class="file-list">
                     {#each fileTags as tag}
                       <div class="file-tag" class:file-tag-error={tag.error}>
-                        {tag.error ? `${tag.name} — erreur de lecture` : `${tag.name} (${tag.chars}k chars)`}
+                        {tag.error ? `${tag.name} — erreur` : `${tag.name} (${tag.chars}k)`}
+                      </div>
+                    {/each}
+                    {#each docBlocks as block, i}
+                      <div class="file-tag doc-block-tag">
+                        {block.title}
+                        <button class="doc-block-remove" onclick={() => removeDocBlock(i)}>×</button>
                       </div>
                     {/each}
                   </div>
                 {/if}
-                <textarea rows="4" bind:value={docsText} placeholder="Ou collez du texte ici..."></textarea>
+                <input
+                  type="text"
+                  placeholder="Titre du texte (ex: Offre, Bio, Méthode...)"
+                  bind:value={currentDocTitle}
+                />
+                <textarea rows="4" bind:value={currentDocContent} placeholder="Collez votre texte ici..."></textarea>
+                <button
+                  class="btn-add-block"
+                  onclick={addDocBlock}
+                  disabled={!currentDocContent.trim()}
+                >
+                  + Valider et ajouter ce texte
+                </button>
               </div>
             {/if}
 
@@ -534,6 +572,50 @@
   .file-tag-error {
     border-color: var(--error);
     color: var(--error);
+  }
+
+  .doc-block-tag {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .doc-block-remove {
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0;
+    line-height: 1;
+  }
+
+  .doc-block-remove:hover {
+    color: var(--text);
+  }
+
+  .btn-add-block {
+    width: 100%;
+    padding: 0.5rem;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-family: var(--font);
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+    margin-top: 0.375rem;
+  }
+
+  .btn-add-block:hover:not(:disabled) {
+    border-color: var(--text-secondary);
+    color: var(--text);
+  }
+
+  .btn-add-block:disabled {
+    opacity: 0.4;
+    cursor: default;
   }
 
   .create-actions {
