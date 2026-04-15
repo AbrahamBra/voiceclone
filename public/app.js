@@ -113,6 +113,59 @@ async function selectPersona(personaId) {
 }
 
 // ---- Screen 1: Clone creation ----
+// LinkedIn URL scraping
+$("scrape-btn").addEventListener("click", scrapeLinkedIn);
+
+async function scrapeLinkedIn() {
+  const url = $("clone-url").value.trim();
+  if (!url) return;
+
+  const btn = $("scrape-btn");
+  const status = $("scrape-status");
+  btn.disabled = true;
+  btn.textContent = "Scraping...";
+  status.textContent = "Recuperation du profil et des posts...";
+  status.classList.remove("hidden");
+
+  try {
+    const resp = await fetch("/api/scrape", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-access-code": accessCode },
+      body: JSON.stringify({ linkedin_url: url }),
+    });
+
+    if (resp.status === 501) {
+      status.textContent = "Scraping non disponible. Remplissez manuellement.";
+      btn.disabled = false; btn.textContent = "Scraper";
+      return;
+    }
+    if (!resp.ok) {
+      const err = await resp.json();
+      status.textContent = err.error || "Erreur de scraping";
+      btn.disabled = false; btn.textContent = "Scraper";
+      return;
+    }
+
+    const data = await resp.json();
+
+    // Fill profile textarea
+    $("clone-linkedin").value = data.profile.text;
+
+    // Fill posts textarea
+    if (data.posts.length > 0) {
+      $("clone-posts").value = data.posts.slice(0, 15).join("\n---\n");
+    }
+
+    status.textContent = `${data.profile.name} — profil + ${data.postCount} posts recuperes`;
+    status.style.color = "var(--success)";
+    btn.textContent = "OK";
+  } catch {
+    status.textContent = "Erreur de connexion";
+    btn.disabled = false;
+    btn.textContent = "Scraper";
+  }
+}
+
 // File upload handling
 $("clone-file-btn").addEventListener("click", () => $("clone-file").click());
 $("clone-file").addEventListener("change", handleFiles);

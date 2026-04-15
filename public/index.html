@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VoiceClone</title>
   <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>◎</text></svg>">
 </head>
 <body>
-  <!-- Screen 0: Access -->
+  <!-- Screen: Access -->
   <div id="screen-access" class="screen active">
     <div class="access-card">
       <h1>VoiceClone</h1>
@@ -21,42 +22,51 @@
     </div>
   </div>
 
-  <!-- Screen 1: Clone creation -->
+  <!-- Screen: Clone creation -->
   <div id="screen-create" class="screen">
     <div class="create-container">
-      <h2>Creer un clone IA</h2>
-      <p class="subtitle">Collez les infos pour generer le clone automatiquement</p>
+      <h2>Creer un clone</h2>
+      <p class="subtitle">Collez une URL LinkedIn ou remplissez manuellement</p>
       <div class="create-step">
-        <label>Profil LinkedIn (titre, a propos, experience)</label>
-        <textarea id="clone-linkedin" rows="5" placeholder="Copiez-collez le texte du profil LinkedIn..."></textarea>
+        <label>URL LinkedIn (remplissage automatique)</label>
+        <div class="scrape-row">
+          <input type="text" id="clone-url" placeholder="linkedin.com/in/username">
+          <button type="button" id="scrape-btn" class="btn-secondary">Scraper</button>
+        </div>
+        <p id="scrape-status" class="scrape-status hidden"></p>
+      </div>
+      <div class="create-divider"><span>ou remplissez manuellement</span></div>
+      <div class="create-step">
+        <label>Profil LinkedIn</label>
+        <textarea id="clone-linkedin" rows="4" placeholder="Titre, a propos, experience..."></textarea>
       </div>
       <div class="create-step">
-        <label>Posts LinkedIn (minimum 3, separes par ---)</label>
-        <textarea id="clone-posts" rows="8" placeholder="Post 1...&#10;---&#10;Post 2...&#10;---&#10;Post 3..."></textarea>
+        <label>Posts LinkedIn (min. 3, separes par ---)</label>
+        <textarea id="clone-posts" rows="6" placeholder="Post 1...&#10;---&#10;Post 2...&#10;---&#10;Post 3..."></textarea>
       </div>
       <div class="create-step">
-        <label>Documents (optionnel : methodo, offres, brand guidelines...)</label>
+        <label>Documents (optionnel)</label>
         <div class="file-upload-zone">
           <input type="file" id="clone-file" accept=".pdf,.txt,.csv,.docx" multiple hidden>
-          <button type="button" id="clone-file-btn" class="file-upload-btn">+ Ajouter des fichiers (PDF, TXT, CSV, DOCX)</button>
+          <button type="button" id="clone-file-btn" class="file-upload-btn">+ Ajouter des fichiers</button>
           <div id="file-list" class="file-list"></div>
         </div>
-        <textarea id="clone-docs" rows="4" placeholder="Ou collez directement le texte ici..."></textarea>
+        <textarea id="clone-docs" rows="3" placeholder="Ou collez du texte directement..."></textarea>
       </div>
       <button id="clone-submit">Generer le clone</button>
       <p id="clone-status" class="hidden"></p>
     </div>
   </div>
 
-  <!-- Screen 2: Scenario selection -->
+  <!-- Screen: Scenario selection -->
   <div id="screen-scenarios" class="screen">
     <div class="scenarios-container">
-      <h2>Choisissez un mode</h2>
+      <h2>Mode</h2>
       <div id="scenario-cards" class="scenario-cards"></div>
     </div>
   </div>
 
-  <!-- Screen 3: Chat -->
+  <!-- Screen: Chat -->
   <div id="screen-chat" class="screen">
     <header class="chat-header">
       <div class="chat-avatar" id="chat-avatar"></div>
@@ -65,13 +75,12 @@
     </header>
     <div id="chat-messages" class="chat-messages"></div>
     <div class="chat-input-bar">
-      <textarea id="chat-input" placeholder="Votre message..." rows="1"></textarea>
+      <textarea id="chat-input" placeholder="Message..." rows="1"></textarea>
       <button id="chat-send">Envoyer</button>
     </div>
     <div id="chat-toast" class="toast hidden"></div>
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.min.mjs" type="module"></script>
   <script src="/app.js"></script>
 </body>
 </html>
