@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { authenticateRequest, supabase, getApiKey, logUsage, checkBudget, setCors } from "../lib/supabase.js";
+import { isEmbeddingAvailable, chunkText, embedAndStore } from "../lib/embeddings.js";
 
 const CLONE_SYSTEM_PROMPT = `Tu es un expert en personal branding et analyse de style d'ecriture LinkedIn.
 On te donne le profil LinkedIn d'une personne, ses posts, et optionnellement de la documentation.
@@ -264,6 +265,24 @@ export default async function handler(req, res) {
         console.log(JSON.stringify({ event: "ontology_extracted", persona: persona.id, entities: ontology.entities?.length || 0 }));
       } catch (e) {
         console.log(JSON.stringify({ event: "ontology_error", persona: persona.id, error: e.message }));
+      }
+
+      // Embed knowledge files for RAG (also fire-and-forget)
+      if (isEmbeddingAvailable()) {
+        try {
+          const styleChunks = chunkText(styleBody);
+          await embedAndStore(supabase, styleChunks, persona.id, "knowledge_file", "topics/style-posts-linkedin.md");
+          if (documents && documents.length > 50) {
+            const docChunks = chunkText(documents);
+            await embedAndStore(supabase, docChunks, persona.id, "document", "documents/client-docs.md");
+          }
+          const postsText = posts.join("\n\n---\n\n");
+          const postChunks = chunkText(postsText);
+          await embedAndStore(supabase, postChunks, persona.id, "linkedin_post");
+          console.log(JSON.stringify({ event: "chunks_embedded", persona: persona.id }));
+        } catch (e) {
+          console.log(JSON.stringify({ event: "embed_error", persona: persona.id, error: e.message }));
+        }
       }
     })();
 
