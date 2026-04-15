@@ -85,6 +85,7 @@
     <div class="chat-layout">
       <aside class="conv-sidebar" id="conv-sidebar">
         <div class="conv-sidebar-header">
+          <button class="conv-switch-btn" id="conv-switch-btn" aria-label="Changer de clone">&#8592; Changer de clone</button>
           <button class="conv-new-btn" id="conv-new-btn">+ Nouvelle conversation</button>
           <input type="text" class="conv-search" id="conv-search" placeholder="Rechercher...">
         </div>
@@ -92,8 +93,10 @@
       </aside>
       <div class="chat-main">
         <header class="chat-header">
+          <button class="back-btn" id="back-btn" aria-label="Retour aux scenarios">&#8592;</button>
           <div class="chat-avatar" id="chat-avatar"></div>
           <span class="chat-name" id="chat-name"></span>
+          <button class="lead-btn" id="lead-btn" title="Analyser un lead">&#128269;</button>
           <button class="settings-btn" id="settings-btn" title="Parametres">&#9881;</button>
         </header>
         <div id="chat-messages" class="chat-messages"></div>

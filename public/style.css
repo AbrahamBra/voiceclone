@@ -904,6 +904,49 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   min-width: 0;
 }
 
+.back-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius);
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+
+.back-btn:hover { color: var(--text); }
+
+.conv-switch-btn {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+  transition: color 0.15s, border-color 0.15s;
+  text-align: left;
+}
+
+.conv-switch-btn:hover { color: var(--text-secondary); border-color: var(--text-tertiary); }
+
+.lead-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  margin-left: auto;
+  transition: color 0.15s;
+}
+
+.lead-btn:hover { color: var(--text); }
+
 @media (max-width: 768px) {
   .conv-sidebar { display: none; }
 }

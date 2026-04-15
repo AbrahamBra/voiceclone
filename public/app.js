@@ -861,3 +861,32 @@ $("conv-search").addEventListener("input", (e) => {
     } catch {}
   }, 300);
 });
+
+// Back to scenarios
+$("back-btn").addEventListener("click", () => {
+  currentConversationId = null;
+  currentScenario = "";
+  $("chat-messages").innerHTML = "";
+  setupScenarios();
+  const keys = Object.keys(config.scenarios);
+  if (keys.length === 1) {
+    selectPersona(currentPersonaId);
+  } else {
+    showScreen("screen-scenarios");
+  }
+});
+
+// Switch clone
+$("conv-switch-btn").addEventListener("click", () => {
+  currentConversationId = null;
+  currentScenario = "";
+  currentPersonaId = "";
+  $("chat-messages").innerHTML = "";
+  showScreen("screen-access");
+  const personaList = $("persona-list");
+  if (personaList && !personaList.classList.contains("hidden")) {
+    // Already visible
+  } else {
+    doAccess();
+  }
+});
