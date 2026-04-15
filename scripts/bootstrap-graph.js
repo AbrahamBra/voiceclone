@@ -10,14 +10,19 @@
  * Usage: node scripts/bootstrap-graph.js [--dry-run] [--persona thomas]
  */
 
-import "dotenv/config";
+import { config } from "dotenv";
+config();
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { join } from "path";
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// Read key directly from parsed .env (process.env may be overridden by Claude Code)
+const envContent = readFileSync(".env", "utf-8");
+const apiKeyMatch = envContent.match(/^ANTHROPIC_API_KEY=(.+)$/m);
+const ANTHROPIC_KEY = apiKeyMatch ? apiKeyMatch[1].trim() : process.env.ANTHROPIC_API_KEY;
+const anthropic = new Anthropic({ apiKey: ANTHROPIC_KEY });
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const PERSONA_FILTER = process.argv.includes("--persona")
