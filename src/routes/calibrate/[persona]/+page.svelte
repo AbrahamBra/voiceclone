@@ -54,8 +54,8 @@
     }));
 
     try {
-      const data = await api("/api/calibrate-feedback", {
-        method: "POST",
+      const data = await api("/api/calibrate", {
+        method: "PATCH",
         body: JSON.stringify({ persona: personaId, ratings: payload }),
       });
       if (data.message) showToast(data.message);
