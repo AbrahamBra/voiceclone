@@ -38,6 +38,7 @@ export async function streamChat(params, callbacks, retryCount = 0) {
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let receivedData = false;
 
   try {
     while (true) {
@@ -51,6 +52,7 @@ export async function streamChat(params, callbacks, retryCount = 0) {
         if (!line.startsWith("data: ")) continue;
         try {
           const evt = JSON.parse(line.slice(6));
+          if (evt.type === "delta") receivedData = true;
           switch (evt.type) {
             case "delta": onDelta?.(evt.text); break;
             case "thinking": onThinking?.(); break;
@@ -66,7 +68,12 @@ export async function streamChat(params, callbacks, retryCount = 0) {
       }
     }
   } catch {
-    return handleNetworkError(params, callbacks, retryCount);
+    // Only retry if we haven't received any data yet — retrying after
+    // partial data would re-send the message and create duplicates
+    if (!receivedData) {
+      return handleNetworkError(params, callbacks, retryCount);
+    }
+    onError?.("disconnected");
   }
 }
 
