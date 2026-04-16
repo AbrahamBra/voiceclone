@@ -230,7 +230,51 @@
         in:fly={{ x: 100 * direction, duration: 250 }}
         out:fly={{ x: -100 * direction, duration: 200 }}
       >
-        {#if step === 1}
+        {#if step === 'type'}
+          <div class="create-step">
+            <div class="step-header">
+              <strong>Pourquoi créer ce clone ?</strong>
+              <span>Le flow de création s'adapte selon ton choix.</span>
+            </div>
+
+            <div class="type-cards">
+              <button
+                class="type-card"
+                class:type-card-selected={cloneType === 'posts'}
+                onclick={() => setCloneType('posts')}
+              >
+                <span class="type-card-icon">✍️</span>
+                <strong>Posts LinkedIn</strong>
+                <span>Génère du contenu écrit, hooks, carrousels</span>
+              </button>
+              <button
+                class="type-card"
+                class:type-card-selected={cloneType === 'dm'}
+                onclick={() => setCloneType('dm')}
+              >
+                <span class="type-card-icon">💬</span>
+                <strong>DMs LinkedIn</strong>
+                <span>Répond en prospection et qualification</span>
+              </button>
+              <button
+                class="type-card"
+                class:type-card-selected={cloneType === 'both'}
+                onclick={() => setCloneType('both')}
+              >
+                <span class="type-card-icon">⚡</span>
+                <strong>Les deux</strong>
+                <span>Flow complet, 5 étapes</span>
+              </button>
+            </div>
+
+            <div class="create-actions">
+              <button onclick={nextStep} disabled={!cloneType}>
+                Continuer →
+              </button>
+            </div>
+          </div>
+
+        {:else if step === 'info'}
           <!-- Step 1: Infos générales -->
           <div class="create-step">
             <div class="step-header">
@@ -258,13 +302,13 @@
             <textarea rows="4" bind:value={profileText} placeholder="Expertise, thèmes abordés, valeur ajoutée..."></textarea>
 
             <div class="create-actions">
-              <button onclick={() => goToStep(2)} disabled={!personaName.trim() && !profileText.trim()}>
+              <button onclick={nextStep} disabled={!personaName.trim() && !profileText.trim()}>
                 Suivant →
               </button>
             </div>
           </div>
 
-        {:else if step === 2}
+        {:else if step === 'posts'}
           <!-- Step 2: Posts LinkedIn -->
           <div class="create-step">
             <div class="step-header">
@@ -283,14 +327,14 @@
             </div>
 
             <div class="create-actions">
-              <button class="btn-secondary" onclick={() => goToStep(1)}>← Retour</button>
-              <button onclick={() => goToStep(3)} disabled={postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length < 3}>
+              <button class="btn-secondary" onclick={prevStep}>← Retour</button>
+              <button onclick={nextStep} disabled={postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length < 3}>
                 Suivant →
               </button>
             </div>
           </div>
 
-        {:else if step === 3}
+        {:else if step === 'dm'}
           <!-- Step 3: DMs LinkedIn -->
           <div class="create-step">
             <div class="step-header">
@@ -310,13 +354,15 @@
             {/if}
 
             <div class="create-actions">
-              <button class="btn-secondary" onclick={() => goToStep(2)}>← Retour</button>
-              <button class="btn-secondary" onclick={() => goToStep(4)}>Passer</button>
-              <button onclick={() => goToStep(4)} disabled={!dmsText.trim()}>Suivant →</button>
+              <button class="btn-secondary" onclick={prevStep}>← Retour</button>
+              {#if cloneType === 'both'}
+                <button class="btn-secondary" onclick={nextStep}>Passer</button>
+              {/if}
+              <button onclick={nextStep} disabled={cloneType === 'dm' && !dmsText.trim()}>Suivant →</button>
             </div>
           </div>
 
-        {:else if step === 4}
+        {:else if step === 'docs'}
           <!-- Step 4: Documents + Génération -->
           <div class="create-step">
             <div class="step-header">
@@ -387,7 +433,7 @@
             {/if}
 
             <div class="create-actions">
-              <button class="btn-secondary" onclick={() => goToStep(3)} disabled={generating}>← Retour</button>
+              <button class="btn-secondary" onclick={prevStep} disabled={generating}>← Retour</button>
             </div>
           </div>
         {/if}
@@ -700,5 +746,56 @@
   @media (max-width: 480px) {
     .create-page { padding: 1rem; }
     .scrape-row { flex-direction: column; }
+  }
+
+  .type-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .type-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--font);
+    color: var(--text);
+    transition: border-color 0.15s;
+    width: 100%;
+  }
+
+  .type-card:hover {
+    border-color: var(--text-tertiary);
+  }
+
+  .type-card-selected {
+    border-color: var(--text-secondary);
+    background: var(--surface);
+  }
+
+  .type-card-icon {
+    font-size: 1.25rem;
+    flex-shrink: 0;
+  }
+
+  .type-card strong {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  .type-card span:last-child {
+    display: block;
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+    margin-top: 0.125rem;
   }
 </style>
