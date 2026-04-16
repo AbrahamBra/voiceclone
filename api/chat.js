@@ -34,20 +34,23 @@ export default async function handler(req, res) {
   const rl = rateLimit(ip);
   if (!rl.allowed) { res.status(429).json({ error: "Too many requests", retryAfter: rl.retryAfter }); return; }
 
-  let client;
+  let client, isAdmin;
   try {
     const auth = await authenticateRequest(req);
     client = auth.client;
+    isAdmin = auth.isAdmin;
   } catch (err) {
     res.status(err.status || 403).json({ error: err.error || "Auth failed" });
     return;
   }
 
-  // Budget check
-  const budget = checkBudget(client);
-  if (!budget.allowed) {
-    res.status(402).json({ error: "Budget depasse", action: "add_api_key", remaining_cents: 0 });
-    return;
+  // Budget check (admins bypass)
+  if (!isAdmin) {
+    const budget = checkBudget(client);
+    if (!budget.allowed) {
+      res.status(402).json({ error: "Budget depasse", action: "add_api_key", remaining_cents: 0 });
+      return;
+    }
   }
 
   // Validation
