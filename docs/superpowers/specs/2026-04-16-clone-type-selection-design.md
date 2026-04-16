@@ -29,7 +29,7 @@ Rejected alternatives:
 
 **Screen:** Full-width, centered, same dark theme as the existing wizard.
 
-**Title:** `"Pour quoi créer ce clone ?"`  
+**Title:** `"Pourquoi créer ce clone ?"`  
 **Subtitle:** `"Le flow de création s'adapte selon ton choix."`
 
 **Three clickable cards:**
@@ -63,6 +63,33 @@ const TOTAL = $derived(steps.length);
 **DMs only** (4 steps): type → info → dm → docs  
 **Both** (5 steps): type → info → posts → dm → docs
 
+### Navigation
+
+All navigation must use step name or index into the `steps` array — **no hardcoded step integers**. The existing `goToStep(n)` calls with literal integers (e.g. `goToStep(2)`, `goToStep(3)`) must be replaced with index lookups:
+
+```js
+// Navigate to next step
+function nextStep() { step = steps[steps.indexOf(step) + 1]; }
+// Navigate to previous step
+function prevStep() { step = steps[steps.indexOf(step) - 1]; }
+```
+
+The `step` variable changes from an integer to a step name string. The step counter display (`"Étape X / Y"`) and progress bar segments use `steps.indexOf(step) + 1` for the current position and `steps.length` for the total.
+
+### Back-navigation and type change
+
+If the user returns to step 0 (`type`) and changes `cloneType`, any data entered in the now-excluded step is **cleared**:
+
+```js
+function setCloneType(value) {
+  cloneType = value;
+  if (value === 'dm')    postsText = '';
+  if (value === 'posts') dmsText = '';
+}
+```
+
+This prevents silently submitting data the user no longer intends to include.
+
 ---
 
 ## Validation Changes
@@ -71,6 +98,14 @@ const TOTAL = $derived(steps.length);
 |------|---------|-----|
 | Posts | Obligatoire (min 3 posts) | Obligatoire si `cloneType !== 'dm'`, absent sinon |
 | DMs | Optionnel (skippable) | Obligatoire si `cloneType !== 'posts'`, absent sinon |
+
+---
+
+## UI Conditional Rendering
+
+**Recap block (step `docs`):** The posts and DMs rows are shown conditionally:
+- Show posts row only if `cloneType !== 'dm'`
+- Show DMs row only if `cloneType !== 'posts'`
 
 ---
 
@@ -84,7 +119,7 @@ ALTER TABLE personas
   CHECK (type IN ('posts', 'dm', 'both'));
 ```
 
-`DEFAULT 'both'` ensures backward compatibility with existing clones.
+`DEFAULT 'both'` ensures backward compatibility with existing clones — all existing rows get `'both'`, and new inserts without an explicit `type` also default to `'both'`. This migration must be deployed before any code that reads `personas.type` goes live.
 
 **Why a dedicated column, not `voice` JSONB:** `type` is a structural property that determines which scenarios exist and how the clone behaves. It will be queryable for filtering. `voice` describes personality and writing style — a different concern.
 
@@ -92,16 +127,36 @@ ALTER TABLE personas
 
 ## API Changes
 
-**`/api/clone` (POST):** No logic changes. If posts data is absent, no `style-posts-linkedin.md` knowledge file is created. If DMs are absent, no `style-conversations.md` is created. This is already the current behavior.
+**`/api/clone` (POST):**
 
-`cloneType` is passed in the request body and saved to `personas.type`. The scenario generation can use it to skip the "post" scenario for DM-only clones.
+1. **Destructure `cloneType` from request body:**
+   ```js
+   const { linkedin_text, posts, dms, documents, name, cloneType } = req.body || {};
+   ```
+
+2. **Make the posts validation guard conditional:**
+   ```js
+   // Current (line ~127):
+   if (!posts || !Array.isArray(posts) || posts.length < 3) { ... }
+   // New:
+   if (cloneType !== 'dm' && (!posts || !Array.isArray(posts) || posts.length < 3)) { ... }
+   ```
+
+3. **Save `type` in the `personas` insert:**
+   ```js
+   const { data: persona } = await supabase
+     .from('personas')
+     .insert({ ..., type: cloneType || 'both' })
+   ```
+
+4. **Skip irrelevant scenario generation:** For `dm`-only clones, skip generating the "post" scenario. For `posts`-only clones, skip DM knowledge file generation (already handled — no `dms` data means no file is created).
 
 ---
 
 ## Files Affected
 
-- `src/routes/create/+page.svelte` — Add step 0 UI, derive steps array from `cloneType`
-- `api/clone.js` — Accept and store `cloneType`, skip irrelevant scenario generation
+- `src/routes/create/+page.svelte` — Add step 0 UI, derive steps array and navigation from `cloneType`, replace hardcoded `goToStep(n)` calls, conditional recap rows
+- `api/clone.js` — Destructure `cloneType`, make posts guard conditional, add `type` to personas insert, skip irrelevant scenario generation
 - `supabase/schema.sql` or a new migration file — Add `type` column to `personas`
 
 ---
