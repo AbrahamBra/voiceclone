@@ -193,9 +193,9 @@ export default async function handler(req, res) {
 
   // Await extraction before responding — Vercel terminates the function after res.json(),
   // so fire-and-forget doesn't work. We accept the slower response (~15s) for reliability.
-  await extractGraphKnowledgeFromFile(personaId, content, client);
+  const entitiesAdded = await extractGraphKnowledgeFromFile(personaId, content, client);
 
-  res.json({ file: { path, chunk_count: chunkCount } });
+  res.json({ file: { path, chunk_count: chunkCount }, entities_added: entitiesAdded });
 }
 
 /**
@@ -205,7 +205,12 @@ export default async function handler(req, res) {
  */
 async function extractGraphKnowledgeFromFile(personaId, content, client) {
   try {
-    const anthropic = new Anthropic({ apiKey: getApiKey(client) });
+    const apiKey = getApiKey(client);
+    if (!apiKey) {
+      console.log(JSON.stringify({ event: "file_graph_extraction_error", persona: personaId, error: "no_api_key" }));
+      return 0;
+    }
+    const anthropic = new Anthropic({ apiKey });
 
     const { data: existingEntities } = await supabase
       .from("knowledge_entities")
@@ -232,15 +237,18 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
 
     const raw = result.content[0].text.trim();
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return;
+    if (!jsonMatch) return 0;
     const graphData = JSON.parse(jsonMatch[0]);
-    if (!graphData.has_graph_update) return;
+    if (!graphData.has_graph_update) return 0;
+
+    let insertedCount = 0;
 
     if (graphData.new_entities?.length > 0) {
+      const VALID_ENTITY_TYPES = new Set(["concept", "framework", "person", "company", "metric", "belief", "tool", "style_rule"]);
       const entityRows = graphData.new_entities.map(e => ({
         persona_id: personaId,
         name: e.name,
-        type: e.type || "concept",
+        type: VALID_ENTITY_TYPES.has(e.type) ? e.type : "concept",
         description: e.description || "",
         confidence: 0.7,
       }));
@@ -252,8 +260,10 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
 
       if (upsertError) {
         console.log(JSON.stringify({ event: "entity_upsert_error", persona: personaId, error: upsertError.message }));
-        return;
+        return 0;
       }
+
+      insertedCount = inserted?.length || 0;
 
       if (inserted?.length > 0 && graphData.new_relations?.length > 0) {
         const { data: allEntities } = await supabase
@@ -261,13 +271,14 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
         const entityMap = {};
         for (const e of (allEntities || [])) entityMap[e.name] = e.id;
 
+        const VALID_RELATION_TYPES = new Set(["equals", "includes", "contradicts", "causes", "uses", "prerequisite", "enforces"]);
         const relationRows = graphData.new_relations
           .filter(r => entityMap[r.from] && entityMap[r.to])
           .map(r => ({
             persona_id: personaId,
             from_entity_id: entityMap[r.from],
             to_entity_id: entityMap[r.to],
-            relation_type: r.type || "uses",
+            relation_type: VALID_RELATION_TYPES.has(r.type) ? r.type : "uses",
             description: r.description || "",
             confidence: 0.7,
           }));
@@ -284,7 +295,10 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
           .eq("persona_id", personaId).eq("name", upd.name);
       }
     }
+
+    return insertedCount;
   } catch (e) {
     console.log(JSON.stringify({ event: "file_graph_extraction_error", persona: personaId, error: e.message }));
+    return 0;
   }
 }
