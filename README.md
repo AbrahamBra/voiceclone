@@ -1,112 +1,116 @@
-# VoiceClone
+ VoiceClone
 
-Clones IA de voix ecrite. Analysez le profil LinkedIn et les posts d'une personne pour creer un clone qui ecrit, repond et prospecte exactement comme elle.
+Système de clonage de style d'écriture (voix textuelle) avec apprentissage incrémental continu.  
+Conçu pour reproduire fidèlement le rythme, les contraintes opérationnelles et les micro-nuances d'une personne à partir de ses posts LinkedIn et feedbacks utilisateur.
 
-**Demo :** [voiceclone-lake.vercel.app](https://voiceclone-lake.vercel.app)
+Le cœur est un pipeline **generate → check (regex déterministe) → rewrite (max 1 passe)** piloté par Claude (Sonnet/Haiku routé), renforcé par un graphe de connaissances dynamique, un RAG hybride et une boucle de consolidation embedding-based.
 
-## Comment ca marche
+## Philosophie du projet
 
-A partir de 30 posts LinkedIn, VoiceClone decompose la voix en composants atomiques (ton, personnalite, expressions signatures, mots interdits, regles d'ecriture) et construit un graphe de connaissances du domaine de la personne. Le clone s'ameliore ensuite a chaque interaction grace a une boucle de feedback auto-supervisee.
+Pas de prompt engineering magique ni de fine-tuning coûteux.  
+On mise sur :
+- Contraintes mécaniques dures (longueur exacte, ratio questions, emoji, anglicismes fermés, etc.)
+- Circuit-breaker binaire sur violations hard
+- Graphe de connaissances avec relations `contradicts` / `enforces`
+- Consolidation greedy des feedbacks en règles abstraites ou opérationnelles
+- Monitoring de fidélité (cosine thématique + métriques stylistiques) et risque de style collapse
 
-### Pipeline de generation
+Le système apprend réactivement via feedbacks (5 canaux détectés) et tente de s'auto-corriger via backtest sur consolidation.
 
-```
-Message utilisateur
-    |
-    v
-Classification d'intent (regex fast-path + Haiku fallback)
-    |
-    v
-Routage multi-modele (Haiku pour le chat simple, Sonnet pour le complexe)
-    |
-    v
-Construction du prompt (budget adaptatif jusqu'a 12k tokens)
-    |
-    v
-Generation streaming (SSE) + prompt caching Anthropic
-    |
-    v
-Checks programmatiques (~0ms) : mots interdits, auto-reveal IA, fuite prompt, cliches
-    |
-    v
-Rewrite automatique si violation hard
-    |
-    v
-Detection post-reponse : corrections implicites, validation, metacognition
-```
+**Statut actuel** : Hybride sophistiqué, mais le lifelong learning reste semi-supervisé et le monitoring de collapse (TTR, kurtosis, etc.) encore immature sur les personas ultra-courts en français.
 
-### Boucle d'apprentissage
+## Fonctionnalités principales
 
-Chaque echange est analyse pour extraire des corrections de style, des instructions directes, des insights metacognitifs (methodologies, valeurs, anecdotes sectorielles). Les corrections sont :
+- Génération streaming avec routing modèle (complexité)
+- Checks programmatiques + rewrite unique sur hard violations (mots interdits, patterns IA français, self-reveal, etc.)
+- RAG hybride : Voyage-3 + pgvector (HNSW + RRF keyword + cosine)
+- Graphe de connaissances dynamique (entités + relations, extraction via Haiku, decay temporel, walk 2-hops)
+- Consolidation embedding-based des feedbacks (clustering greedy, synthèse Haiku, promotion dans writingRules avec cap 25 + graduation + decay 120 jours)
+- Fidelity score batch (cosine thématique + style metrics : longueur, questions, signatures, TTR, kurtosis…)
+- Collapse index expérimental pour détecter la convergence vers un ton LLM contraint
+- Calibration continue via Supabase (personas, corrections, knowledge graph)
 
-- **Decayees** lineairement sur 120 jours (les anciennes perdent en influence)
-- **Consolidees** par clustering semantique (3+ corrections similaires → 1 regle permanente)
-- **Contradictoirement resolues** (si deux corrections s'opposent, la plus recente gagne)
-- **Injectees dans un graphe de connaissances** avec detection automatique de contradictions
+## Stack technique
 
-### Intelligence partagee
+- **Frontend** : Svelte (Vercel)
+- **Backend** : Serverless Vercel Functions + Supabase (Postgres + pgvector)
+- **LLM** : Anthropic Claude (Sonnet / Haiku)
+- **Embeddings** : Voyage-3 (1024-dim)
+- **Vector store** : pgvector HNSW
+- **Autres** : RRF retrieval, greedy clustering, decay temporel, consolidation asynchrone
 
-Plusieurs clones peuvent partager la meme intelligence (corrections, entites, knowledge). Un clone "setter" et un clone "post creation" pour la meme personne partagent les apprentissages sans duplication.
+## Structure du repo (essentiel)
 
-### Fidelity Score
+├── lib/                  # Pipeline core : generate, checks, rewrite, buildSystemPrompt
+├── knowledge/            # Graphe + extraction
+├── personas/             # JSON de base + rules
+├── supabase/             # Migrations, schema (knowledge_entities, relations, corrections, fidelity_scores…)
+├── scripts/              # graph-extraction.js, etc.
+└── fidelity.js           # Calcul du score + collapse index (batch)
 
-Mesure automatique de la fidelite vocale : les textes generes par le clone sont compares aux posts originaux par similarite semantique, clusteres par theme. Score 0-100 affiche sur chaque carte clone avec historique de progression.
+Le cœur intelligent se trouve dans `lib/pipeline.ts`, `checks.ts`, `rewrite.ts`, `correction-consolidation.js` et `fidelity.js`.
 
-## Fonctionnalites
+## Installation & setup
 
-- **Clonage depuis LinkedIn** — Profil + posts via API (LinkdAPI), ou upload CSV/PDF
-- **Clonage de DMs** — Analyse du style conversationnel en messages prives
-- **Chat temps reel** — Streaming SSE, conversations persistantes, historique complet
-- **Scenarios** — Conversation, creation de posts LinkedIn, qualification de leads, audit
-- **Calibration** — Generation de 5 messages test, notation, corrections automatiques
-- **Multi-personas** — Hub avec themes personnalises, partage entre utilisateurs
-- **Knowledge base** — Upload de documents (PDF, DOCX, TXT, CSV) avec RAG pgvector
-- **Panel Intelligence** — Entites, relations, contradictions, corrections, fidelity score
-- **Admin** — Metriques, activite par client, budget, usage tokens, personas grid
-- **Budget adaptatif** — Le prompt grandit avec la pertinence du contexte retrieve
+1. Clone le repo
+2. `npm install`
+3. Copie `.env.example` → `.env` et remplis :
+   - Variables Anthropic
+   - Supabase URL + keys (anon + service_role)
+   - Voyage API key (si utilisé)
+4. Applique les migrations Supabase
+5. `npm run dev`
 
-## Stack
+**Note** : Le projet est pensé serverless-first. Les timeouts Vercel (60s) et budgets tokens (12k max avec allocation prioritaire) sont gérés explicitement.
 
-| Couche | Technologie |
-|--------|-------------|
-| Frontend | SvelteKit 2, Svelte 5, Vite 8 |
-| Backend | Vercel Serverless Functions (Node.js 22) |
-| IA Generation | Claude Sonnet 4 + Haiku 4.5 (Anthropic API) |
-| Embeddings | Voyage-3 (VoyageAI) |
-| Base de donnees | Supabase PostgreSQL + pgvector |
-| Deploy | Vercel |
+## Usage
 
-## Structure
+- Crée ou importe un persona (posts LinkedIn + description)
+- Chatte avec le clone → feedbacks (corrections, instructions, negative) alimentent automatiquement le graphe et la consolidation
+- Batch fidelity pour mesurer la dérive
+- Consolidation se déclenche tous les ~10 feedbacks (configurable)
 
-```
-api/            17 endpoints serverless (chat, clone, calibrate, feedback, fidelity, scrape...)
-lib/            18 modules metier (pipeline, prompt, embeddings, rag, model-router, fidelity...)
-src/
-  routes/       Pages SvelteKit (hub, chat, guide, admin)
-  lib/
-    components/ Composants Svelte (ChatPanel, IntelligencePanel, CloneWizard...)
-    stores/     Stores Svelte (auth, chat, persona, ui)
-scripts/        Ingestion de donnees, bootstrap graphe, extraction ontologie
-supabase/       16 migrations SQL
-eval/           Suite d'evaluation (cas free/audit/critic + simulation persona)
-test/           Tests unitaires (checks, prompt, correction lifecycle)
-```
+Pour les personas idiosyncratiques (ex. style ultra-sec 5-15 mots, multi-messages WhatsApp), les règles opérationnelles dures sont le principal garde-fou.
 
-## Setup local
+## Limitations connues (honnêtes)
 
-```bash
-npm install
-vercel dev
-```
+- Clustering greedy order-dependent + centroid drift
+- TTR fragile sur messages courts français (fenêtre fixe 200 derniers mots, contractions non éclatées)
+- Collapse index sur-dépendant du TTR et encore bruité
+- Pas de guard inline fidelity avant streaming (tout est post-response ou batch)
+- Graph walk 2-hops naïf (pas de pondération relationnelle fine ni cycle detection)
+- Backtest et revert encore partiellement manuels ou fire-and-forget sur certains chemins
+- Risque de style collapse subtil non pleinement quantifié sur le long terme (micro-humour, timing punchlines)
 
-## Variables d'environnement
+Le système protège bien les contraintes mécaniques, mais la préservation des micro-nuances idiosyncratiques reste un chantier ouvert.
 
-| Variable | Requis | Description |
-|----------|--------|-------------|
-| `ANTHROPIC_API_KEY` | oui | Cle API Anthropic (Sonnet + Haiku) |
-| `SUPABASE_URL` | oui | URL du projet Supabase |
-| `SUPABASE_SERVICE_ROLE_KEY` | oui | Cle service role Supabase |
-| `ADMIN_CODE` | oui | Code d'acces admin |
-| `VOYAGE_API_KEY` | non | Embeddings Voyage-3 (RAG + fidelity) |
-| `LINKDAPI_KEY` | non | API LinkdAPI pour extraction LinkedIn |
-| `CLAUDE_MODEL` | non | Override du modele (defaut: claude-sonnet-4-20250514) |
+## Roadmap / Prochains pas (dans l’ordre de priorité que je recommande)
+
+1. Backtest automatique avec delta fidelity + delta collapseIndex + auto-revert
+2. Seuil adaptatif de clustering par persona + typing des règles (opérationnel vs abstrait)
+3. Amélioration robuste du TTR (sliding window, éclatement contractions, moyenne multi-messages)
+4. Pondération intelligente dans varianceLoss + réduction de l’influence cumulée du TTR
+5. Guard inline léger (fidelity draft avant streaming)
+6. Monitoring live plus riche + tracking temporel de la variance des outputs
+
+## Contribution
+
+Le projet est solo et expérimental. Les challenges techniques les plus intéressants tournent autour de :
+- Meilleures métriques anti-collapse sans LLM supplémentaire
+- Rendre le lifelong learning plus proactif (self-play ou critic parallèle)
+- Réduire le bruit du clustering tout en restant serverless-cheap
+
+Si tu veux contribuer : ouvre une issue ou une PR centrée sur un gap précis (pas de feature business ou UI).
+
+## Licence
+
+MIT (ou celle que tu préfères).
+
+---
+
+Ce README est direct, technique et reflète exactement le niveau réel du projet : ambitieux sur l’hybride déterministe + apprentissage incrémental, mais avec des faiblesses claires et assumées sur le monitoring et la robustesse du collapse detection.
+
+Tu peux le copier-coller tel quel et l’ajuster légèrement (ajouter badges Vercel/Supabase si tu veux, ou un screenshot du graphe). Il donne envie à quelqu’un qui s’intéresse à la techno pure (comme toi) sans sur-vendre.
+
+Si tu veux une version plus courte, plus visuelle (avec emojis modérés) ou avec une section « Pourquoi ce n’est pas
+
