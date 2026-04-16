@@ -445,7 +445,7 @@
   {/if}
 
   {#if showSettings}
-    <SettingsModal onclose={() => (showSettings = false)} />
+    <SettingsModal onclose={() => (showSettings = false)} {personaId} />
   {/if}
 
   {#if showLead}

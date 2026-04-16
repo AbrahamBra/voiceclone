@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { authenticateRequest, supabase, getApiKey, hasPersonaAccess, setCors } from "../lib/supabase.js";
-import { clearCache, loadPersonaData } from "../lib/knowledge-db.js";
+import { clearIntelligenceCache, loadPersonaData, getIntelligenceId } from "../lib/knowledge-db.js";
 import { extractGraphKnowledge } from "../lib/graph-extraction.js";
 
 export default async function handler(req, res) {
@@ -29,7 +29,7 @@ export default async function handler(req, res) {
     }
 
     // Always bypass cache for Intelligence panel — entities may have just been added
-    clearCache(personaId);
+    clearIntelligenceCache(personaId);
     const data = await loadPersonaData(personaId);
     if (!data) { res.status(404).json({ error: "Persona not found" }); return; }
 
@@ -99,15 +99,20 @@ export default async function handler(req, res) {
       if (!hasAccess) { res.status(403).json({ error: "Forbidden" }); return; }
     }
 
+    // Resolve intelligence source for delete
+    const { data: delPersona } = await supabase
+      .from("personas").select("id, intelligence_source_id").eq("id", personaId).single();
+    const delIntellId = delPersona ? getIntelligenceId(delPersona) : personaId;
+
     const { error } = await supabase
       .from("corrections")
       .delete()
       .eq("id", correctionId)
-      .eq("persona_id", personaId);
+      .eq("persona_id", delIntellId);
 
     if (error) { res.status(500).json({ error: "Failed to delete" }); return; }
 
-    clearCache(personaId);
+    clearIntelligenceCache(delIntellId);
     res.json({ ok: true });
     return;
   }
@@ -123,23 +128,30 @@ export default async function handler(req, res) {
     if (!hasAccess) { res.status(403).json({ error: "Forbidden" }); return; }
   }
 
+  // Resolve intelligence source for writes
+  const { data: fbPersona } = await supabase
+    .from("personas").select("id, intelligence_source_id").eq("id", personaId).single();
+  if (!fbPersona) { res.status(404).json({ error: "Persona not found" }); return; }
+  const intellId = getIntelligenceId(fbPersona);
+
   // ── Type "validate": positive reinforcement — boost graph entities ──
   if (type === "validate") {
     if (!botMessage) { res.status(400).json({ error: "botMessage required" }); return; }
 
     // Save as positive example
     await supabase.from("corrections").insert({
-      persona_id: personaId,
+      persona_id: intellId,
       correction: "[VALIDATED] Reponse validee par l'utilisateur",
       bot_message: botMessage.slice(0, 300),
       user_message: userMessage?.slice(0, 200) || null,
+      contributed_by: client?.id || null,
     });
 
     // Boost confidence of entities that match this message
     const { data: entities } = await supabase
       .from("knowledge_entities")
       .select("id, name, confidence")
-      .eq("persona_id", personaId);
+      .eq("persona_id", intellId);
 
     if (entities?.length > 0) {
       const msgLower = botMessage.toLowerCase();
@@ -152,7 +164,7 @@ export default async function handler(req, res) {
       }
     }
 
-    clearCache(personaId);
+    clearIntelligenceCache(intellId);
     res.json({ ok: true, message: "Validated" });
     return;
   }
@@ -174,7 +186,7 @@ export default async function handler(req, res) {
         const { data: entity } = await supabase
           .from("knowledge_entities")
           .select("confidence")
-          .eq("id", id).eq("persona_id", personaId).single();
+          .eq("id", id).eq("persona_id", intellId).single();
         if (!entity) continue;
         const newConf = Math.max(0.0, (entity.confidence || 0.8) - 0.1);
         await supabase.from("knowledge_entities")
@@ -190,7 +202,7 @@ export default async function handler(req, res) {
         const { data: corr } = await supabase
           .from("corrections")
           .select("confidence")
-          .eq("id", id).eq("persona_id", personaId).single();
+          .eq("id", id).eq("persona_id", intellId).single();
         if (!corr) continue;
         const newConf = Math.max(0.0, (corr.confidence || 0.8) - 0.15);
         const newStatus = newConf <= 0.1 ? "archived" : "active";
@@ -201,7 +213,7 @@ export default async function handler(req, res) {
       }
     }
 
-    clearCache(personaId);
+    clearIntelligenceCache(intellId);
     res.json({ ok: true, message: "Rejected", entities_demoted: demotedEntities, corrections_demoted: demotedCorrections });
     return;
   }
@@ -253,17 +265,18 @@ export default async function handler(req, res) {
 
     // Save correction
     await supabase.from("corrections").insert({
-      persona_id: personaId,
+      persona_id: intellId,
       correction: finalCorrection,
       user_message: userMessage?.slice(0, 200) || null,
       bot_message: botMessage?.slice(0, 300) || null,
+      contributed_by: client?.id || null,
     });
 
     // Extract graph knowledge (same as existing flow below)
     // Fire-and-forget for speed
-    extractGraphKnowledge(personaId, finalCorrection, botMessage, userMessage, client).catch(() => {});
+    extractGraphKnowledge(intellId, finalCorrection, botMessage, userMessage, client).catch(() => {});
 
-    clearCache(personaId);
+    clearIntelligenceCache(intellId);
     res.json({ ok: true, message: "Correction enregistree et clone ameliore", accepted });
     return;
   }
@@ -295,14 +308,15 @@ export default async function handler(req, res) {
       }
 
       await supabase.from("corrections").insert({
-        persona_id: personaId,
+        persona_id: intellId,
         correction: rule,
         user_message: userMessage.slice(0, 200),
         bot_message: "[saved-by-user]",
+        contributed_by: client?.id || null,
       });
 
-      await extractGraphKnowledge(personaId, rule, null, userMessage, client);
-      clearCache(personaId);
+      await extractGraphKnowledge(intellId, rule, null, userMessage, client);
+      clearIntelligenceCache(intellId);
 
       res.json({ ok: true, message: "Règle sauvegardée", rule });
     } catch (e) {
@@ -342,10 +356,11 @@ export default async function handler(req, res) {
 
   // 1. Save the correction (always)
   const { error } = await supabase.from("corrections").insert({
-    persona_id: personaId,
+    persona_id: intellId,
     correction: finalCorrection,
     user_message: type === "implicit" ? "[diff implicite]" : userMessage?.slice(0, 200) || null,
     bot_message: type === "implicit" ? original?.slice(0, 300) : botMessage?.slice(0, 300) || null,
+    contributed_by: client?.id || null,
   });
 
   if (error) {
@@ -354,9 +369,9 @@ export default async function handler(req, res) {
   }
 
   // 2. Extract graph knowledge — await before response (Vercel kills fire-and-forget)
-  const { entityCount, contradictions } = await extractGraphKnowledge(personaId, finalCorrection, botMessage || original, userMessage, client);
+  const { entityCount, contradictions } = await extractGraphKnowledge(intellId, finalCorrection, botMessage || original, userMessage, client);
 
-  clearCache(personaId);
+  clearIntelligenceCache(intellId);
 
   res.json({
     ok: true,

@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { authenticateRequest, supabase, getApiKey, hasPersonaAccess, setCors } from "../lib/supabase.js";
 import { chunkText, embedAndStore } from "../lib/embeddings.js";
-import { clearCache } from "../lib/knowledge-db.js";
+import { clearIntelligenceCache, getIntelligenceId } from "../lib/knowledge-db.js";
 
 const KEYWORD_PROMPT = `Extrais 5 à 15 mots-clés représentatifs de ce document.
 Retourne UNIQUEMENT un tableau JSON de strings, sans aucun autre texte ni balises markdown.
@@ -64,10 +64,16 @@ export default async function handler(req, res) {
       if (!hasAccess) { res.status(403).json({ error: "Forbidden" }); return; }
     }
 
+    // Resolve intelligence source
+    const { data: getKnPersona } = await supabase
+      .from("personas").select("id, intelligence_source_id").eq("id", personaId).single();
+    if (!getKnPersona) { res.status(404).json({ error: "Persona not found" }); return; }
+    const intellId = getIntelligenceId(getKnPersona);
+
     const { data: files, error } = await supabase
       .from("knowledge_files")
       .select("path, created_at")
-      .eq("persona_id", personaId)
+      .eq("persona_id", intellId)
       .order("created_at", { ascending: false });
 
     if (error) { res.status(500).json({ error: "Failed to load files" }); return; }
@@ -76,7 +82,7 @@ export default async function handler(req, res) {
     const { data: chunkRows } = await supabase
       .from("chunks")
       .select("source_path")
-      .eq("persona_id", personaId);
+      .eq("persona_id", intellId);
 
     const chunkCounts = {};
     for (const row of (chunkRows || [])) {
@@ -103,25 +109,27 @@ export default async function handler(req, res) {
       res.status(400).json({ error: "persona and file are required" }); return;
     }
 
+    // Resolve intelligence source + ownership check
+    const { data: delKnPersona } = await supabase
+      .from("personas").select("client_id, intelligence_source_id").eq("id", personaId).single();
     if (!isAdmin) {
-      const { data: persona } = await supabase
-        .from("personas").select("client_id").eq("id", personaId).single();
-      if (!persona || persona.client_id !== client?.id) {
+      if (!delKnPersona || delKnPersona.client_id !== client?.id) {
         res.status(403).json({ error: "Forbidden" }); return;
       }
     }
+    const delIntellId = delKnPersona ? getIntelligenceId(delKnPersona) : personaId;
 
     await supabase.from("knowledge_files")
       .delete()
-      .eq("persona_id", personaId)
+      .eq("persona_id", delIntellId)
       .eq("path", filename);
 
     await supabase.from("chunks")
       .delete()
-      .eq("persona_id", personaId)
+      .eq("persona_id", delIntellId)
       .eq("source_path", filename);
 
-    clearCache(personaId);
+    clearIntelligenceCache(delIntellId);
     res.json({ ok: true });
     return;
   }
@@ -136,13 +144,15 @@ export default async function handler(req, res) {
     res.status(400).json({ error: "Content too large (max 250 000 characters)" }); return;
   }
 
+  // Resolve intelligence source + ownership check
+  const { data: postKnPersona } = await supabase
+    .from("personas").select("client_id, intelligence_source_id").eq("id", personaId).single();
   if (!isAdmin) {
-    const { data: persona } = await supabase
-      .from("personas").select("client_id").eq("id", personaId).single();
-    if (!persona || persona.client_id !== client?.id) {
+    if (!postKnPersona || postKnPersona.client_id !== client?.id) {
       res.status(403).json({ error: "Forbidden" }); return;
     }
   }
+  const intellId = postKnPersona ? getIntelligenceId(postKnPersona) : personaId;
 
   // Unique path with timestamp suffix to avoid collisions
   const dotIndex = filename.lastIndexOf(".");
@@ -177,28 +187,29 @@ export default async function handler(req, res) {
   const chunks = chunkText(content);
   let chunkCount = 0;
   try {
-    chunkCount = await embedAndStore(supabase, chunks, personaId, "knowledge_file", path);
+    chunkCount = await embedAndStore(supabase, chunks, intellId, "knowledge_file", path);
   } catch (embedErr) {
     console.log(JSON.stringify({ event: "embed_error", error: embedErr.message, path }));
     // File still stored — keyword search will work without vectors
   }
 
   const { error: insertError } = await supabase.from("knowledge_files").insert({
-    persona_id: personaId,
+    persona_id: intellId,
     path,
     keywords,
     content,
+    contributed_by: client?.id || null,
   });
 
   if (insertError) {
     res.status(500).json({ error: "Failed to save file" }); return;
   }
 
-  clearCache(personaId);
+  clearIntelligenceCache(intellId);
 
   // Await extraction before responding — Vercel terminates the function after res.json(),
   // so fire-and-forget doesn't work. We accept the slower response (~15s) for reliability.
-  const { count: entitiesAdded, debug: extractDebug } = await extractGraphKnowledgeFromFile(personaId, content, client);
+  const { count: entitiesAdded, debug: extractDebug } = await extractGraphKnowledgeFromFile(intellId, content, client);
 
   res.json({ file: { path, chunk_count: chunkCount }, entities_added: entitiesAdded, _debug: extractDebug });
 }
@@ -208,7 +219,7 @@ export default async function handler(req, res) {
  * Entities from files get confidence 0.7 (lower than corrections at 0.8 — not user-validated).
  * Runs async — caller doesn't wait.
  */
-async function extractGraphKnowledgeFromFile(personaId, content, client) {
+async function extractGraphKnowledgeFromFile(intellId, content, client) {
   try {
     const apiKey = getApiKey(client);
     if (!apiKey) {
@@ -219,7 +230,7 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
     const { data: existingEntities } = await supabase
       .from("knowledge_entities")
       .select("name, type, description")
-      .eq("persona_id", personaId);
+      .eq("persona_id", intellId);
 
     const entityContext = existingEntities?.length > 0
       ? `\n\nEntités déjà dans le graphe :\n${existingEntities.map(e => `- ${e.name} (${e.type}): ${e.description}`).join("\n")}`
@@ -240,7 +251,7 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
     ]);
 
     const raw = result.content[0].text.trim();
-    console.log(JSON.stringify({ event: "graph_extraction_raw", persona: personaId, raw: raw.slice(0, 500), stop_reason: result.stop_reason }));
+    console.log(JSON.stringify({ event: "graph_extraction_raw", persona: intellId, raw: raw.slice(0, 500), stop_reason: result.stop_reason }));
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return { count: 0, debug: `no_json_in_response: ${raw.slice(0, 200)}` };
 
@@ -248,7 +259,7 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
     try {
       graphData = JSON.parse(jsonMatch[0]);
     } catch (parseErr) {
-      console.log(JSON.stringify({ event: "graph_extraction_json_error", persona: personaId, error: parseErr.message, json_snippet: jsonMatch[0].slice(0, 300) }));
+      console.log(JSON.stringify({ event: "graph_extraction_json_error", persona: intellId, error: parseErr.message, json_snippet: jsonMatch[0].slice(0, 300) }));
       return { count: 0, debug: `json_parse_error: ${parseErr.message}` };
     }
 
@@ -259,7 +270,7 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
     if (graphData.new_entities?.length > 0) {
       const VALID_ENTITY_TYPES = new Set(["concept", "framework", "person", "company", "metric", "belief", "tool", "style_rule"]);
       const entityRows = graphData.new_entities.map(e => ({
-        persona_id: personaId,
+        persona_id: intellId,
         name: e.name,
         type: VALID_ENTITY_TYPES.has(e.type) ? e.type : "concept",
         description: e.description || "",
@@ -287,7 +298,7 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
         const relationRows = graphData.new_relations
           .filter(r => entityMap[r.from] && entityMap[r.to])
           .map(r => ({
-            persona_id: personaId,
+            persona_id: intellId,
             from_entity_id: entityMap[r.from],
             to_entity_id: entityMap[r.to],
             relation_type: VALID_RELATION_TYPES.has(r.type) ? r.type : "uses",
@@ -310,7 +321,7 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
 
     return { count: insertedCount, debug: `ok: ${insertedCount} entities` };
   } catch (e) {
-    console.log(JSON.stringify({ event: "file_graph_extraction_error", persona: personaId, error: e.message }));
+    console.log(JSON.stringify({ event: "file_graph_extraction_error", persona: intellId, error: e.message }));
     return { count: 0, debug: `exception: ${e.message}` };
   }
 }

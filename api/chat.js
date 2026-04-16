@@ -4,7 +4,7 @@ import { runPipeline } from "../lib/pipeline.js";
 import { initSSE } from "../lib/sse.js";
 import { validateInput } from "../lib/validate.js";
 import { authenticateRequest, checkBudget, getApiKey, logUsage, hasPersonaAccess, setCors, supabase } from "../lib/supabase.js";
-import { getPersonaFromDb, findRelevantKnowledgeFromDb, loadScenarioFromDb, getCorrectionsFromDb, findRelevantEntities } from "../lib/knowledge-db.js";
+import { getPersonaFromDb, findRelevantKnowledgeFromDb, loadScenarioFromDb, getCorrectionsFromDb, findRelevantEntities, getIntelligenceId } from "../lib/knowledge-db.js";
 import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, looksLikeDirectInstruction, looksLikeNegativeFeedback, detectNegativeFeedback } from "../lib/feedback-detect.js";
 
 /** Extract a smart conversation title from the first message */
@@ -60,6 +60,7 @@ export default async function handler(req, res) {
   // Load persona data from DB
   const persona = await getPersonaFromDb(personaId);
   if (!persona) { res.status(404).json({ error: "Persona not found" }); return; }
+  const intellId = getIntelligenceId(persona);
 
   // Persona access check (owner or shared)
   if (client && persona.client_id !== client.id) {
@@ -149,7 +150,7 @@ export default async function handler(req, res) {
   // Short-circuit: negative feedback — user wants to undo/weaken a rule
   if (looksLikeNegativeFeedback(message)) {
     try {
-      const result = await detectNegativeFeedback(personaId, message, messages, client);
+      const result = await detectNegativeFeedback(intellId, message, messages, client);
       if (result && result.demoted > 0) {
         const confirm = result.demoted === 1
           ? `Règle affaiblie : "${result.corrections[0].slice(0, 60)}". Elle aura moins d'influence.`
@@ -183,7 +184,7 @@ export default async function handler(req, res) {
   // without calling Claude (avoids the "I can't modify my settings" response)
   if (looksLikeDirectInstruction(message)) {
     try {
-      const saved = await detectDirectInstruction(personaId, message, messages, client);
+      const saved = await detectDirectInstruction(intellId, message, messages, client);
       if (saved > 0) {
         const confirm = saved === 1
           ? "Règle ajoutée. Elle sera active dès ton prochain message."
@@ -250,8 +251,8 @@ export default async function handler(req, res) {
     // 2. Validation signals: "ok top", "parfait" → extracts corrections from coaching history
     // Note: direct instructions are handled above (short-circuit path)
     Promise.all([
-      detectCoachingCorrection(personaId, message, messages, client),
-      detectChatFeedback(personaId, message, messages, client),
+      detectCoachingCorrection(intellId, message, messages, client),
+      detectChatFeedback(intellId, message, messages, client),
     ]).catch(err => console.log(JSON.stringify({
         event: "feedback_detect_bg_error", ts: new Date().toISOString(), error: err.message,
       })));

@@ -4,15 +4,24 @@
   import { authHeaders } from "$lib/api.js";
   import { showToast } from "$lib/stores/ui.js";
 
-  let { onclose } = $props();
+  let { onclose, personaId = null } = $props();
 
   let apiKey = $state("");
   let saving = $state(false);
   let usage = $state({ budget_cents: 0, spent_cents: 0, remaining_cents: 0, has_own_key: false });
+  let contributors = $state({ contributors: [], is_shared: false, source_persona_name: null });
 
   $effect(() => {
     fetchUsage();
+    if (personaId) fetchContributors();
   });
+
+  async function fetchContributors() {
+    try {
+      const resp = await fetch(`/api/contributors?persona=${personaId}`, { headers: authHeaders() });
+      if (resp.ok) contributors = await resp.json();
+    } catch {}
+  }
 
   async function fetchUsage() {
     try {
@@ -62,6 +71,27 @@
         placeholder="sk-ant-..."
       />
     </div>
+    {#if contributors.contributors.length > 0 || contributors.is_shared}
+      <div class="contributors">
+        <h4>Contributeurs{contributors.is_shared ? ` · ${contributors.source_persona_name || "partage"}` : ""}</h4>
+        {#if contributors.contributors.length > 0}
+          <ul>
+            {#each contributors.contributors as c}
+              <li>
+                <span class="name">{c.name}</span>
+                <span class="stats">{c.corrections_count} corrections{c.knowledge_count > 0 ? `, ${c.knowledge_count} docs` : ""}</span>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="empty">Aucune contribution trackee</p>
+        {/if}
+        {#if contributors.is_shared}
+          <p class="shared-badge">Intelligence partagee</p>
+        {/if}
+      </div>
+    {/if}
+
     <div class="actions">
       <button class="btn-cancel" onclick={onclose}>Fermer</button>
       <button class="btn-submit" disabled={saving} onclick={save}>
@@ -162,6 +192,56 @@
   .btn-submit:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .contributors {
+    margin-bottom: 0.75rem;
+    padding: 0.5rem;
+    background: var(--bg);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+  }
+
+  .contributors h4 {
+    margin: 0 0 0.375rem;
+    font-size: 0.8125rem;
+    color: var(--text);
+  }
+
+  .contributors ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .contributors li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.2rem 0;
+    font-size: 0.75rem;
+  }
+
+  .contributors .name {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .contributors .stats {
+    color: var(--text-secondary);
+  }
+
+  .contributors .empty {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  .shared-badge {
+    font-size: 0.6875rem;
+    color: var(--accent);
+    margin: 0.375rem 0 0;
+    font-weight: 500;
   }
 
   @media (max-width: 480px) {
