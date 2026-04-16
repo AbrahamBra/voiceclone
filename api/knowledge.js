@@ -191,9 +191,9 @@ export default async function handler(req, res) {
 
   clearCache(personaId);
 
-  // Extract graph knowledge from file content (fire-and-forget)
-  // Must start BEFORE res.json() so the Promise is in the event loop when Vercel closes the response
-  extractGraphKnowledgeFromFile(personaId, content, client).catch(() => {});
+  // Await extraction before responding — Vercel terminates the function after res.json(),
+  // so fire-and-forget doesn't work. We accept the slower response (~15s) for reliability.
+  await extractGraphKnowledgeFromFile(personaId, content, client);
 
   res.json({ file: { path, chunk_count: chunkCount } });
 }
@@ -245,10 +245,15 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
         confidence: 0.7,
       }));
 
-      const { data: inserted } = await supabase
+      const { data: inserted, error: upsertError } = await supabase
         .from("knowledge_entities")
         .upsert(entityRows, { onConflict: "persona_id,name" })
         .select("id, name");
+
+      if (upsertError) {
+        console.log(JSON.stringify({ event: "entity_upsert_error", persona: personaId, error: upsertError.message }));
+        return;
+      }
 
       if (inserted?.length > 0 && graphData.new_relations?.length > 0) {
         const { data: allEntities } = await supabase
