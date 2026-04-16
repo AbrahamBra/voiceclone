@@ -149,7 +149,8 @@ export default async function handler(req, res) {
         const confirm = saved === 1
           ? "Règle ajoutée. Elle sera active dès ton prochain message."
           : `${saved} règles ajoutées. Elles seront actives dès ton prochain message.`;
-        sse("token", { text: confirm });
+        sse("delta", { text: confirm });
+        sse("done", {});
 
         // Persist user message + confirmation
         if (convId && supabase) {

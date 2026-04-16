@@ -178,7 +178,7 @@
   <div class="intel-section">
     <h4 class="intel-section-title">Corrections <span class="intel-count">{data.corrections.length}</span></h4>
     {#if data.corrections.length === 0}
-      <p class="intel-empty">Aucune correction. Utilisez le bouton Corriger sur les reponses.</p>
+      <p class="intel-empty">Aucune correction. Corrigez les reponses ou donnez des instructions dans le chat.</p>
     {:else}
       {#each data.corrections as c (c.id)}
         <div class="intel-correction" class:expanded={expandedCorrections.has(c.id)}>
