@@ -5,35 +5,18 @@
   import { personas, canCreateClone, personaConfig, currentPersonaId } from "$lib/stores/persona.js";
   import { showToast } from "$lib/stores/ui.js";
   import { api, authHeaders } from "$lib/api.js";
-  import PersonaCard from "$lib/components/PersonaCard.svelte";
-  import ScenarioPill from "$lib/components/ScenarioPill.svelte";
 
-  /** @type {"idle" | "personas" | "scenarios"} */
   let state = $state("idle");
   let code = $state("");
   let error = $state("");
   let shaking = $state(false);
   let loading = $state(false);
-
-  /** @type {any} */
-  let selectedPersona = $state(null);
-  let scenarios = $state([]);
-
   let inputEl = $state(undefined);
 
-  // Last persona from localStorage
-  let lastPersona = $state(null);
-
-  $effect(() => {
-    if (typeof localStorage !== "undefined") {
-      try {
-        const raw = localStorage.getItem("vc_last_persona");
-        if (raw) lastPersona = JSON.parse(raw);
-      } catch {
-        // ignore
-      }
-    }
-  });
+  // Hub state: persona configs loaded after login
+  /** @type {Array<{persona: any, config: any, scenarios: Array<{key: string, label: string, description: string}>}>} */
+  let personaConfigs = $state([]);
+  let loadingHub = $state(false);
 
   // Auto-focus input on mount
   $effect(() => {
@@ -45,7 +28,6 @@
   // If already authenticated, redirect
   $effect(() => {
     if ($accessCode && state === "idle") {
-      // Already logged in — fetch personas
       handleSubmit();
     }
   });
@@ -88,7 +70,10 @@
       canCreateClone.set(data.canCreateClone || false);
       isAdmin.set(data.isAdmin || false);
 
-      state = "personas";
+      // Load all persona configs for the hub
+      await loadPersonaConfigs(data.personas);
+
+      state = "hub";
     } catch {
       error = "Erreur de connexion";
     } finally {
@@ -96,150 +81,166 @@
     }
   }
 
-  function onKeydown(e) {
-    if (e.key === "Enter") handleSubmit();
-  }
-
-  async function selectPersona(persona) {
-    selectedPersona = persona;
-    loading = true;
-
-    try {
-      const resp = await fetch(`/api/config?persona=${persona.id}`, {
-        headers: authHeaders(),
-      });
-      if (!resp.ok) throw new Error("Failed to load config");
-
-      const config = await resp.json();
-      personaConfig.set(config);
-      currentPersonaId.set(persona.id);
-      applyTheme(config.theme || {});
-
-      // Save to localStorage
-      localStorage.setItem("vc_last_persona", JSON.stringify({
-        id: persona.id,
-        name: persona.name,
-        avatar: persona.avatar,
-      }));
-
-      const keys = Object.keys(config.scenarios || {});
-      if (keys.length === 1) {
-        goto(`/chat/${persona.id}?scenario=${keys[0]}`);
-      } else {
-        scenarios = Object.entries(config.scenarios || {}).map(([key, val]) => ({
+  async function loadPersonaConfigs(personaList) {
+    loadingHub = true;
+    const configs = [];
+    for (const p of personaList) {
+      try {
+        const resp = await fetch(`/api/config?persona=${p.id}`, {
+          headers: authHeaders(),
+        });
+        if (!resp.ok) continue;
+        const config = await resp.json();
+        const scenarios = Object.entries(config.scenarios || {}).map(([key, val]) => ({
           key,
           label: val.label,
           description: val.description,
         }));
-        state = "scenarios";
+        configs.push({ persona: p, config, scenarios });
+      } catch {
+        // skip this persona
       }
-    } catch {
-      showToast("Erreur de chargement du client");
-    } finally {
-      loading = false;
     }
+    personaConfigs = configs;
+    loadingHub = false;
   }
 
-  function selectScenario(key) {
-    goto(`/chat/${selectedPersona.id}?scenario=${key}`);
+  function onKeydown(e) {
+    if (e.key === "Enter") handleSubmit();
   }
 
-  async function resumeLastPersona() {
-    if (!lastPersona) return;
-    loading = true;
+  function openScenario(personaEntry, scenarioKey) {
+    personaConfig.set(personaEntry.config);
+    currentPersonaId.set(personaEntry.persona.id);
+    applyTheme(personaEntry.config.theme || {});
+    localStorage.setItem("vc_last_persona", JSON.stringify({
+      id: personaEntry.persona.id,
+      name: personaEntry.persona.name,
+      avatar: personaEntry.persona.avatar,
+    }));
+    goto(`/chat/${personaEntry.persona.id}?scenario=${scenarioKey}`);
+  }
 
-    try {
-      const resp = await fetch(`/api/config?persona=${lastPersona.id}`, {
-        headers: authHeaders(),
-      });
-
-      if (!resp.ok) {
-        localStorage.removeItem("vc_last_persona");
-        lastPersona = null;
-        showToast("Clone indisponible");
-        loading = false;
-        return;
-      }
-
-      const config = await resp.json();
-      personaConfig.set(config);
-      currentPersonaId.set(lastPersona.id);
-      applyTheme(config.theme || {});
-
-      goto(`/chat/${lastPersona.id}`);
-    } catch {
-      localStorage.removeItem("vc_last_persona");
-      lastPersona = null;
-      showToast("Clone indisponible");
-    } finally {
-      loading = false;
+  function openPersona(personaEntry) {
+    if (personaEntry.scenarios.length === 1) {
+      openScenario(personaEntry, personaEntry.scenarios[0].key);
+    } else {
+      personaConfig.set(personaEntry.config);
+      currentPersonaId.set(personaEntry.persona.id);
+      applyTheme(personaEntry.config.theme || {});
+      localStorage.setItem("vc_last_persona", JSON.stringify({
+        id: personaEntry.persona.id,
+        name: personaEntry.persona.name,
+        avatar: personaEntry.persona.avatar,
+      }));
+      goto(`/chat/${personaEntry.persona.id}`);
     }
   }
 </script>
 
 <svelte:window onkeydown={state === "idle" ? onKeydown : undefined} />
 
-<div class="login-screen">
+<div class="page">
   {#if state === "idle"}
-    <div class="access-card" transition:fade={{ duration: 150 }}>
-      <h1>VoiceClone</h1>
-      <p class="subtitle">Entrez votre code d'acces</p>
-      <div class="access-form">
-        <input
-          type="password"
-          autocomplete="off"
-          placeholder="Code d'acces"
-          class:shake={shaking}
-          bind:value={code}
-          bind:this={inputEl}
-          disabled={loading}
-        />
-        <button onclick={handleSubmit} disabled={loading}>
-          {loading ? "..." : "Entrer"}
-        </button>
-      </div>
-      {#if error}
-        <p class="error">{error}</p>
-      {/if}
-      {#if lastPersona}
-        <button class="resume-btn" onclick={resumeLastPersona} disabled={loading}>
-          Reprendre avec {lastPersona.name}
-        </button>
-      {/if}
-      <a href="/guide" class="guide-link">Guide d'onboarding</a>
-    </div>
-  {:else if state === "personas"}
-    <div class="access-card" transition:fade={{ duration: 150 }}>
-      <h1>Choisissez un client</h1>
-      <div class="persona-list">
-        {#each $personas as persona, i}
-          <PersonaCard {persona} index={i} onclick={() => selectPersona(persona)} />
-        {/each}
-        {#if $canCreateClone}
-          <button class="persona-card persona-card-create" transition:fly={{ y: 12, delay: $personas.length * 80, duration: 150 }} onclick={() => goto("/create")}>
-            <div class="persona-card-avatar">+</div>
-            <div>
-              <strong>Creer un clone</strong>
-              <span class="persona-card-title">A partir d'un profil LinkedIn</span>
-            </div>
+    <div class="center-wrap">
+      <div class="access-card" transition:fade={{ duration: 150 }}>
+        <h1>VoiceClone</h1>
+        <p class="subtitle">Entrez votre code d'acces</p>
+        <div class="access-form">
+          <input
+            type="password"
+            autocomplete="off"
+            placeholder="Code d'acces"
+            class:shake={shaking}
+            bind:value={code}
+            bind:this={inputEl}
+            disabled={loading}
+          />
+          <button onclick={handleSubmit} disabled={loading}>
+            {loading ? "..." : "Entrer"}
           </button>
+        </div>
+        {#if error}
+          <p class="error">{error}</p>
         {/if}
+        <a href="/guide" class="guide-link">Guide d'onboarding</a>
       </div>
     </div>
-  {:else if state === "scenarios"}
-    <div class="access-card" transition:fade={{ duration: 150 }}>
-      <h1>{selectedPersona?.name}</h1>
-      <div class="scenario-list">
-        {#each scenarios as scenario, i}
-          <ScenarioPill {scenario} index={i} onclick={() => selectScenario(scenario.key)} />
-        {/each}
-      </div>
+
+  {:else if state === "hub"}
+    <div class="hub" transition:fade={{ duration: 150 }}>
+      <h1 class="hub-title">VoiceClone</h1>
+
+      {#if loadingHub}
+        <p class="hub-loading">Chargement...</p>
+      {:else}
+        <!-- Existing personas with inline scenarios -->
+        {#if personaConfigs.length > 0}
+          <section class="hub-section">
+            <h2 class="hub-section-title">Mes clones</h2>
+            {#each personaConfigs as entry, i}
+              <div class="clone-card" transition:fly={{ y: 12, delay: i * 80, duration: 200 }}>
+                <button class="clone-header" onclick={() => openPersona(entry)}>
+                  <div class="clone-avatar">{entry.persona.avatar || "?"}</div>
+                  <div class="clone-info">
+                    <strong>{entry.persona.name}</strong>
+                    {#if entry.persona.title}
+                      <span class="clone-title">{entry.persona.title}</span>
+                    {/if}
+                  </div>
+                </button>
+                {#if entry.scenarios.length > 1}
+                  <div class="clone-scenarios">
+                    {#each entry.scenarios as scenario}
+                      <button class="scenario-btn" onclick={() => openScenario(entry, scenario.key)}>
+                        <strong>{scenario.label}</strong>
+                        <span>{scenario.description}</span>
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            {/each}
+          </section>
+        {/if}
+
+        <!-- Create clone -->
+        {#if $canCreateClone || $isAdmin}
+          <section class="hub-section">
+            <h2 class="hub-section-title">Nouveau clone</h2>
+            <button class="action-card" onclick={() => goto("/create")} transition:fly={{ y: 12, delay: personaConfigs.length * 80 + 40, duration: 200 }}>
+              <div class="action-icon">+</div>
+              <div class="action-info">
+                <strong>Creer un clone</strong>
+                <span>A partir d'un profil LinkedIn</span>
+              </div>
+            </button>
+          </section>
+        {/if}
+
+        <!-- Guide -->
+        <section class="hub-section">
+          <h2 class="hub-section-title">Ressources</h2>
+          <a href="/guide" class="action-card" transition:fly={{ y: 12, delay: personaConfigs.length * 80 + 120, duration: 200 }}>
+            <div class="action-icon">?</div>
+            <div class="action-info">
+              <strong>Guide d'onboarding</strong>
+              <span>Process, base de connaissances, boucle de feedback</span>
+            </div>
+          </a>
+        </section>
+      {/if}
     </div>
   {/if}
 </div>
 
 <style>
-  .login-screen {
+  .page {
+    min-height: 100dvh;
+  }
+
+  /* ---- Login ---- */
+  .center-wrap {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -286,10 +287,7 @@
     transition: border-color 0.15s;
   }
 
-  .access-form input:focus {
-    border-color: var(--text-tertiary);
-  }
-
+  .access-form input:focus { border-color: var(--text-tertiary); }
   .access-form input::placeholder { color: var(--text-tertiary); }
 
   .access-form button {
@@ -323,70 +321,77 @@
 
   .shake { animation: shake 0.3s ease; }
 
-  .resume-btn {
-    margin-top: 1rem;
-    padding: 0.5rem 1rem;
-    background: var(--surface);
-    color: var(--text-secondary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    font-size: 0.75rem;
-    font-weight: 500;
-    font-family: var(--font);
-    cursor: pointer;
-    transition: border-color 0.15s, color 0.15s;
-    width: 100%;
-  }
-
-  .resume-btn:hover {
-    border-color: var(--text-secondary);
-    color: var(--text);
-  }
-
-  .resume-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  .persona-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
+  .guide-link {
+    display: block;
     margin-top: 1.5rem;
-    text-align: left;
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+    text-decoration: none;
+    transition: color 0.15s;
   }
 
-  .persona-card {
+  .guide-link:hover { color: var(--text-secondary); }
+
+  /* ---- Hub ---- */
+  .hub {
+    max-width: 440px;
+    margin: 0 auto;
+    padding: 3rem 1.5rem 4rem;
+  }
+
+  .hub-title {
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    color: var(--text);
+    margin-bottom: 2rem;
+  }
+
+  .hub-loading {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+  }
+
+  .hub-section {
+    margin-bottom: 1.75rem;
+  }
+
+  .hub-section-title {
+    font-size: 0.625rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+  }
+
+  /* Clone card */
+  .clone-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    margin-bottom: 0.375rem;
+  }
+
+  .clone-header {
     display: flex;
     align-items: center;
     gap: 0.75rem;
     width: 100%;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
     padding: 0.75rem 1rem;
+    background: transparent;
+    border: none;
     cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
     text-align: left;
     font-family: var(--font);
     color: var(--text);
+    transition: background 0.15s;
   }
 
-  .persona-card:hover {
-    border-color: var(--text-tertiary);
-    background: #1f1f23;
-  }
+  .clone-header:hover { background: rgba(255, 255, 255, 0.03); }
 
-  .persona-card-create {
-    border-style: dashed;
-    border-color: var(--border);
-  }
-
-  .persona-card-create .persona-card-avatar {
-    background: transparent;
-    border: 1px dashed var(--text-tertiary);
-    color: var(--text-tertiary);
-    font-size: 0.875rem;
-  }
-
-  .persona-card-avatar {
+  .clone-avatar {
     width: 32px;
     height: 32px;
     border-radius: 50%;
@@ -400,37 +405,110 @@
     flex-shrink: 0;
   }
 
-  .persona-card strong {
+  .clone-info strong {
+    display: block;
     font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--text);
+    font-weight: 600;
+    letter-spacing: -0.01em;
   }
 
-  .persona-card-title {
+  .clone-title {
+    display: block;
     font-size: 0.6875rem;
     color: var(--text-tertiary);
     line-height: 1.3;
   }
 
-  .scenario-list {
+  .clone-scenarios {
+    border-top: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    gap: 0.375rem;
-    margin-top: 1.25rem;
   }
 
-  .guide-link {
+  .scenario-btn {
+    width: 100%;
+    padding: 0.625rem 1rem 0.625rem 3.25rem;
+    background: transparent;
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.03);
+    text-align: left;
+    cursor: pointer;
+    font-family: var(--font);
+    color: var(--text);
+    transition: background 0.15s;
+  }
+
+  .scenario-btn:first-child { border-top: none; }
+  .scenario-btn:hover { background: rgba(255, 255, 255, 0.03); }
+
+  .scenario-btn strong {
     display: block;
-    margin-top: 1.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin-bottom: 0.0625rem;
+  }
+
+  .scenario-btn span {
+    display: block;
+    font-size: 0.625rem;
+    color: var(--text-tertiary);
+    line-height: 1.4;
+  }
+
+  /* Action cards (create + guide) */
+  .action-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--font);
+    color: var(--text);
+    text-decoration: none;
+    transition: border-color 0.15s, background 0.15s;
+    margin-bottom: 0.375rem;
+  }
+
+  .action-card:hover {
+    border-color: var(--text-tertiary);
+    background: #1f1f23;
+  }
+
+  .action-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: transparent;
+    border: 1px dashed var(--text-tertiary);
+    color: var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .action-info strong {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 500;
+  }
+
+  .action-info span {
+    display: block;
     font-size: 0.6875rem;
     color: var(--text-tertiary);
-    text-decoration: none;
-    transition: color 0.15s;
+    line-height: 1.3;
   }
-
-  .guide-link:hover { color: var(--text-secondary); }
 
   @media (max-width: 480px) {
     .access-card { padding: 2rem 1.25rem; }
+    .hub { padding: 2rem 1rem 3rem; }
   }
 </style>
