@@ -2,7 +2,9 @@
   import { fly } from "svelte/transition";
   import { renderMarkdown } from "$lib/utils.js";
 
-  let { message, onCorrect, onValidate, onCopyBlock } = $props();
+  let { message, onCorrect, onValidate, onSaveRule, onCopyBlock } = $props();
+
+  let ruleSaved = $state(false);
 
   let validated = $state(false);
 
@@ -31,6 +33,13 @@
 >
   {#if message.role === "user"}
     {message.content}
+    <div class="msg-actions user-actions">
+      {#if ruleSaved}
+        <span class="action-validated">Sauvegardé ✓</span>
+      {:else}
+        <button class="action-btn" onclick={() => { ruleSaved = true; onSaveRule?.(message); }}>Sauver comme règle</button>
+      {/if}
+    </div>
   {:else if message.typing}
     <div class="typing-indicator">
       <span></span><span></span><span></span>
@@ -122,6 +131,24 @@
   }
 
   .msg:hover .msg-actions { opacity: 1; }
+
+  .user-actions {
+    justify-content: flex-end;
+  }
+
+  .user-actions .action-btn {
+    color: var(--bg);
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+
+  .user-actions .action-btn:hover {
+    color: var(--bg);
+    border-color: rgba(255, 255, 255, 0.6);
+  }
+
+  .user-actions .action-validated {
+    color: rgba(255, 255, 255, 0.8);
+  }
 
   .action-btn {
     padding: 0.25rem 0.5rem;

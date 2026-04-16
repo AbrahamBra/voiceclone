@@ -312,6 +312,22 @@
     } catch {}
   }
 
+  async function handleSaveRule(message) {
+    try {
+      await api("/api/feedback", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "save_rule",
+          persona: get(currentPersonaId),
+          userMessage: message.content,
+        }),
+      });
+      showToast("Règle sauvegardée ✓");
+    } catch {
+      showToast("Erreur lors de la sauvegarde");
+    }
+  }
+
   function handleReplace(newText) {
     // Replace the bot message in the messages list with the accepted alternative
     if (feedbackMessageId) {
@@ -412,6 +428,7 @@
             {message}
             onCorrect={handleCorrect}
             onValidate={handleValidate}
+            onSaveRule={handleSaveRule}
             onCopyBlock={() => {}}
           />
         {/each}

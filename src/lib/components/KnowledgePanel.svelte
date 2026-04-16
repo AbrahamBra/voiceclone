@@ -12,7 +12,6 @@
 
   let mode = $state("file"); // "file" | "text"
   let uploading = $state(false);
-  let uploadProgress = $state("");
   let uploadCurrent = $state(0);
   let uploadTotal = $state(0);
 
@@ -23,6 +22,47 @@
   // File mode
   let isDragging = $state(false);
   let fileInputEl = $state(undefined);
+
+  // Upload progress steps
+  const STEPS = [
+    { label: "Lecture du fichier", icon: "◉" },
+    { label: "Analyse des mots-clés", icon: "◉" },
+    { label: "Découpage en chunks", icon: "◉" },
+    { label: "Indexation sémantique", icon: "◉" },
+    { label: "Extraction intelligence", icon: "◉" },
+  ];
+  let currentStep = $state(-1);
+  let stepTimers = [];
+  let uploadDone = $state(false);
+
+  function startFakeProgress(contentLength) {
+    currentStep = 0;
+    uploadDone = false;
+    // Timings scale with content size (base + proportional)
+    const factor = Math.min(contentLength / 50_000, 1);
+    const timings = [
+      300,                        // lecture: instant
+      2000 + factor * 3000,       // mots-clés: 2-5s
+      800 + factor * 1200,        // chunks: 0.8-2s
+      3000 + factor * 7000,       // embeddings: 3-10s
+      3000 + factor * 12000,      // intelligence: 3-15s
+    ];
+    stepTimers = [];
+    let cumulative = 0;
+    for (let i = 1; i < timings.length; i++) {
+      cumulative += timings[i - 1];
+      const step = i;
+      stepTimers.push(setTimeout(() => { currentStep = step; }, cumulative));
+    }
+  }
+
+  function stopFakeProgress() {
+    for (const t of stepTimers) clearTimeout(t);
+    stepTimers = [];
+    currentStep = STEPS.length; // past last = done
+    uploadDone = true;
+    setTimeout(() => { uploadDone = false; currentStep = -1; }, 1200);
+  }
 
   $effect(() => {
     if (personaId) loadFiles();
@@ -73,15 +113,15 @@
     }
 
     uploading = true;
-    uploadProgress = "Traitement";
+    startFakeProgress(content.length);
 
     try {
       const data = await api("/api/knowledge", {
         method: "POST",
         body: JSON.stringify({ personaId, filename, content }),
       });
-      uploadProgress = "Enregistré";
-      await new Promise(r => setTimeout(r, 400));
+      stopFakeProgress();
+      await new Promise(r => setTimeout(r, 600));
       // Store original filename alongside server path for display
       files = [{ ...data.file, displayName: filename }, ...files];
       const entitiesMsg = data.entities_added > 0
@@ -90,10 +130,12 @@
       showToast(`Document ajouté${entitiesMsg}`);
       onupload?.();
     } catch (e) {
+      for (const t of stepTimers) clearTimeout(t);
+      stepTimers = [];
+      currentStep = -1;
       showToast(e.message || "Erreur lors de l'upload");
     } finally {
       uploading = false;
-      uploadProgress = "";
       uploadCurrent = 0;
       uploadTotal = 0;
     }
@@ -103,7 +145,8 @@
     uploading = true;
     uploadCurrent = current;
     uploadTotal = total;
-    uploadProgress = "Extraction";
+    currentStep = 0;
+    uploadDone = false;
     let text = "";
 
     try {
@@ -134,7 +177,7 @@
       } else {
         showToast("Format non supporté (.txt, .pdf, .docx uniquement)");
         uploading = false;
-        uploadProgress = "";
+        currentStep = -1;
         uploadCurrent = 0;
         uploadTotal = 0;
         return;
@@ -142,7 +185,7 @@
     } catch {
       showToast("Erreur de lecture. Essayez de copier-coller le texte.");
       uploading = false;
-      uploadProgress = "";
+      currentStep = -1;
       uploadCurrent = 0;
       uploadTotal = 0;
       return;
@@ -151,7 +194,7 @@
     if (!text.trim()) {
       showToast("Document vide ou illisible");
       uploading = false;
-      uploadProgress = "";
+      currentStep = -1;
       uploadCurrent = 0;
       uploadTotal = 0;
       return;
@@ -245,7 +288,23 @@
           onchange={onFileInput}
         />
         {#if uploading}
-          <span class="kp-progress">{uploadTotal > 1 ? `Doc ${uploadCurrent}/${uploadTotal} · ` : ""}{uploadProgress}...</span>
+          <div class="kp-steps">
+            {#if uploadTotal > 1}
+              <span class="kp-step-counter">Doc {uploadCurrent}/{uploadTotal}</span>
+            {/if}
+            {#each STEPS as step, i}
+              <div class="kp-step" class:active={currentStep === i} class:done={currentStep > i || uploadDone}>
+                <span class="kp-step-dot" class:pulse={currentStep === i}>{currentStep > i || uploadDone ? "✓" : step.icon}</span>
+                <span class="kp-step-label">{step.label}</span>
+              </div>
+            {/each}
+            {#if uploadDone}
+              <div class="kp-step done">
+                <span class="kp-step-dot">✓</span>
+                <span class="kp-step-label">Terminé</span>
+              </div>
+            {/if}
+          </div>
         {:else}
           <span class="kp-dropzone-text">Glisser un fichier ici<br><small>.txt · .pdf · .docx</small></span>
           <button class="kp-browse-btn" onclick={(e) => { e.stopPropagation(); fileInputEl?.click(); }}>Parcourir</button>
@@ -268,7 +327,7 @@
           disabled={uploading}
         ></textarea>
         <button class="kp-submit-btn" onclick={submitText} disabled={uploading}>
-          {uploading ? uploadProgress + "..." : "Ajouter"}
+          {uploading ? "Traitement..." : "Ajouter"}
         </button>
       </div>
     {/if}
@@ -406,7 +465,7 @@
     border-color: var(--accent);
     background: rgba(255, 255, 255, 0.02);
   }
-  .kp-dropzone.uploading { cursor: default; opacity: 0.7; }
+  .kp-dropzone.uploading { cursor: default; }
   .kp-dropzone-text {
     font-size: 0.6875rem;
     color: var(--text-tertiary);
@@ -425,10 +484,49 @@
     font-family: inherit;
   }
   .kp-browse-btn:hover { border-color: var(--text-tertiary); color: var(--text); }
-  .kp-progress {
-    font-size: 0.6875rem;
-    color: var(--accent);
+  .kp-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    width: 100%;
+    padding: 0.25rem 0;
   }
+  .kp-step-counter {
+    font-size: 0.5625rem;
+    color: var(--text-tertiary);
+    margin-bottom: 0.125rem;
+  }
+  .kp-step {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    opacity: 0.3;
+    transition: opacity 0.3s;
+  }
+  .kp-step.active { opacity: 1; }
+  .kp-step.done { opacity: 0.55; }
+  .kp-step-dot {
+    font-size: 0.5rem;
+    color: var(--text-tertiary);
+    width: 0.875rem;
+    text-align: center;
+    flex-shrink: 0;
+    transition: color 0.3s;
+  }
+  .kp-step.active .kp-step-dot { color: var(--accent); }
+  .kp-step.done .kp-step-dot { color: var(--accent); font-size: 0.5625rem; }
+  .kp-step-dot.pulse {
+    animation: stepPulse 1.2s ease-in-out infinite;
+  }
+  @keyframes stepPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  .kp-step-label {
+    font-size: 0.6875rem;
+    color: var(--text-secondary);
+  }
+  .kp-step.active .kp-step-label { color: var(--text); font-weight: 500; }
 
   .kp-text-form {
     display: flex;

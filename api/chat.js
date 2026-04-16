@@ -5,6 +5,7 @@ import { initSSE } from "../lib/sse.js";
 import { validateInput } from "../lib/validate.js";
 import { authenticateRequest, checkBudget, getApiKey, logUsage, setCors, supabase } from "../lib/supabase.js";
 import { getPersonaFromDb, findRelevantKnowledgeFromDb, loadScenarioFromDb, getCorrectionsFromDb, findRelevantEntities } from "../lib/knowledge-db.js";
+import { detectChatFeedback, detectDirectInstruction } from "../lib/feedback-detect.js";
 
 /** Extract a smart conversation title from the first message */
 function extractConvTitle(message, scenario) {
@@ -168,6 +169,16 @@ export default async function handler(req, res) {
         }));
       });
     }
+
+    // Detect coaching feedback when user validates (e.g. "ok top", "parfait")
+    // OR detect direct instructions/rules (e.g. "ajoute une règle", "ne jamais...")
+    // Runs after response is streamed — slight delay before res.end() is invisible to user
+    Promise.all([
+      detectChatFeedback(personaId, message, messages, client),
+      detectDirectInstruction(personaId, message, messages, client),
+    ]).catch(err => console.log(JSON.stringify({
+        event: "feedback_detect_bg_error", ts: new Date().toISOString(), error: err.message,
+      })));
 
     if (convId) sse("conversation", { id: convId });
     res.end();
