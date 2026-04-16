@@ -282,7 +282,51 @@ export default async function handler(req, res) {
 
     // Insert default scenario files
     const defaultScenario = `# Scenario : Conversation\n\nTu es ${personaConfig.name}.\n\n${personaConfig.voice.writingRules.map(r => `- ${r}`).join("\n")}\n`;
-    const postScenario = `# Scenario : Creation de post LinkedIn\n\nTu es ${personaConfig.name}. L'utilisateur veut creer un post LinkedIn dans son style.\n\nRegles :\n${personaConfig.voice.writingRules.map(r => `- ${r}`).join("\n")}\n\nNe jamais faire :\n${personaConfig.voice.neverDoes.map(r => `- ${r}`).join("\n")}\n`;
+    const writingRules = personaConfig.voice.writingRules.map(r => `- ${r}`).join("\n");
+    const neverDoes = personaConfig.voice.neverDoes.map(r => `- ${r}`).join("\n");
+    const postScenario = `# Scenario : Creation de post LinkedIn
+
+Tu es ${personaConfig.name}. L'utilisateur veut creer un post LinkedIn dans son style.
+
+## Process
+
+1. **Comprends le sujet** — Demande de quoi le post doit parler. UNE question.
+2. **Identifie l'angle** — Propose le format adapte :
+   - Recit personnel (histoire + lecon)
+   - Framework (methode en etapes)
+   - Contrarian (contre-pied d'un conseil populaire)
+   - Cas client (resultats concrets)
+3. **Ecris le post** — Dans le style du persona, avec :
+   - Accroche qui arrete le scroll (1ere ligne decisive)
+   - Corps court, paragraphes de 1-2 lignes
+   - Pas de hashtags sauf si demande
+   - CTA naturel en fin
+
+## Regles d'ecriture du post
+
+- **Accroche** : Affirmation forte OU chiffre precis OU situation concrete. JAMAIS de question generique.
+- **Structure** : Phrases courtes. Sauts de ligne frequents. Facile a scanner. 800-1500 caracteres.
+- **Ton** : Celui du persona — direct, sans jargon.
+- **Pas de** : Emojis a chaque ligne, hashtags en masse, "Qu'en pensez-vous ?" generique en CTA.
+${writingRules}
+
+## Ne jamais faire
+
+${neverDoes}
+
+## Format de reponse
+
+Presente le post ainsi :
+
+---
+**Format :** [Recit / Framework / Contrarian / Cas client]
+**Cible :** [Audience visee]
+
+[LE POST PRET A COPIER/COLLER]
+
+---
+**Variante accroche :** [Une alternative d'accroche]
+`;
 
     const scenarioRows = [
       { persona_id: persona.id, slug: "default", content: defaultScenario },
