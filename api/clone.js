@@ -118,13 +118,13 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { linkedin_text, posts, dms, documents, name } = req.body || {};
+  const { linkedin_text, posts, dms, documents, name, cloneType } = req.body || {};
 
   if (!linkedin_text || typeof linkedin_text !== "string" || linkedin_text.length < 50) {
     res.status(400).json({ error: "linkedin_text required (min 50 chars)" });
     return;
   }
-  if (!posts || !Array.isArray(posts) || posts.length < 3) {
+  if (cloneType !== 'dm' && (!posts || !Array.isArray(posts) || posts.length < 3)) {
     res.status(400).json({ error: "posts required (array, min 3 posts)" });
     return;
   }
@@ -138,43 +138,50 @@ export default async function handler(req, res) {
     const userContent = [
       "PROFIL LINKEDIN :",
       linkedin_text,
-      "",
-      "POSTS LINKEDIN (" + posts.length + " posts) :",
-      posts.slice(0, 30).map((p, i) => `--- POST ${i + 1} ---\n${p}`).join("\n\n"),
     ];
-    if (documents) {
-      userContent.push("", "DOCUMENTATION CLIENT :", documents);
-    }
 
-    const postsContent = posts.slice(0, 30).map((p, i) => `--- POST ${i + 1} ---\n${p}`).join("\n\n");
+    const postsContentForStyle = posts?.length > 0
+      ? posts.slice(0, 30).map((p, i) => `--- POST ${i + 1} ---\n${p}`).join("\n\n")
+      : null;
+
+    if (postsContentForStyle) {
+      userContent.push("", "POSTS LINKEDIN (" + posts.length + " posts) :", postsContentForStyle);
+    }
 
     const dmsContent = dms?.length > 0
       ? dms.map((d, i) => `--- CONVERSATION ${i + 1} ---\n${d}`).join("\n\n")
       : null;
 
-    // Step 1+2(+3): Generate persona config, style analysis, and DM analysis IN PARALLEL
-    const analysisPromises = [
-      anthropic.messages.create({
-        model: MODEL, max_tokens: 2048,
-        system: CLONE_SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userContent.join("\n") }],
-      }),
-      anthropic.messages.create({
-        model: MODEL, max_tokens: 2048,
-        system: STYLE_ANALYSIS_PROMPT,
-        messages: [{ role: "user", content: postsContent }],
-      }),
-    ];
-
     if (dmsContent) {
-      analysisPromises.push(anthropic.messages.create({
-        model: MODEL, max_tokens: 2048,
-        system: DM_ANALYSIS_PROMPT,
-        messages: [{ role: "user", content: dmsContent }],
-      }));
+      userContent.push("", "DMs LINKEDIN :", dmsContent);
+    }
+    if (documents) {
+      userContent.push("", "DOCUMENTATION CLIENT :", documents);
     }
 
-    const [configResult, styleResult, dmResult] = await Promise.all(analysisPromises);
+    const configPromise = anthropic.messages.create({
+      model: MODEL, max_tokens: 2048,
+      system: CLONE_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: userContent.join("\n") }],
+    });
+
+    const stylePromise = cloneType !== 'dm' && postsContentForStyle
+      ? anthropic.messages.create({
+          model: MODEL, max_tokens: 2048,
+          system: STYLE_ANALYSIS_PROMPT,
+          messages: [{ role: "user", content: postsContentForStyle }],
+        })
+      : Promise.resolve(null);
+
+    const dmPromise = dmsContent
+      ? anthropic.messages.create({
+          model: MODEL, max_tokens: 2048,
+          system: DM_ANALYSIS_PROMPT,
+          messages: [{ role: "user", content: dmsContent }],
+        })
+      : Promise.resolve(null);
+
+    const [configResult, styleResult, dmResult] = await Promise.all([configPromise, stylePromise, dmPromise]);
 
     const configRaw = configResult.content[0].text.trim();
     const jsonMatch = configRaw.match(/\{[\s\S]*\}/);
@@ -183,16 +190,8 @@ export default async function handler(req, res) {
 
     if (name) personaConfig.name = name;
 
-    const styleContent = styleResult.content[0].text.trim();
-    const fmMatch = styleContent.match(/^---\n([\s\S]*?)\n---/);
-    let keywords = ["post", "poster", "ecrire", "rediger", "contenu", "linkedin"];
-    if (fmMatch) {
-      const kwMatch = fmMatch[1].match(/keywords:\s*\[(.*?)\]/);
-      if (kwMatch) {
-        keywords = kwMatch[1].split(",").map(k => k.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
-      }
-    }
-    const styleBody = fmMatch ? styleContent.slice(fmMatch[0].length).trim() : styleContent;
+    // styleBody declared here so the post-response fire-and-forget can reference it
+    let styleBody = null;
 
     // Step 4: Save to Supabase
     const slug = personaConfig.name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
@@ -202,6 +201,7 @@ export default async function handler(req, res) {
       .insert({
         slug,
         client_id: client?.id || null,
+        type: cloneType || 'both',
         name: personaConfig.name,
         title: personaConfig.title || "",
         avatar: personaConfig.avatar || personaConfig.name.slice(0, 2).toUpperCase(),
@@ -215,14 +215,26 @@ export default async function handler(req, res) {
 
     if (insertErr) throw new Error("Failed to save persona: " + insertErr.message);
 
-    // Insert style knowledge file
-    await supabase.from("knowledge_files").insert({
-      persona_id: persona.id,
-      path: "topics/style-posts-linkedin.md",
-      keywords,
-      content: styleBody,
-      source_type: "auto",
-    });
+    if (styleResult) {
+      const styleContent = styleResult.content[0].text.trim();
+      const fmMatch = styleContent.match(/^---\n([\s\S]*?)\n---/);
+      let keywords = ["post", "poster", "ecrire", "rediger", "contenu", "linkedin"];
+      if (fmMatch) {
+        const kwMatch = fmMatch[1].match(/keywords:\s*\[(.*?)\]/);
+        if (kwMatch) {
+          keywords = kwMatch[1].split(",").map(k => k.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+        }
+      }
+      styleBody = fmMatch ? styleContent.slice(fmMatch[0].length).trim() : styleContent;
+
+      await supabase.from("knowledge_files").insert({
+        persona_id: persona.id,
+        path: "topics/style-posts-linkedin.md",
+        keywords,
+        content: styleBody,
+        source_type: "auto",
+      });
+    }
 
     // Insert DM style knowledge file if DMs were provided
     if (dmResult) {
@@ -260,14 +272,17 @@ export default async function handler(req, res) {
     const defaultScenario = `# Scenario : Discussion libre\n\nTu es ${personaConfig.name}.\n\n${personaConfig.voice.writingRules.map(r => `- ${r}`).join("\n")}\n`;
     const postScenario = `# Scenario : Creation de post LinkedIn\n\nTu es ${personaConfig.name}. L'utilisateur veut creer un post LinkedIn dans son style.\n\nRegles :\n${personaConfig.voice.writingRules.map(r => `- ${r}`).join("\n")}\n\nNe jamais faire :\n${personaConfig.voice.neverDoes.map(r => `- ${r}`).join("\n")}\n`;
 
-    await supabase.from("scenario_files").insert([
+    const scenarioRows = [
       { persona_id: persona.id, slug: "default", content: defaultScenario },
-      { persona_id: persona.id, slug: "post", content: postScenario },
-    ]);
+    ];
+    if (cloneType !== 'dm') {
+      scenarioRows.push({ persona_id: persona.id, slug: "post", content: postScenario });
+    }
+    await supabase.from("scenario_files").insert(scenarioRows);
 
     // Log usage
-    const finalInput = (configResult.usage?.input_tokens || 0) + (styleResult.usage?.input_tokens || 0) + (dmResult?.usage?.input_tokens || 0);
-    const finalOutput = (configResult.usage?.output_tokens || 0) + (styleResult.usage?.output_tokens || 0) + (dmResult?.usage?.output_tokens || 0);
+    const finalInput = (configResult.usage?.input_tokens || 0) + (styleResult?.usage?.input_tokens || 0) + (dmResult?.usage?.input_tokens || 0);
+    const finalOutput = (configResult.usage?.output_tokens || 0) + (styleResult?.usage?.output_tokens || 0) + (dmResult?.usage?.output_tokens || 0);
     if (client) {
       await logUsage(client.id, persona.id, finalInput, finalOutput);
     }
@@ -324,15 +339,19 @@ export default async function handler(req, res) {
       // Embed knowledge files for RAG (also fire-and-forget)
       if (isEmbeddingAvailable()) {
         try {
-          const styleChunks = chunkText(styleBody);
-          await embedAndStore(supabase, styleChunks, persona.id, "knowledge_file", "topics/style-posts-linkedin.md");
+          if (styleBody) {
+            const styleChunks = chunkText(styleBody);
+            await embedAndStore(supabase, styleChunks, persona.id, "knowledge_file", "topics/style-posts-linkedin.md");
+          }
           if (documents && documents.length > 50) {
             const docChunks = chunkText(documents);
             await embedAndStore(supabase, docChunks, persona.id, "document", "documents/client-docs.md");
           }
-          const postsText = posts.join("\n\n---\n\n");
-          const postChunks = chunkText(postsText);
-          await embedAndStore(supabase, postChunks, persona.id, "linkedin_post");
+          if (posts?.length > 0) {
+            const postsTextForEmbed = posts.join("\n\n---\n\n");
+            const postChunks = chunkText(postsTextForEmbed);
+            await embedAndStore(supabase, postChunks, persona.id, "linkedin_post");
+          }
           console.log(JSON.stringify({ event: "chunks_embedded", persona: persona.id }));
         } catch (e) {
           console.log(JSON.stringify({ event: "embed_error", persona: persona.id, error: e.message }));
