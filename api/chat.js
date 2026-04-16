@@ -3,7 +3,7 @@ import { buildSystemPrompt } from "../lib/prompt.js";
 import { runPipeline } from "../lib/pipeline.js";
 import { initSSE } from "../lib/sse.js";
 import { validateInput } from "../lib/validate.js";
-import { authenticateRequest, checkBudget, getApiKey, logUsage, setCors, supabase } from "../lib/supabase.js";
+import { authenticateRequest, checkBudget, getApiKey, logUsage, hasPersonaAccess, setCors, supabase } from "../lib/supabase.js";
 import { getPersonaFromDb, findRelevantKnowledgeFromDb, loadScenarioFromDb, getCorrectionsFromDb, findRelevantEntities } from "../lib/knowledge-db.js";
 import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, looksLikeDirectInstruction, looksLikeNegativeFeedback, detectNegativeFeedback } from "../lib/feedback-detect.js";
 
@@ -60,6 +60,12 @@ export default async function handler(req, res) {
   // Load persona data from DB
   const persona = await getPersonaFromDb(personaId);
   if (!persona) { res.status(404).json({ error: "Persona not found" }); return; }
+
+  // Persona access check (owner or shared)
+  if (client && persona.client_id !== client.id) {
+    const hasAccess = await hasPersonaAccess(client.id, personaId);
+    if (!hasAccess) { res.status(403).json({ error: "Access denied" }); return; }
+  }
 
   // Resolve conversation
   let convId = conversation_id || null;

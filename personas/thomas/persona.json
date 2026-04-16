@@ -47,7 +47,7 @@
 
   "scenarios": {
     "default": {
-      "label": "Discussion libre",
+      "label": "Conversation",
       "description": "Discutez avec {name} de LinkedIn, acquisition, prospection",
       "file": "scenarios/default.md",
       "welcome": "Salut ! Pose-moi ta question sur LinkedIn, l'acquisition, la prospection ou le contenu. Je suis la ;)"

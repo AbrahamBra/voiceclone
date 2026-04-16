@@ -1,5 +1,5 @@
 import { parse } from "url";
-import { authenticateRequest, supabase, setCors } from "../lib/supabase.js";
+import { authenticateRequest, hasPersonaAccess, supabase, setCors } from "../lib/supabase.js";
 import { getPersonaFromDb } from "../lib/knowledge-db.js";
 
 export default async function handler(req, res) {
@@ -17,9 +17,9 @@ export default async function handler(req, res) {
     const persona = await getPersonaFromDb(personaId);
     if (!persona) { res.status(404).json({ error: "Persona not found" }); return; }
 
-    if (!isAdmin && persona.client_id !== client?.id) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
+    if (!isAdmin) {
+      const hasAccess = await hasPersonaAccess(client?.id, personaId);
+      if (!hasAccess) { res.status(403).json({ error: "Forbidden" }); return; }
     }
 
     // Build public config (strip voice, file paths)
@@ -31,6 +31,9 @@ export default async function handler(req, res) {
         welcome: val.welcome || null,
       };
     }
+
+    // DM-only clones don't have a post scenario
+    if (persona.type === 'dm') delete scenarios.post;
 
     res.json({
       id: persona.id,

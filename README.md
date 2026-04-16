@@ -40,7 +40,7 @@ Le prompt systeme est construit dynamiquement avec un budget strict (~3500 token
 
 - **Clonage de voix** — Collez un profil LinkedIn + posts, l'IA extrait le style d'ecriture (ton, expressions, regles)
 - **Chat en temps reel** — Streaming SSE avec Claude, conversations persistantes
-- **Scenarios** — Discussion libre, creation de posts LinkedIn, prospection, etc.
+- **Scenarios** — Conversation, creation de posts LinkedIn, prospection, etc.
 - **Calibration continue** — Feedback implicite/explicite pour affiner le style au fil du temps
 - **Multi-personas** — Gerez plusieurs clones avec themes personnalises
 - **Scraping LinkedIn** — Extraction automatique depuis une URL de profil

@@ -30,8 +30,30 @@ export default async function handler(req, res) {
         .order("created_at", { ascending: true });
       personas = data || [];
 
-      // Check if client can create more clones
+      // Check if client can create more clones (only owned count)
       canCreateClone = personas.length < client.max_clones;
+
+      // Also fetch shared personas
+      const { data: shared } = await supabase
+        .from("persona_shares")
+        .select("persona_id, personas!inner(id, slug, client_id, name, title, avatar)")
+        .eq("client_id", client.id)
+        .eq("personas.is_active", true);
+
+      if (shared?.length > 0) {
+        const ownerIds = [...new Set(shared.map(s => s.personas.client_id))];
+        const { data: owners } = await supabase
+          .from("clients").select("id, name").in("id", ownerIds);
+        const ownerMap = Object.fromEntries((owners || []).map(o => [o.id, o.name]));
+
+        for (const s of shared) {
+          personas.push({
+            ...s.personas,
+            _shared: true,
+            _shared_by: ownerMap[s.personas.client_id] || "?",
+          });
+        }
+      }
     }
 
     // Issue session token on login (if client)

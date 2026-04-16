@@ -121,6 +121,24 @@
     goto(`/chat/${personaEntry.persona.id}?scenario=${scenarioKey}`);
   }
 
+  async function shareClone(personaId, event) {
+    event.stopPropagation();
+    try {
+      const resp = await fetch("/api/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ persona_id: personaId }),
+      });
+      if (!resp.ok) throw new Error("Failed");
+      const { token } = await resp.json();
+      const url = `${window.location.origin}/share/${token}`;
+      await navigator.clipboard.writeText(url);
+      showToast("Lien de partage copie !");
+    } catch {
+      showToast("Erreur lors du partage");
+    }
+  }
+
   function openPersona(personaEntry) {
     if (personaEntry.scenarios.length === 1) {
       openScenario(personaEntry, personaEntry.scenarios[0].key);
@@ -174,11 +192,11 @@
       {#if loadingHub}
         <p class="hub-loading">Chargement...</p>
       {:else}
-        <!-- Existing personas with inline scenarios -->
-        {#if personaConfigs.length > 0}
+        <!-- Owned clones -->
+        {#if personaConfigs.some(e => !e.persona._shared)}
           <section class="hub-section">
             <h2 class="hub-section-title">Mes clones</h2>
-            {#each personaConfigs as entry, i}
+            {#each personaConfigs.filter(e => !e.persona._shared) as entry, i}
               <div class="clone-card" transition:fly={{ y: 12, delay: i * 80, duration: 200 }}>
                 <button class="clone-header" onclick={() => openPersona(entry)}>
                   <div class="clone-avatar">{entry.persona.avatar || "?"}</div>
@@ -187,6 +205,35 @@
                     {#if entry.persona.title}
                       <span class="clone-title">{entry.persona.title}</span>
                     {/if}
+                  </div>
+                </button>
+                <button class="share-btn" onclick={(e) => shareClone(entry.persona.id, e)} title="Partager">Partager</button>
+                {#if entry.scenarios.length > 1}
+                  <div class="clone-scenarios">
+                    {#each entry.scenarios as scenario}
+                      <button class="scenario-btn" onclick={() => openScenario(entry, scenario.key)}>
+                        <strong>{scenario.label}</strong>
+                        <span>{scenario.description}</span>
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            {/each}
+          </section>
+        {/if}
+
+        <!-- Shared clones -->
+        {#if personaConfigs.some(e => e.persona._shared)}
+          <section class="hub-section">
+            <h2 class="hub-section-title">Clones partages</h2>
+            {#each personaConfigs.filter(e => e.persona._shared) as entry, i}
+              <div class="clone-card" transition:fly={{ y: 12, delay: i * 80, duration: 200 }}>
+                <button class="clone-header" onclick={() => openPersona(entry)}>
+                  <div class="clone-avatar">{entry.persona.avatar || "?"}</div>
+                  <div class="clone-info">
+                    <strong>{entry.persona.name}</strong>
+                    <span class="shared-badge">Partage par {entry.persona._shared_by}</span>
                   </div>
                 </button>
                 {#if entry.scenarios.length > 1}
@@ -212,7 +259,7 @@
               <div class="action-icon">+</div>
               <div class="action-info">
                 <strong>Creer un clone</strong>
-                <span>A partir d'un profil LinkedIn</span>
+                <span>A partir d'un profil de reseau social</span>
               </div>
             </button>
           </section>
@@ -417,6 +464,33 @@
     font-size: 0.6875rem;
     color: var(--text-tertiary);
     line-height: 1.3;
+  }
+
+  .clone-card { position: relative; }
+
+  .share-btn {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    padding: 0.25rem 0.625rem;
+    font-size: 0.625rem;
+    font-family: var(--font);
+    color: var(--text-tertiary);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s;
+    z-index: 1;
+  }
+  .share-btn:hover { color: var(--text); border-color: var(--text-tertiary); }
+
+  .shared-badge {
+    display: inline-block;
+    font-size: 0.5625rem;
+    color: var(--accent);
+    opacity: 0.8;
+    margin-top: 0.125rem;
   }
 
   .clone-scenarios {

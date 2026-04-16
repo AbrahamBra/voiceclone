@@ -15,7 +15,7 @@ const PERSONA = {
     writingRules: ["Messages ultra-courts (5-15 mots)", "Style WhatsApp"],
   },
   scenarios: {
-    default: { label: "Discussion libre", slug: "default" },
+    default: { label: "Conversation", slug: "default" },
   },
 };
 

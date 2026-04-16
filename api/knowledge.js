@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { authenticateRequest, supabase, getApiKey, setCors } from "../lib/supabase.js";
+import { authenticateRequest, supabase, getApiKey, hasPersonaAccess, setCors } from "../lib/supabase.js";
 import { chunkText, embedAndStore } from "../lib/embeddings.js";
 import { clearCache } from "../lib/knowledge-db.js";
 
@@ -60,11 +60,8 @@ export default async function handler(req, res) {
     if (!personaId) { res.status(400).json({ error: "persona is required" }); return; }
 
     if (!isAdmin) {
-      const { data: persona } = await supabase
-        .from("personas").select("client_id").eq("id", personaId).single();
-      if (!persona || persona.client_id !== client?.id) {
-        res.status(403).json({ error: "Forbidden" }); return;
-      }
+      const hasAccess = await hasPersonaAccess(client?.id, personaId);
+      if (!hasAccess) { res.status(403).json({ error: "Forbidden" }); return; }
     }
 
     const { data: files, error } = await supabase

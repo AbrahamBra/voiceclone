@@ -21,7 +21,7 @@ Le JSON doit avoir EXACTEMENT cette structure (rien d'autre, pas de texte avant/
     "writingRules": ["8-12 regles d'ecriture extraites des posts"]
   },
   "scenarios": {
-    "default": { "label": "Discussion libre", "description": "Discutez avec {name}", "welcome": "Message d'accueil personnalise" },
+    "default": { "label": "Conversation", "description": "Discutez avec {name}", "welcome": "Message d'accueil personnalise" },
     "post": { "label": "Creer un post LinkedIn", "description": "{name} vous aide a ecrire un post LinkedIn", "welcome": "Message d'accueil pour la creation de post" }
   },
   "theme": { "accent": "#couleur adaptee au branding", "background": "#0a0a0a", "surface": "#141414", "text": "#e5e5e5" }
@@ -281,7 +281,7 @@ export default async function handler(req, res) {
     }
 
     // Insert default scenario files
-    const defaultScenario = `# Scenario : Discussion libre\n\nTu es ${personaConfig.name}.\n\n${personaConfig.voice.writingRules.map(r => `- ${r}`).join("\n")}\n`;
+    const defaultScenario = `# Scenario : Conversation\n\nTu es ${personaConfig.name}.\n\n${personaConfig.voice.writingRules.map(r => `- ${r}`).join("\n")}\n`;
     const postScenario = `# Scenario : Creation de post LinkedIn\n\nTu es ${personaConfig.name}. L'utilisateur veut creer un post LinkedIn dans son style.\n\nRegles :\n${personaConfig.voice.writingRules.map(r => `- ${r}`).join("\n")}\n\nNe jamais faire :\n${personaConfig.voice.neverDoes.map(r => `- ${r}`).join("\n")}\n`;
 
     const scenarioRows = [
