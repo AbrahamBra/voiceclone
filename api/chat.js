@@ -268,10 +268,7 @@ export default async function handler(req, res) {
       }
     }
 
-    if (convId) sse("conversation", { id: convId });
-    res.end();
-
-    // Post-response: targeted feedback detection based on classifier + usage logging
+    // Feedback detection + usage logging BEFORE res.end() to avoid Vercel killing the function
     try {
       const postTasks = [
         detectMetacognitiveInsights(intellId, message, messages, result.text, client),
@@ -304,6 +301,9 @@ export default async function handler(req, res) {
     } catch (err) {
       console.log(JSON.stringify({ event: "post_response_error", ts: new Date().toISOString(), error: err.message }));
     }
+
+    if (convId) sse("conversation", { id: convId });
+    res.end();
   } catch (err) {
     console.log(JSON.stringify({
       event: "chat_error", ts: new Date().toISOString(),

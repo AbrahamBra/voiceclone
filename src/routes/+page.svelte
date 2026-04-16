@@ -17,6 +17,25 @@
   /** @type {Array<{persona: any, config: any, scenarios: Array<{key: string, label: string, description: string}>}>} */
   let personaConfigs = $state([]);
   let loadingHub = $state(false);
+  let fidelityScores = $state({});
+
+  async function loadFidelityScores(configs) {
+    const ids = configs.map(e => e.persona.id).filter(Boolean);
+    if (ids.length === 0) return;
+    try {
+      const data = await api(`/api/fidelity?personas=${ids.join(",")}`);
+      fidelityScores = data.scores || {};
+    } catch {
+      // Non-blocking — hub works fine without scores
+    }
+  }
+
+  function gaugeArc(score) {
+    const r = 14;
+    const circumference = Math.PI * r;
+    const offset = circumference * (1 - score / 100);
+    return { r, circumference, offset };
+  }
 
   // Auto-focus input on mount
   $effect(() => {
@@ -102,6 +121,7 @@
       }
     }
     personaConfigs = configs;
+    loadFidelityScores(configs);
     loadingHub = false;
   }
 
@@ -206,6 +226,21 @@
                       <span class="clone-title">{entry.persona.title}</span>
                     {/if}
                   </div>
+                  {@const fScore = fidelityScores[entry.persona.id]}
+                  {#if fScore}
+                    {@const g = gaugeArc(fScore.score_global)}
+                    <div class="fidelity-gauge" title="Fidelite vocale: {fScore.score_global}%">
+                      <svg viewBox="0 0 36 20" width="36" height="20">
+                        <path d="M 4 18 A 14 14 0 0 1 32 18" fill="none"
+                          stroke="var(--border)" stroke-width="2.5" stroke-linecap="round" />
+                        <path d="M 4 18 A 14 14 0 0 1 32 18" fill="none"
+                          stroke={fScore.score_global >= 75 ? 'var(--success)' : fScore.score_global >= 50 ? 'var(--warning)' : 'var(--error)'}
+                          stroke-width="2.5" stroke-linecap="round"
+                          stroke-dasharray="{g.circumference}" stroke-dashoffset="{g.offset}" />
+                      </svg>
+                      <span class="fidelity-score">{fScore.score_global}</span>
+                    </div>
+                  {/if}
                 </button>
                 <button class="share-btn" onclick={(e) => shareClone(entry.persona.id, e)} title="Partager">Partager</button>
                 {#if entry.scenarios.length > 1}
@@ -235,6 +270,21 @@
                     <strong>{entry.persona.name}</strong>
                     <span class="shared-badge">Partage par {entry.persona._shared_by}</span>
                   </div>
+                  {@const fScore = fidelityScores[entry.persona.id]}
+                  {#if fScore}
+                    {@const g = gaugeArc(fScore.score_global)}
+                    <div class="fidelity-gauge" title="Fidelite vocale: {fScore.score_global}%">
+                      <svg viewBox="0 0 36 20" width="36" height="20">
+                        <path d="M 4 18 A 14 14 0 0 1 32 18" fill="none"
+                          stroke="var(--border)" stroke-width="2.5" stroke-linecap="round" />
+                        <path d="M 4 18 A 14 14 0 0 1 32 18" fill="none"
+                          stroke={fScore.score_global >= 75 ? 'var(--success)' : fScore.score_global >= 50 ? 'var(--warning)' : 'var(--error)'}
+                          stroke-width="2.5" stroke-linecap="round"
+                          stroke-dasharray="{g.circumference}" stroke-dashoffset="{g.offset}" />
+                      </svg>
+                      <span class="fidelity-score">{fScore.score_global}</span>
+                    </div>
+                  {/if}
                 </button>
                 {#if entry.scenarios.length > 1}
                   <div class="clone-scenarios">
@@ -593,6 +643,31 @@
     font-size: 0.6875rem;
     color: var(--text-tertiary);
     line-height: 1.3;
+  }
+
+  /* Fidelity gauge */
+  .fidelity-gauge {
+    position: relative;
+    flex-shrink: 0;
+    margin-left: auto;
+    width: 36px;
+    height: 24px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .fidelity-gauge svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+  .fidelity-score {
+    font-size: 0.625rem;
+    font-weight: 700;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    position: relative;
+    line-height: 1;
   }
 
   @media (max-width: 480px) {
