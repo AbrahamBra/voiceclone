@@ -271,7 +271,7 @@ export default async function handler(req, res) {
     // Feedback detection + usage logging BEFORE res.end() to avoid Vercel killing the function
     try {
       const postTasks = [
-        detectMetacognitiveInsights(intellId, message, messages, result.text, client),
+        detectMetacognitiveInsights(intellId, message, messages, result.text, client, msgIntent),
         (client && result.usage) ? logUsage(client.id, personaId, result.usage.input_tokens, result.usage.output_tokens, { model: routing.model, cacheRead: result.usage.cache_read || 0 }) : null,
       ];
       // Only run coaching/validation detection when classifier says it's relevant

@@ -226,8 +226,8 @@
                       <span class="clone-title">{entry.persona.title}</span>
                     {/if}
                   </div>
-                  {@const fScore = fidelityScores[entry.persona.id]}
-                  {#if fScore}
+                  {#if fidelityScores[entry.persona.id]}
+                    {@const fScore = fidelityScores[entry.persona.id]}
                     {@const g = gaugeArc(fScore.score_global)}
                     <div class="fidelity-gauge" title="Fidelite vocale: {fScore.score_global}%">
                       <svg viewBox="0 0 36 20" width="36" height="20">
@@ -270,8 +270,8 @@
                     <strong>{entry.persona.name}</strong>
                     <span class="shared-badge">Partage par {entry.persona._shared_by}</span>
                   </div>
-                  {@const fScore = fidelityScores[entry.persona.id]}
-                  {#if fScore}
+                  {#if fidelityScores[entry.persona.id]}
+                    {@const fScore = fidelityScores[entry.persona.id]}
                     {@const g = gaugeArc(fScore.score_global)}
                     <div class="fidelity-gauge" title="Fidelite vocale: {fScore.score_global}%">
                       <svg viewBox="0 0 36 20" width="36" height="20">

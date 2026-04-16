@@ -235,12 +235,12 @@
     </div>
 
     {#if fidelity.history.length > 2}
+      {@const pts = fidelity.history}
+      {@const maxS = Math.max(...pts.map(p => p.score_global), 1)}
+      {@const minS = Math.min(...pts.map(p => p.score_global), 0)}
+      {@const range = Math.max(maxS - minS, 1)}
       <div class="fidelity-sparkline">
         <svg viewBox="0 0 200 40" preserveAspectRatio="none">
-          {@const pts = fidelity.history}
-          {@const maxS = Math.max(...pts.map(p => p.score_global), 1)}
-          {@const minS = Math.min(...pts.map(p => p.score_global), 0)}
-          {@const range = Math.max(maxS - minS, 1)}
           <polyline
             fill="none"
             stroke="var(--accent)"
