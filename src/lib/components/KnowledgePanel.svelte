@@ -13,6 +13,8 @@
   let mode = $state("file"); // "file" | "text"
   let uploading = $state(false);
   let uploadProgress = $state("");
+  let uploadCurrent = $state(0);
+  let uploadTotal = $state(0);
 
   // Text mode fields
   let textName = $state("");
@@ -87,11 +89,15 @@
     } finally {
       uploading = false;
       uploadProgress = "";
+      uploadCurrent = 0;
+      uploadTotal = 0;
     }
   }
 
-  async function handleFile(file) {
+  async function handleFile(file, current = 1, total = 1) {
     uploading = true;
+    uploadCurrent = current;
+    uploadTotal = total;
     uploadProgress = "Extraction";
     let text = "";
 
@@ -124,12 +130,16 @@
         showToast("Format non supporté (.txt, .pdf, .docx uniquement)");
         uploading = false;
         uploadProgress = "";
+        uploadCurrent = 0;
+        uploadTotal = 0;
         return;
       }
     } catch {
       showToast("Erreur de lecture. Essayez de copier-coller le texte.");
       uploading = false;
       uploadProgress = "";
+      uploadCurrent = 0;
+      uploadTotal = 0;
       return;
     }
 
@@ -137,23 +147,31 @@
       showToast("Document vide ou illisible");
       uploading = false;
       uploadProgress = "";
+      uploadCurrent = 0;
+      uploadTotal = 0;
       return;
     }
 
     await processAndUpload(file.name, text);
   }
 
+  async function handleFiles(fileList) {
+    const list = Array.from(fileList);
+    if (!list.length) return;
+    for (let i = 0; i < list.length; i++) {
+      await handleFile(list[i], i + 1, list.length);
+    }
+  }
+
   function onFileInput(e) {
-    const file = e.target.files?.[0];
-    if (file) handleFile(file);
+    if (e.target.files?.length) handleFiles(e.target.files);
     e.target.value = "";
   }
 
   function onDrop(e) {
     e.preventDefault();
     isDragging = false;
-    const file = e.dataTransfer.files?.[0];
-    if (file) handleFile(file);
+    if (e.dataTransfer.files?.length) handleFiles(e.dataTransfer.files);
   }
 
   async function submitText() {
@@ -216,12 +234,13 @@
         <input
           type="file"
           accept=".txt,.pdf,.docx,.md"
+          multiple
           style="display:none"
           bind:this={fileInputEl}
           onchange={onFileInput}
         />
         {#if uploading}
-          <span class="kp-progress">{uploadProgress}...</span>
+          <span class="kp-progress">{uploadTotal > 1 ? `Doc ${uploadCurrent}/${uploadTotal} · ` : ""}{uploadProgress}...</span>
         {:else}
           <span class="kp-dropzone-text">Glisser un fichier ici<br><small>.txt · .pdf · .docx</small></span>
           <button class="kp-browse-btn" onclick={(e) => { e.stopPropagation(); fileInputEl?.click(); }}>Parcourir</button>

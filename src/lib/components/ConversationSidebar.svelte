@@ -127,7 +127,7 @@
       class="sidebar-tab"
       class:active={activeTab === "intelligence"}
       onclick={() => activeTab = "intelligence"}
-    >Intelligence</button>
+    >Intelligence{#if intelligenceExtracting && activeTab !== "intelligence"}<span class="tab-dot"></span>{/if}</button>
     <button
       class="sidebar-tab"
       class:active={activeTab === "conversations"}
@@ -258,6 +258,21 @@
   .sidebar-tab.active {
     color: var(--text);
     border-bottom-color: var(--accent);
+  }
+  .tab-dot {
+    display: inline-block;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--accent);
+    margin-left: 4px;
+    vertical-align: middle;
+    opacity: 0.7;
+    animation: tab-pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes tab-pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
   }
   .sidebar-content {
     flex: 1;
