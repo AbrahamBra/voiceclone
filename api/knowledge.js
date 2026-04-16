@@ -221,8 +221,8 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
       : "";
 
     const extractPromise = anthropic.messages.create({
-      model: process.env.CLAUDE_MODEL || "claude-sonnet-4-6",
-      max_tokens: 8192,
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 16384,
       system: FILE_GRAPH_PROMPT + entityContext,
       messages: [{
         role: "user",
@@ -231,13 +231,22 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
     });
     const result = await Promise.race([
       extractPromise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 25000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 50000)),
     ]);
 
     const raw = result.content[0].text.trim();
+    console.log(JSON.stringify({ event: "graph_extraction_raw", persona: personaId, raw: raw.slice(0, 500), stop_reason: result.stop_reason }));
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return { count: 0, debug: `no_json_in_response: ${raw.slice(0, 200)}` };
-    const graphData = JSON.parse(jsonMatch[0]);
+
+    let graphData;
+    try {
+      graphData = JSON.parse(jsonMatch[0]);
+    } catch (parseErr) {
+      console.log(JSON.stringify({ event: "graph_extraction_json_error", persona: personaId, error: parseErr.message, json_snippet: jsonMatch[0].slice(0, 300) }));
+      return { count: 0, debug: `json_parse_error: ${parseErr.message}` };
+    }
+
     if (!graphData.has_graph_update) return { count: 0, debug: `has_graph_update=false` };
 
     let insertedCount = 0;
@@ -296,6 +305,7 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
 
     return { count: insertedCount, debug: `ok: ${insertedCount} entities` };
   } catch (e) {
+    console.log(JSON.stringify({ event: "file_graph_extraction_error", persona: personaId, error: e.message }));
     return { count: 0, debug: `exception: ${e.message}` };
   }
 }

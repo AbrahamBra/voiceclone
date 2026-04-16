@@ -84,7 +84,10 @@
       await new Promise(r => setTimeout(r, 400));
       // Store original filename alongside server path for display
       files = [{ ...data.file, displayName: filename }, ...files];
-      showToast("Document ajouté");
+      const entitiesMsg = data.entities_added > 0
+        ? ` · ${data.entities_added} entités extraites`
+        : data._debug ? ` · Intelligence: ${data._debug}` : "";
+      showToast(`Document ajouté${entitiesMsg}`);
       onupload?.();
     } catch (e) {
       showToast(e.message || "Erreur lors de l'upload");
