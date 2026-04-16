@@ -190,10 +190,12 @@ export default async function handler(req, res) {
   }
 
   clearCache(personaId);
-  res.json({ file: { path, chunk_count: chunkCount } });
 
-  // Extract graph knowledge from file content (fire-and-forget, after response)
+  // Extract graph knowledge from file content (fire-and-forget)
+  // Must start BEFORE res.json() so the Promise is in the event loop when Vercel closes the response
   extractGraphKnowledgeFromFile(personaId, content, client).catch(() => {});
+
+  res.json({ file: { path, chunk_count: chunkCount } });
 }
 
 /**
@@ -214,7 +216,7 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
       ? `\n\nEntités déjà dans le graphe :\n${existingEntities.map(e => `- ${e.name} (${e.type}): ${e.description}`).join("\n")}`
       : "";
 
-    const result = await anthropic.messages.create({
+    const extractPromise = anthropic.messages.create({
       model: process.env.CLAUDE_MODEL || "claude-sonnet-4-6",
       max_tokens: 8192,
       system: FILE_GRAPH_PROMPT + entityContext,
@@ -223,6 +225,10 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
         content: `Document :\n${content.slice(0, 20000)}`,
       }],
     });
+    const result = await Promise.race([
+      extractPromise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 10000)),
+    ]);
 
     const raw = result.content[0].text.trim();
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
