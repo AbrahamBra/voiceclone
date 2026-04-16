@@ -12,27 +12,65 @@
   let expandedEntities = $state(new Set());
   let confirmingDelete = $state(null);
 
+  // Extraction progress state
+  let exProgress = $state(0);
+  let exStep = $state("");
+  let exDone = $state(false);
+  let exDoneCount = $state(0);
+
   const ENTITY_TYPE_ORDER = ["concept", "framework", "tool", "person", "company", "metric", "belief"];
 
   $effect(() => {
     if (personaId) loadData();
   });
 
-  let reloadTimeout = $state(null);
+  const STEPS = [
+    { at: 0,    progress: 0,  label: "Lecture du document..." },
+    { at: 1800, progress: 28, label: "Extraction des concepts..." },
+    { at: 5000, progress: 55, label: "Construction du graphe..." },
+    { at: 9000, progress: 82, label: "Finalisation..." },
+  ];
+
+  let stepTimers = [];
+  let reloadTimer = null;
+  let doneTimer = null;
+
   $effect(() => {
     if (extracting) {
-      if (reloadTimeout) clearTimeout(reloadTimeout);
-      reloadTimeout = setTimeout(() => {
-        loadData();
-      }, 12000);
+      // Reset state
+      exProgress = 0;
+      exStep = STEPS[0].label;
+      exDone = false;
+
+      // Animate steps
+      stepTimers.forEach(clearTimeout);
+      stepTimers = STEPS.slice(1).map(s =>
+        setTimeout(() => { exProgress = s.progress; exStep = s.label; }, s.at)
+      );
+
+      // Reload data after extraction window
+      if (reloadTimer) clearTimeout(reloadTimer);
+      reloadTimer = setTimeout(() => loadData(true), 12000);
     }
+    return () => {
+      stepTimers.forEach(clearTimeout);
+      if (reloadTimer) clearTimeout(reloadTimer);
+      if (doneTimer) clearTimeout(doneTimer);
+    };
   });
 
-  async function loadData() {
+  async function loadData(fromExtraction = false) {
     loading = true;
     error = null;
     try {
       data = await api(`/api/feedback?persona=${personaId}`);
+      if (fromExtraction) {
+        exProgress = 100;
+        exStep = "";
+        exDone = true;
+        exDoneCount = data.entities.length;
+        doneTimer = setTimeout(() => { exDone = false; }, 3000);
+      }
     } catch (e) {
       error = e.message || "Erreur de chargement";
     } finally {
@@ -87,8 +125,29 @@
   }
 </script>
 
-{#if extracting}
-  <div class="intel-extracting">Analyse en cours...</div>
+{#if extracting || exDone}
+  <div class="intel-extraction-bar">
+    {#if exDone}
+      <div class="intel-ex-done">
+        <span class="intel-ex-check">✓</span>
+        <span>{exDoneCount} entité{exDoneCount !== 1 ? "s" : ""} dans le graphe</span>
+      </div>
+    {:else}
+      <div class="intel-ex-header">
+        <span class="intel-ex-step">{exStep}</span>
+        <span class="intel-ex-pct">{exProgress}%</span>
+      </div>
+      <div class="intel-ex-track">
+        <div class="intel-ex-fill" style="width: {exProgress}%"></div>
+      </div>
+      <div class="intel-ex-labels">
+        <span class:done={exProgress >= 28}>Lecture</span>
+        <span class:done={exProgress >= 55}>Concepts</span>
+        <span class:done={exProgress >= 82}>Graphe</span>
+        <span class:done={exProgress >= 100}>Sauvegarde</span>
+      </div>
+    {/if}
+  </div>
 {/if}
 
 {#if loading}
@@ -202,28 +261,65 @@
 {/if}
 
 <style>
-  .intel-extracting {
-    padding: 0.375rem 1rem;
-    font-size: 0.6875rem;
-    color: var(--text-tertiary);
-    background: rgba(255, 255, 255, 0.03);
+  .intel-extraction-bar {
+    padding: 0.625rem 1rem;
     border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+  }
+  .intel-ex-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.375rem;
+  }
+  .intel-ex-step {
+    font-size: 0.6875rem;
+    color: var(--text-secondary);
+  }
+  .intel-ex-pct {
+    font-size: 0.625rem;
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+  .intel-ex-track {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+  }
+  .intel-ex-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .intel-ex-labels {
+    display: flex;
+    justify-content: space-between;
+  }
+  .intel-ex-labels span {
+    font-size: 0.5625rem;
+    color: var(--text-tertiary);
+    transition: color 0.4s;
+  }
+  .intel-ex-labels span.done {
+    color: var(--accent);
+  }
+  .intel-ex-done {
     display: flex;
     align-items: center;
     gap: 0.375rem;
+    font-size: 0.6875rem;
+    color: var(--success, #4ade80);
+    animation: fadeIn 0.3s ease;
   }
-  .intel-extracting::before {
-    content: "";
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--accent);
-    display: inline-block;
-    animation: pulse 1.2s ease-in-out infinite;
+  .intel-ex-check {
+    font-size: 0.75rem;
   }
-  @keyframes pulse {
-    0%, 100% { opacity: 0.3; }
-    50% { opacity: 1; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
 
   .intel-loading, .intel-error {
