@@ -6,6 +6,23 @@ import { validateInput } from "../lib/validate.js";
 import { authenticateRequest, checkBudget, getApiKey, logUsage, setCors, supabase } from "../lib/supabase.js";
 import { getPersonaFromDb, findRelevantKnowledgeFromDb, loadScenarioFromDb, getCorrectionsFromDb, findRelevantEntities } from "../lib/knowledge-db.js";
 
+/** Extract a smart conversation title from the first message */
+function extractConvTitle(message, scenario) {
+  // LinkedIn scrape: [Contexte lead — NOM PRENOM]
+  const leadMatch = message.match(/\[Contexte lead\s*[—–-]\s*([^\]]+)\]/i);
+  if (leadMatch) return leadMatch[1].trim();
+
+  // Qualification scenario with pasted profile: first line often has the name
+  if (scenario === "qualification") {
+    // Look for "Prénom Nom" pattern at start or after common prefixes
+    const firstLine = message.split("\n")[0].slice(0, 80);
+    if (firstLine && !firstLine.startsWith("http")) return firstLine.replace(/\s+\S*$/, "").slice(0, 50);
+  }
+
+  // Default: first 50 chars
+  return message.slice(0, 50).replace(/\s+\S*$/, "");
+}
+
 export default async function handler(req, res) {
   setCors(res, "POST, OPTIONS");
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
@@ -149,7 +166,7 @@ export default async function handler(req, res) {
         ]),
         supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
         supabase.from("conversations")
-          .update({ title: message.slice(0, 50).replace(/\s+\S*$/, "") })
+          .update({ title: extractConvTitle(message, scenario) })
           .eq("id", convId).is("title", null),
       ]).catch(() => {});
     }
