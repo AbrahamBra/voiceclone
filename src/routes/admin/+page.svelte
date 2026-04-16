@@ -187,6 +187,9 @@
                 <span class="persona-stat-lbl">entites</span>
               </div>
             </div>
+            {#if p.fidelity}
+              <div class="admin-fidelity">Fidelite: {p.fidelity.score_global}</div>
+            {/if}
           </div>
         {/each}
       </div>
@@ -459,6 +462,12 @@
   .persona-stat-lbl {
     font-size: 0.5625rem;
     color: var(--text-tertiary);
+  }
+
+  .admin-fidelity {
+    font-size: 0.6875rem;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
   }
 
   /* Activity feed */

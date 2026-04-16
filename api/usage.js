@@ -179,6 +179,25 @@ export default async function handler(req, res) {
         entities: entCount[p.id] || 0,
       }));
 
+      // Fetch latest fidelity scores
+      const personaIds = result.map(p => p.id);
+      if (personaIds.length > 0) {
+        const { data: fScores } = await supabase
+          .from("fidelity_scores")
+          .select("persona_id, score_global, calculated_at")
+          .in("persona_id", personaIds)
+          .order("calculated_at", { ascending: false });
+
+        const fidelityMap = {};
+        for (const s of (fScores || [])) {
+          if (!fidelityMap[s.persona_id]) fidelityMap[s.persona_id] = s;
+        }
+
+        for (const p of result) {
+          p.fidelity = fidelityMap[p.id] || null;
+        }
+      }
+
       res.json({ personas: result });
     } catch (err) {
       res.status(500).json({ error: err.message });
