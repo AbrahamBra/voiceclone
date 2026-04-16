@@ -48,9 +48,9 @@
         setTimeout(() => { exProgress = s.progress; exStep = s.label; }, s.at)
       );
 
-      // Reload data after extraction window
+      // Reload data — server awaits extraction before responding, so data is already ready
       if (reloadTimer) clearTimeout(reloadTimer);
-      reloadTimer = setTimeout(() => loadData(true), 12000);
+      reloadTimer = setTimeout(() => loadData(true), 1000);
     }
     return () => {
       stepTimers.forEach(clearTimeout);
