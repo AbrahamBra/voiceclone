@@ -209,6 +209,7 @@
     align-items: center;
     justify-content: center;
     padding: 0;
+    user-select: none;
   }
 
   .copyable-block:hover .block-copy-btn {
