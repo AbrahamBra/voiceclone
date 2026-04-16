@@ -6,7 +6,7 @@ export function authHeaders(extra = {}) {
   const token = get(sessionToken);
   const code = get(accessCode);
   if (token) h["x-session-token"] = token;
-  else if (code) h["x-access-code"] = code;
+  if (code) h["x-access-code"] = code;
   return h;
 }
 
