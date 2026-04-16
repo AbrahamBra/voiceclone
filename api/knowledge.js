@@ -190,10 +190,12 @@ export default async function handler(req, res) {
   }
 
   clearCache(personaId);
-  res.json({ file: { path, chunk_count: chunkCount } });
 
-  // Extract graph knowledge from file content (fire-and-forget, after response)
+  // Extract graph knowledge from file content (fire-and-forget)
+  // Must start BEFORE res.json() so the Promise is in the event loop when Vercel closes the response
   extractGraphKnowledgeFromFile(personaId, content, client).catch(() => {});
+
+  res.json({ file: { path, chunk_count: chunkCount } });
 }
 
 /**
