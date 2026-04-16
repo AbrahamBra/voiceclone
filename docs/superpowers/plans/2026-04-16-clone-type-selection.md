@@ -17,14 +17,16 @@
 ### Task 1: DB migration — add `type` column to `personas`
 
 **Files:**
-- Create: `supabase/007_clone_type.sql`
+- Create: `supabase/008_clone_type.sql`
+
+> **Note:** `007` is taken by `claude/bold-haibt` branch (`007_knowledge_lifecycle.sql`). Use `008` to avoid conflict.
 
 No test framework is present in this project. Verification is done by running the app and checking the DB state.
 
 - [ ] **Step 1: Create the migration file**
 
 ```sql
--- supabase/007_clone_type.sql
+-- supabase/008_clone_type.sql
 ALTER TABLE personas
   ADD COLUMN IF NOT EXISTS type text NOT NULL DEFAULT 'both'
   CHECK (type IN ('posts', 'dm', 'both'));
@@ -52,7 +54,7 @@ Expected: row with `column_default = 'both'`.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/007_clone_type.sql
+git add supabase/008_clone_type.sql
 git commit -m "feat: add type column to personas table"
 ```
 
