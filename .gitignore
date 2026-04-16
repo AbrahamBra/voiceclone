@@ -1,10 +1,10 @@
 node_modules/
 .env
+.env.vercel
+.env*.local
 .vercel/
 .DS_Store
 .vercel
 eval/results/
 .claude/settings.local.json
 .svelte-kit
-
-.env*.local

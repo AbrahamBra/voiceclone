@@ -161,7 +161,12 @@ export default async function handler(req, res) {
         supabase.from("conversations")
           .update({ title: extractConvTitle(message, scenario) })
           .eq("id", convId).is("title", null),
-      ]).catch(() => {});
+      ]).catch((err) => {
+        console.log(JSON.stringify({
+          event: "persist_error", ts: new Date().toISOString(),
+          conversation_id: convId, error: err.message || "Unknown",
+        }));
+      });
     }
 
     if (convId) sse("conversation", { id: convId });
