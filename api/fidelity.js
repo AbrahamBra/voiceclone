@@ -1,5 +1,6 @@
 import { authenticateRequest, supabase, setCors, hasPersonaAccess } from "../lib/supabase.js";
 import { calculateFidelityScore } from "../lib/fidelity.js";
+import { getIntelligenceId } from "../lib/knowledge-db.js";
 
 export default async function handler(req, res) {
   setCors(res, "GET, POST, OPTIONS");
@@ -35,15 +36,19 @@ export default async function handler(req, res) {
         }
       }
 
+      const { data: allScores } = await supabase
+        .from("fidelity_scores")
+        .select("persona_id, score_global, calculated_at")
+        .in("persona_id", ids)
+        .order("calculated_at", { ascending: false });
+
+      // Deduplicate: keep only the latest score per persona
       const scores = {};
-      for (const id of ids) {
-        const { data } = await supabase
-          .from("fidelity_scores")
-          .select("score_global, calculated_at")
-          .eq("persona_id", id)
-          .order("calculated_at", { ascending: false })
-          .limit(1);
-        scores[id] = data?.[0] || null;
+      for (const id of ids) scores[id] = null;
+      for (const row of (allScores || [])) {
+        if (!scores[row.persona_id]) {
+          scores[row.persona_id] = { score_global: row.score_global, calculated_at: row.calculated_at };
+        }
       }
 
       res.json({ scores });
@@ -76,11 +81,16 @@ export default async function handler(req, res) {
         .limit(10);
       const history = (historyRows || []).reverse();
 
-      // Chunk count for can_calculate
+      // Resolve intelligence source for shared clones
+      const { data: personaRow } = await supabase
+        .from("personas").select("id, intelligence_source_id").eq("id", singleParam).single();
+      const intellId = personaRow ? getIntelligenceId(personaRow) : singleParam;
+
+      // Chunk count uses intellId (chunks may be on the source persona)
       const { count } = await supabase
         .from("chunks")
         .select("id", { count: "exact", head: true })
-        .eq("persona_id", singleParam)
+        .eq("persona_id", intellId)
         .eq("source_type", "linkedin_post");
 
       const chunk_count = count || 0;
@@ -125,11 +135,16 @@ export default async function handler(req, res) {
     }
   }
 
-  const result = await calculateFidelityScore(personaId, { client });
+  try {
+    const result = await calculateFidelityScore(personaId, { client });
 
-  if (!result) {
-    res.json({ error: "Cannot calculate", can_calculate: false }); return;
+    if (!result) {
+      res.json({ error: "Cannot calculate", can_calculate: false }); return;
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.log(JSON.stringify({ event: "fidelity_calc_error", ts: new Date().toISOString(), persona: personaId, error: err.message }));
+    res.status(500).json({ error: "Fidelity calculation failed" });
   }
-
-  res.json(result);
 }
