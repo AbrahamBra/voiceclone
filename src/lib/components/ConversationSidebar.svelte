@@ -36,6 +36,9 @@
   let editValue = $state("");
   let editInputEl = $state(undefined);
 
+  // Delete confirmation state
+  let deletingId = $state(null);
+
   let grouped = $derived(
     searchResults
       ? null
@@ -112,6 +115,36 @@
     if (e.key === "Escape") {
       cancelEdit();
     }
+  }
+
+  function confirmDelete(convId, e) {
+    e.stopPropagation();
+    deletingId = convId;
+  }
+
+  async function executeDelete(convId, e) {
+    e.stopPropagation();
+    deletingId = null;
+    try {
+      const resp = await fetch(`/api/conversations?id=${convId}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      if (resp.ok) {
+        conversations.update((list) => list.filter((c) => c.id !== convId));
+        if (convId === currentConvId) onnewconversation?.();
+        showToast("Conversation supprimée");
+      } else {
+        showToast("Erreur de suppression");
+      }
+    } catch {
+      showToast("Erreur de suppression");
+    }
+  }
+
+  function cancelDelete(e) {
+    e.stopPropagation();
+    deletingId = null;
   }
 </script>
 
@@ -206,17 +239,27 @@
                   onclick={(e) => e.stopPropagation()}
                 />
               {:else}
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <div
-                  class="conv-item-title"
-                  ondblclick={(e) => startEdit(conv, e)}
-                >
-                  {conv.title || "Sans titre"}
+                <div class="conv-item-row">
+                  <div class="conv-item-title">
+                    {conv.title || "Sans titre"}
+                  </div>
+                  <div class="conv-item-actions">
+                    <button class="conv-action-btn" title="Renommer" onclick={(e) => startEdit(conv, e)}>&#9998;</button>
+                    <button class="conv-action-btn conv-action-delete" title="Supprimer" onclick={(e) => confirmDelete(conv.id, e)}>&times;</button>
+                  </div>
                 </div>
               {/if}
-              <div class="conv-item-meta">
-                {getRelativeTime(conv.last_message_at)} &middot; {conv.message_count || 0} msg
-              </div>
+              {#if deletingId === conv.id}
+                <div class="conv-delete-confirm">
+                  <span>Supprimer ?</span>
+                  <button class="conv-confirm-yes" onclick={(e) => executeDelete(conv.id, e)}>Oui</button>
+                  <button class="conv-confirm-no" onclick={cancelDelete}>Non</button>
+                </div>
+              {:else}
+                <div class="conv-item-meta">
+                  {getRelativeTime(conv.last_message_at)} &middot; {conv.message_count || 0} msg
+                </div>
+              {/if}
             </div>
           {/each}
         {/if}
@@ -373,6 +416,90 @@
     font-size: 0.7rem;
     color: var(--text-tertiary);
     margin-top: 2px;
+  }
+
+  .conv-item-row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .conv-item-row .conv-item-title {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .conv-item-actions {
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    flex-shrink: 0;
+  }
+
+  .conv-item:hover .conv-item-actions {
+    opacity: 1;
+  }
+
+  .conv-action-btn {
+    width: 22px;
+    height: 22px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-tertiary);
+    font-size: 0.8rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .conv-action-btn:hover {
+    color: var(--text-secondary);
+    background: var(--border);
+  }
+
+  .conv-action-delete:hover {
+    color: var(--error, #ef4444);
+    background: rgba(239, 68, 68, 0.1);
+  }
+
+  .conv-delete-confirm {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin-top: 4px;
+    font-size: 0.7rem;
+  }
+
+  .conv-delete-confirm span {
+    color: var(--error, #ef4444);
+  }
+
+  .conv-confirm-yes,
+  .conv-confirm-no {
+    padding: 0.125rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.675rem;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+
+  .conv-confirm-yes:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--error, #ef4444);
+    border-color: var(--error, #ef4444);
+  }
+
+  .conv-confirm-no:hover {
+    background: var(--border);
   }
 
   .conv-title-edit {

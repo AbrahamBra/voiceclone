@@ -1,7 +1,7 @@
 import { authenticateRequest, supabase, setCors } from "../lib/supabase.js";
 
 export default async function handler(req, res) {
-  setCors(res, "GET, PATCH, OPTIONS");
+  setCors(res, "GET, PATCH, DELETE, OPTIONS");
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
 
   let client, isAdmin;
@@ -31,6 +31,25 @@ export default async function handler(req, res) {
     if (updateErr) { res.status(500).json({ error: updateErr.message }); return; }
 
     res.json({ ok: true, title: cleanTitle });
+    return;
+  }
+
+  // --- DELETE: remove conversation + its messages ---
+  if (req.method === "DELETE") {
+    const { id } = req.query || {};
+    if (!id) { res.status(400).json({ error: "id query param required" }); return; }
+
+    const { data: conv, error: convErr } = await supabase
+      .from("conversations").select("id, client_id").eq("id", id).single();
+    if (convErr || !conv) { res.status(404).json({ error: "Not found" }); return; }
+    if (!isAdmin && conv.client_id !== client.id) { res.status(403).json({ error: "Forbidden" }); return; }
+
+    // Delete messages first (FK), then conversation
+    await supabase.from("messages").delete().eq("conversation_id", id);
+    const { error: delErr } = await supabase.from("conversations").delete().eq("id", id);
+    if (delErr) { res.status(500).json({ error: delErr.message }); return; }
+
+    res.json({ ok: true });
     return;
   }
 
