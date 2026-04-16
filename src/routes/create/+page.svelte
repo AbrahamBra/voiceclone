@@ -209,8 +209,7 @@
     }
   }
 
-  $derived: postsCount = postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length;
-  $derived: dmsCount = dmsText.trim().split(/\n---\n/).filter(d => d.trim().length > 20).length;
+
 </script>
 
 <div class="create-page">
