@@ -419,6 +419,7 @@
         <div class="chat-avatar">{$personaConfig?.avatar || "?"}</div>
         <div class="chat-name">{$personaConfig?.name || "Clone"}</div>
         <button class="lead-btn" title="Analyser un prospect" onclick={() => (showLead = true)}>&#128269;</button>
+        <a href="/guide" class="guide-btn" title="Guide d'onboarding">?</a>
         <button class="settings-btn" title="Parametres" onclick={() => (showSettings = true)}>&#9881;</button>
       </div>
 
@@ -529,6 +530,26 @@
   }
 
   .lead-btn:hover { color: var(--text); }
+
+  .guide-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-tertiary);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    font-family: var(--font);
+    cursor: pointer;
+    width: 1.375rem;
+    height: 1.375rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: color 0.15s, border-color 0.15s;
+    text-decoration: none;
+  }
+
+  .guide-btn:hover { color: var(--text-secondary); border-color: var(--text-tertiary); }
 
   .settings-btn {
     background: transparent;

@@ -206,6 +206,7 @@
           Reprendre avec {lastPersona.name}
         </button>
       {/if}
+      <a href="/guide" class="guide-link">Guide d'onboarding</a>
     </div>
   {:else if state === "personas"}
     <div class="access-card" transition:fade={{ duration: 150 }}>
@@ -417,6 +418,17 @@
     gap: 0.375rem;
     margin-top: 1.25rem;
   }
+
+  .guide-link {
+    display: block;
+    margin-top: 1.5rem;
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+
+  .guide-link:hover { color: var(--text-secondary); }
 
   @media (max-width: 480px) {
     .access-card { padding: 2rem 1.25rem; }
