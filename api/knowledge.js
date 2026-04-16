@@ -216,11 +216,11 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
 
     const result = await anthropic.messages.create({
       model: process.env.CLAUDE_MODEL || "claude-sonnet-4-6",
-      max_tokens: 512,
+      max_tokens: 2048,
       system: FILE_GRAPH_PROMPT + entityContext,
       messages: [{
         role: "user",
-        content: `Document :\n${content.slice(0, 6000)}`,
+        content: `Document :\n${content.slice(0, 4000)}`,
       }],
     });
 
