@@ -5,7 +5,8 @@ import { initSSE } from "../lib/sse.js";
 import { validateInput } from "../lib/validate.js";
 import { authenticateRequest, checkBudget, getApiKey, logUsage, hasPersonaAccess, setCors, supabase } from "../lib/supabase.js";
 import { getPersonaFromDb, findRelevantKnowledgeFromDb, loadScenarioFromDb, getCorrectionsFromDb, findRelevantEntities, getIntelligenceId } from "../lib/knowledge-db.js";
-import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, looksLikeDirectInstruction, looksLikeNegativeFeedback, detectNegativeFeedback } from "../lib/feedback-detect.js";
+import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, detectMetacognitiveInsights, looksLikeDirectInstruction, looksLikeNegativeFeedback, detectNegativeFeedback, classifyMessage } from "../lib/feedback-detect.js";
+import { selectModel } from "../lib/model-router.js";
 
 /** Extract a smart conversation title from the first message */
 function extractConvTitle(message, scenario) {
@@ -119,14 +120,14 @@ export default async function handler(req, res) {
   const scenarioSlug = scenarioConfig?.slug || scenario || "default";
   const scenarioContent = await loadScenarioFromDb(personaId, scenarioSlug);
 
-  // Entities first (provides boostTerms for knowledge retrieval)
-  const ontology = await findRelevantEntities(personaId, messages);
-
-  // Knowledge + corrections in parallel (knowledge uses boost terms from graph)
-  const [knowledgeMatches, corrections] = await Promise.all([
-    findRelevantKnowledgeFromDb(personaId, messages, ontology.boostTerms),
+  // Entities + corrections in parallel (corrections don't depend on ontology)
+  const [ontology, corrections] = await Promise.all([
+    findRelevantEntities(personaId, messages),
     getCorrectionsFromDb(personaId),
   ]);
+
+  // Knowledge uses boost terms from graph — must wait for ontology
+  const knowledgeMatches = await findRelevantKnowledgeFromDb(personaId, messages, ontology.boostTerms);
 
   // Enrich ontology with entity names for prompt display
   if (ontology.relations) {
@@ -150,8 +151,13 @@ export default async function handler(req, res) {
   const sse = initSSE(res);
   const apiKey = getApiKey(client);
 
+  // Unified classifier: regex fast-path + Haiku fallback for ambiguous messages
+  const lastBotMsg = [...messages].reverse().find(m => m.role === "assistant")?.content;
+  const msgIntent = await classifyMessage(message, lastBotMsg, client);
+  console.log(JSON.stringify({ event: "msg_classified", ts: new Date().toISOString(), intent: msgIntent, msg: message.slice(0, 50) }));
+
   // Short-circuit: negative feedback — user wants to undo/weaken a rule
-  if (looksLikeNegativeFeedback(message)) {
+  if (msgIntent === "NEGATIVE") {
     try {
       const result = await detectNegativeFeedback(intellId, message, messages, client);
       if (result && result.demoted > 0) {
@@ -162,16 +168,20 @@ export default async function handler(req, res) {
         sse("done", {});
 
         if (convId && supabase) {
-          Promise.all([
-            supabase.from("messages").insert([
-              { conversation_id: convId, role: "user", content: message },
-              { conversation_id: convId, role: "assistant", content: confirm },
-            ]),
-            supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
-            supabase.from("conversations")
-              .update({ title: extractConvTitle(message, scenario) })
-              .eq("id", convId).is("title", null),
-          ]).catch(() => {});
+          try {
+            await Promise.all([
+              supabase.from("messages").insert([
+                { conversation_id: convId, role: "user", content: message },
+                { conversation_id: convId, role: "assistant", content: confirm },
+              ]),
+              supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
+              supabase.from("conversations")
+                .update({ title: extractConvTitle(message, scenario) })
+                .eq("id", convId).is("title", null),
+            ]);
+          } catch (err) {
+            console.log(JSON.stringify({ event: "persist_error", ts: new Date().toISOString(), conversation_id: convId, error: err.message }));
+          }
         }
 
         if (convId) sse("conversation", { id: convId });
@@ -183,9 +193,8 @@ export default async function handler(req, res) {
     }
   }
 
-  // Short-circuit: if the message is a direct instruction, save it and confirm
-  // without calling Claude (avoids the "I can't modify my settings" response)
-  if (looksLikeDirectInstruction(message)) {
+  // Short-circuit: direct instruction — save rule and confirm without calling Claude
+  if (msgIntent === "INSTRUCTION") {
     try {
       const saved = await detectDirectInstruction(intellId, message, messages, client);
       if (saved > 0) {
@@ -195,18 +204,21 @@ export default async function handler(req, res) {
         sse("delta", { text: confirm });
         sse("done", {});
 
-        // Persist user message + confirmation
         if (convId && supabase) {
-          Promise.all([
-            supabase.from("messages").insert([
-              { conversation_id: convId, role: "user", content: message },
-              { conversation_id: convId, role: "assistant", content: confirm },
-            ]),
-            supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
-            supabase.from("conversations")
-              .update({ title: extractConvTitle(message, scenario) })
-              .eq("id", convId).is("title", null),
-          ]).catch(() => {});
+          try {
+            await Promise.all([
+              supabase.from("messages").insert([
+                { conversation_id: convId, role: "user", content: message },
+                { conversation_id: convId, role: "assistant", content: confirm },
+              ]),
+              supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
+              supabase.from("conversations")
+                .update({ title: extractConvTitle(message, scenario) })
+                .eq("id", convId).is("title", null),
+            ]);
+          } catch (err) {
+            console.log(JSON.stringify({ event: "persist_error", ts: new Date().toISOString(), conversation_id: convId, error: err.message }));
+          }
         }
 
         if (convId) sse("conversation", { id: convId });
@@ -214,10 +226,13 @@ export default async function handler(req, res) {
         return;
       }
     } catch (e) {
-      // Extraction failed — fall through to normal chat
       console.log(JSON.stringify({ event: "direct_instruction_shortcircuit_error", ts: new Date().toISOString(), error: e.message }));
     }
   }
+
+  // Multi-model routing: Haiku for simple, Sonnet for complex
+  const routing = selectModel({ message, knowledgeMatches, ontology, corrections, scenario });
+  console.log(JSON.stringify({ event: "model_routed", ts: new Date().toISOString(), model: routing.model, score: routing.score, reason: routing.reason }));
 
   try {
     const result = await runPipeline({
@@ -228,44 +243,43 @@ export default async function handler(req, res) {
       voiceRules: persona.voice,
       corrections,
       apiKey,
+      model: routing.model,
     });
-    // Persist messages + update conversation (async, non-blocking)
+    // Persist messages + update conversation (await to avoid Vercel killing the function)
     if (convId && supabase) {
       const botText = result.text || "";
-      Promise.all([
-        supabase.from("messages").insert([
-          { conversation_id: convId, role: "user", content: message },
-          { conversation_id: convId, role: "assistant", content: botText },
-        ]),
-        supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
-        supabase.from("conversations")
-          .update({ title: extractConvTitle(message, scenario) })
-          .eq("id", convId).is("title", null),
-      ]).catch((err) => {
+      try {
+        await Promise.all([
+          supabase.from("messages").insert([
+            { conversation_id: convId, role: "user", content: message },
+            { conversation_id: convId, role: "assistant", content: botText },
+          ]),
+          supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
+          supabase.from("conversations")
+            .update({ title: extractConvTitle(message, scenario) })
+            .eq("id", convId).is("title", null),
+        ]);
+      } catch (err) {
         console.log(JSON.stringify({
           event: "persist_error", ts: new Date().toISOString(),
           conversation_id: convId, error: err.message || "Unknown",
         }));
-      });
+      }
     }
-
-    // Detect feedback from user message (runs in background, doesn't block response):
-    // 1. Coaching corrections: "trop long", "plus direct", etc.
-    // 2. Validation signals: "ok top", "parfait" → extracts corrections from coaching history
-    // Note: direct instructions are handled above (short-circuit path)
-    Promise.all([
-      detectCoachingCorrection(intellId, message, messages, client),
-      detectChatFeedback(intellId, message, messages, client),
-    ]).catch(err => console.log(JSON.stringify({
-        event: "feedback_detect_bg_error", ts: new Date().toISOString(), error: err.message,
-      })));
 
     if (convId) sse("conversation", { id: convId });
     res.end();
 
-    // Log usage (async, don't block response)
-    if (client && result.usage) {
-      logUsage(client.id, personaId, result.usage.input_tokens, result.usage.output_tokens).catch(() => {});
+    // Post-response: feedback detection + usage logging (await to avoid Vercel kill)
+    try {
+      await Promise.all([
+        detectCoachingCorrection(intellId, message, messages, client),
+        detectChatFeedback(intellId, message, messages, client),
+        detectMetacognitiveInsights(intellId, message, messages, result.text, client),
+        (client && result.usage) ? logUsage(client.id, personaId, result.usage.input_tokens, result.usage.output_tokens) : null,
+      ]);
+    } catch (err) {
+      console.log(JSON.stringify({ event: "post_response_error", ts: new Date().toISOString(), error: err.message }));
     }
   } catch (err) {
     console.log(JSON.stringify({
