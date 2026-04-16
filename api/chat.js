@@ -88,17 +88,15 @@ export default async function handler(req, res) {
     const history = (dbMessages || []).reverse();
     messages = [...history, { role: "user", content: message }];
   } else {
-    // Create new conversation for any authenticated user
+    // Create new conversation for any authenticated user (including admin)
     const clientId = client?.id || null;
     const history = Array.isArray(bodyHistory) ? bodyHistory.slice(-19) : [];
 
-    if (clientId && supabase) {
+    if (supabase) {
+      const insertData = { persona_id: personaId, scenario: scenario || "default" };
+      if (clientId) insertData.client_id = clientId;
       const { data: newConv } = await supabase
-        .from("conversations").insert({
-          client_id: clientId,
-          persona_id: personaId,
-          scenario: scenario || "default",
-        }).select("id").single();
+        .from("conversations").insert(insertData).select("id").single();
       convId = newConv?.id || null;
     }
 
