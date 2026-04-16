@@ -119,7 +119,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { linkedin_text, posts, dms, documents, name, cloneType } = req.body || {};
+  let { linkedin_text, posts, dms, documents, name, cloneType } = req.body || {};
 
   const validTypes = ['posts', 'dm', 'both'];
   if (cloneType && !validTypes.includes(cloneType)) {
@@ -136,8 +136,18 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Keep originals for embedding, cap for Claude calls
+  const allPosts = posts || [];
+  const allDms = dms || [];
+  const allDocuments = documents || "";
+  linkedin_text = linkedin_text.slice(0, 8000);
+  if (posts) posts = posts.slice(0, 30).map(p => p.slice(0, 3000));
+  if (dms) dms = dms.slice(0, 15).map(d => d.slice(0, 4000));
+  if (documents) documents = documents.slice(0, 20000);
+
   const apiKey = getApiKey(client);
   const anthropic = new Anthropic({ apiKey });
+  const CLONE_TIMEOUT = 45000; // 45s per Claude call
 
   try {
     const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514";
@@ -148,7 +158,7 @@ export default async function handler(req, res) {
     ];
 
     const postsContentForStyle = posts?.length > 0
-      ? posts.slice(0, 30).map((p, i) => `--- POST ${i + 1} ---\n${p}`).join("\n\n")
+      ? posts.map((p, i) => `--- POST ${i + 1} ---\n${p}`).join("\n\n")
       : null;
 
     if (postsContentForStyle) {
@@ -166,26 +176,31 @@ export default async function handler(req, res) {
       userContent.push("", "DOCUMENTATION CLIENT :", documents);
     }
 
-    const configPromise = anthropic.messages.create({
+    const withTimeout = (promise) => Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), CLONE_TIMEOUT)),
+    ]);
+
+    const configPromise = withTimeout(anthropic.messages.create({
       model: MODEL, max_tokens: 2048,
       system: CLONE_SYSTEM_PROMPT,
       messages: [{ role: "user", content: userContent.join("\n") }],
-    });
+    }));
 
     const stylePromise = cloneType !== 'dm' && postsContentForStyle
-      ? anthropic.messages.create({
+      ? withTimeout(anthropic.messages.create({
           model: MODEL, max_tokens: 2048,
           system: STYLE_ANALYSIS_PROMPT,
           messages: [{ role: "user", content: postsContentForStyle }],
-        })
+        }))
       : Promise.resolve(null);
 
     const dmPromise = dmsContent
-      ? anthropic.messages.create({
+      ? withTimeout(anthropic.messages.create({
           model: MODEL, max_tokens: 2048,
           system: DM_ANALYSIS_PROMPT,
           messages: [{ role: "user", content: dmsContent }],
-        })
+        }))
       : Promise.resolve(null);
 
     const [configResult, styleResult, dmResult] = await Promise.all([configPromise, stylePromise, dmPromise]);
@@ -240,13 +255,14 @@ export default async function handler(req, res) {
       }
       styleBody = fmMatch ? styleContent.slice(fmMatch[0].length).trim() : styleContent;
 
-      await supabase.from("knowledge_files").insert({
+      const { error: styleInsertErr } = await supabase.from("knowledge_files").insert({
         persona_id: persona.id,
         path: "topics/style-posts-linkedin.md",
         keywords,
         content: styleBody,
         source_type: "auto",
       });
+      if (styleInsertErr) console.log(JSON.stringify({ event: "style_knowledge_insert_error", persona: persona.id, error: styleInsertErr.message }));
     }
 
     // Insert DM style knowledge file if DMs were provided
@@ -261,24 +277,26 @@ export default async function handler(req, res) {
         }
       }
       const dmBody = dmFmMatch ? dmContent.slice(dmFmMatch[0].length).trim() : dmContent;
-      await supabase.from("knowledge_files").insert({
+      const { error: dmInsertErr } = await supabase.from("knowledge_files").insert({
         persona_id: persona.id,
         path: "topics/style-conversations.md",
         keywords: dmKeywords,
         content: dmBody,
         source_type: "auto",
       });
+      if (dmInsertErr) console.log(JSON.stringify({ event: "dm_knowledge_insert_error", persona: persona.id, error: dmInsertErr.message }));
     }
 
     // Insert document knowledge file if provided
     if (documents && documents.length > 50) {
-      await supabase.from("knowledge_files").insert({
+      const { error: docInsertErr } = await supabase.from("knowledge_files").insert({
         persona_id: persona.id,
         path: "documents/client-docs.md",
         keywords: ["document", "doc", "methode", "offre", "service", "client"],
         content: documents,
         source_type: "document",
       });
+      if (docInsertErr) console.log(JSON.stringify({ event: "doc_knowledge_insert_error", persona: persona.id, error: docInsertErr.message }));
     }
 
     // Insert default scenario files
@@ -335,7 +353,8 @@ Presente le post ainsi :
     if (cloneType !== 'dm') {
       scenarioRows.push({ persona_id: persona.id, slug: "post", content: postScenario });
     }
-    await supabase.from("scenario_files").insert(scenarioRows);
+    const { error: scenarioErr } = await supabase.from("scenario_files").insert(scenarioRows);
+    if (scenarioErr) console.log(JSON.stringify({ event: "scenario_insert_error", persona: persona.id, error: scenarioErr.message }));
 
     // Log usage
     const finalInput = (configResult.usage?.input_tokens || 0) + (styleResult?.usage?.input_tokens || 0) + (dmResult?.usage?.input_tokens || 0);
@@ -387,7 +406,8 @@ Presente le post ainsi :
                 description: r.description || "", confidence: 1.0,
               }));
             if (relationRows.length > 0) {
-              await supabase.from("knowledge_relations").insert(relationRows);
+              const { error: relErr } = await supabase.from("knowledge_relations").insert(relationRows);
+              if (relErr) console.log(JSON.stringify({ event: "ontology_relation_insert_error", persona: persona.id, error: relErr.message }));
             }
           }
         }
@@ -406,12 +426,12 @@ Presente le post ainsi :
           const styleChunks = chunkText(styleBody);
           await embedAndStore(supabase, styleChunks, persona.id, "knowledge_file", "topics/style-posts-linkedin.md");
         }
-        if (documents && documents.length > 50) {
-          const docChunks = chunkText(documents);
+        if (allDocuments && allDocuments.length > 50) {
+          const docChunks = chunkText(allDocuments);
           await embedAndStore(supabase, docChunks, persona.id, "document", "documents/client-docs.md");
         }
-        if (posts?.length > 0) {
-          const postsTextForEmbed = posts.join("\n\n---\n\n");
+        if (allPosts.length > 0) {
+          const postsTextForEmbed = allPosts.map(p => p.slice(0, 3000)).join("\n\n---\n\n");
           const postChunks = chunkText(postsTextForEmbed);
           await embedAndStore(supabase, postChunks, persona.id, "linkedin_post");
         }

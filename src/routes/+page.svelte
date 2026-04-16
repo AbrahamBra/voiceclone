@@ -265,10 +265,24 @@
           </section>
         {/if}
 
+        <!-- Admin -->
+        {#if $isAdmin}
+          <section class="hub-section">
+            <h2 class="hub-section-title">Administration</h2>
+            <a href="/admin" class="action-card" transition:fly={{ y: 12, delay: personaConfigs.length * 80 + 120, duration: 200 }}>
+              <div class="action-icon">~</div>
+              <div class="action-info">
+                <strong>Dashboard admin</strong>
+                <span>Monitoring clients, personas, activite</span>
+              </div>
+            </a>
+          </section>
+        {/if}
+
         <!-- Guide -->
         <section class="hub-section">
           <h2 class="hub-section-title">Ressources</h2>
-          <a href="/guide" class="action-card" transition:fly={{ y: 12, delay: personaConfigs.length * 80 + 120, duration: 200 }}>
+          <a href="/guide" class="action-card" transition:fly={{ y: 12, delay: personaConfigs.length * 80 + (($isAdmin) ? 200 : 120), duration: 200 }}>
             <div class="action-icon">?</div>
             <div class="action-info">
               <strong>Guide d'onboarding</strong>

@@ -7,6 +7,7 @@ import { authenticateRequest, checkBudget, getApiKey, logUsage, hasPersonaAccess
 import { getPersonaFromDb, findRelevantKnowledgeFromDb, loadScenarioFromDb, getCorrectionsFromDb, findRelevantEntities, getIntelligenceId } from "../lib/knowledge-db.js";
 import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, detectMetacognitiveInsights, looksLikeDirectInstruction, looksLikeNegativeFeedback, detectNegativeFeedback, classifyMessage } from "../lib/feedback-detect.js";
 import { selectModel } from "../lib/model-router.js";
+import { consolidateCorrections } from "../lib/correction-consolidation.js";
 
 /** Extract a smart conversation title from the first message */
 function extractConvTitle(message, scenario) {
@@ -270,14 +271,36 @@ export default async function handler(req, res) {
     if (convId) sse("conversation", { id: convId });
     res.end();
 
-    // Post-response: feedback detection + usage logging (await to avoid Vercel kill)
+    // Post-response: targeted feedback detection based on classifier + usage logging
     try {
-      await Promise.all([
-        detectCoachingCorrection(intellId, message, messages, client),
-        detectChatFeedback(intellId, message, messages, client),
+      const postTasks = [
         detectMetacognitiveInsights(intellId, message, messages, result.text, client),
-        (client && result.usage) ? logUsage(client.id, personaId, result.usage.input_tokens, result.usage.output_tokens) : null,
-      ]);
+        (client && result.usage) ? logUsage(client.id, personaId, result.usage.input_tokens, result.usage.output_tokens, { model: routing.model, cacheRead: result.usage.cache_read || 0 }) : null,
+      ];
+      // Only run coaching/validation detection when classifier says it's relevant
+      if (msgIntent === "CORRECTION") postTasks.push(detectCoachingCorrection(intellId, message, messages, client));
+      if (msgIntent === "VALIDATION") postTasks.push(detectChatFeedback(intellId, message, messages, client));
+      // For CHAT, still try both — the classifier may miss subtle feedback
+      if (msgIntent === "CHAT") {
+        postTasks.push(detectCoachingCorrection(intellId, message, messages, client));
+        postTasks.push(detectChatFeedback(intellId, message, messages, client));
+      }
+      const postResults = await Promise.all(postTasks);
+
+      // Auto-consolidation: check if new corrections were saved, trigger every 10th
+      const feedbackSaved = postResults.filter(r => typeof r === "number" && r > 0).length > 0;
+      if (feedbackSaved) {
+        try {
+          const { count } = await supabase.from("corrections")
+            .select("id", { count: "exact", head: true })
+            .eq("persona_id", intellId).eq("status", "active");
+          if (count && count % 10 === 0 && count >= 15) {
+            consolidateCorrections(personaId, { client }).catch(err =>
+              console.log(JSON.stringify({ event: "auto_consolidation_error", ts: new Date().toISOString(), error: err.message }))
+            );
+          }
+        } catch { /* non-critical */ }
+      }
     } catch (err) {
       console.log(JSON.stringify({ event: "post_response_error", ts: new Date().toISOString(), error: err.message }));
     }

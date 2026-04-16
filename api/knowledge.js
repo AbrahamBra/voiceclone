@@ -290,7 +290,7 @@ async function extractGraphKnowledgeFromFile(intellId, content, client) {
 
       if (inserted?.length > 0 && graphData.new_relations?.length > 0) {
         const { data: allEntities } = await supabase
-          .from("knowledge_entities").select("id, name").eq("persona_id", personaId);
+          .from("knowledge_entities").select("id, name").eq("persona_id", intellId);
         const entityMap = {};
         for (const e of (allEntities || [])) entityMap[e.name] = e.id;
 
@@ -315,7 +315,7 @@ async function extractGraphKnowledgeFromFile(intellId, content, client) {
       for (const upd of graphData.updated_entities) {
         await supabase.from("knowledge_entities")
           .update({ description: upd.description })
-          .eq("persona_id", personaId).eq("name", upd.name);
+          .eq("persona_id", intellId).eq("name", upd.name);
       }
     }
 

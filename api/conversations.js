@@ -45,7 +45,8 @@ export default async function handler(req, res) {
     if (!isAdmin && conv.client_id !== client.id) { res.status(403).json({ error: "Forbidden" }); return; }
 
     // Delete messages first (FK), then conversation
-    await supabase.from("messages").delete().eq("conversation_id", id);
+    const { error: msgDelErr } = await supabase.from("messages").delete().eq("conversation_id", id);
+    if (msgDelErr) { res.status(500).json({ error: msgDelErr.message }); return; }
     const { error: delErr } = await supabase.from("conversations").delete().eq("id", id);
     if (delErr) { res.status(500).json({ error: delErr.message }); return; }
 

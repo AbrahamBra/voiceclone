@@ -31,6 +31,16 @@ export async function streamChat(params, callbacks, retryCount = 0) {
     onError?.("budget");
     return;
   }
+  if (resp.status >= 400 && resp.status < 500) {
+    // Client errors (400, 403, 404) — don't retry, show error
+    try {
+      const body = await resp.json();
+      callbacks.onError?.("failed", body.error || "Erreur");
+    } catch {
+      callbacks.onError?.("failed");
+    }
+    return;
+  }
   if (!resp.ok) {
     return handleNetworkError(params, callbacks, retryCount);
   }

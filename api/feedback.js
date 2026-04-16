@@ -235,15 +235,18 @@ export default async function handler(req, res) {
         ? `Ton: ${persona.voice.tone.join(", ")}. Regles: ${persona.voice.writingRules.join("; ")}. Mots interdits: ${persona.voice.forbiddenWords.join(", ")}.`
         : "";
 
-      const result = await anthropic.messages.create({
-        model: process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514",
-        max_tokens: 1024,
-        system: `Tu es un assistant qui reecrit des messages. ${voiceContext}`,
-        messages: [{
-          role: "user",
-          content: `Message original du bot :\n"${botMessage.slice(0, 500)}"\n\nCorrection demandee par l'utilisateur :\n"${correction}"\n\nGenere exactement 2 alternatives qui corrigent le probleme. Reponds en JSON :\n{"alternatives": ["alternative 1", "alternative 2"]}`,
-        }],
-      });
+      const result = await Promise.race([
+        anthropic.messages.create({
+          model: process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514",
+          max_tokens: 1024,
+          system: `Tu es un assistant qui reecrit des messages. ${voiceContext}`,
+          messages: [{
+            role: "user",
+            content: `Message original du bot :\n"${botMessage.slice(0, 500)}"\n\nCorrection demandee par l'utilisateur :\n"${correction}"\n\nGenere exactement 2 alternatives qui corrigent le probleme. Reponds en JSON :\n{"alternatives": ["alternative 1", "alternative 2"]}`,
+          }],
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 30000)),
+      ]);
 
       const raw = result.content[0].text.trim();
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
@@ -272,9 +275,12 @@ export default async function handler(req, res) {
       contributed_by: client?.id || null,
     });
 
-    // Extract graph knowledge (same as existing flow below)
-    // Fire-and-forget for speed
-    extractGraphKnowledge(intellId, finalCorrection, botMessage, userMessage, client).catch(() => {});
+    // Extract graph knowledge (await to avoid Vercel kill)
+    try {
+      await extractGraphKnowledge(intellId, finalCorrection, botMessage, userMessage, client);
+    } catch (err) {
+      console.log(JSON.stringify({ event: "accept_graph_error", persona: intellId, error: err.message }));
+    }
 
     clearIntelligenceCache(intellId);
     res.json({ ok: true, message: "Correction enregistree et clone ameliore", accepted });
@@ -290,12 +296,15 @@ export default async function handler(req, res) {
       const anthropic = new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY });
 
       // Extract the actual rule from the user message
-      const extractResult = await anthropic.messages.create({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 256,
-        system: `Extrais la regle/instruction de ce message utilisateur. Reponds en JSON : {"rule": "description concise et actionnable de la regle"}. Si le message ne contient pas de regle claire, reponds {"rule": null}.`,
-        messages: [{ role: "user", content: userMessage.slice(0, 500) }],
-      });
+      const extractResult = await Promise.race([
+        anthropic.messages.create({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 256,
+          system: `Extrais la regle/instruction de ce message utilisateur. Reponds en JSON : {"rule": "description concise et actionnable de la regle"}. Si le message ne contient pas de regle claire, reponds {"rule": null}.`,
+          messages: [{ role: "user", content: userMessage.slice(0, 500) }],
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 10000)),
+      ]);
 
       const raw = extractResult.content[0].text.trim();
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
@@ -336,12 +345,15 @@ export default async function handler(req, res) {
     try {
       const apiKey = getApiKey(client);
       const anthropic = new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY });
-      const diffResult = await anthropic.messages.create({
-        model: process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514",
-        max_tokens: 256,
-        system: "Compare ces deux versions d'un message. Decris en 1-2 phrases les modifications de style effectuees par l'utilisateur. Sois concis et actionnable.",
-        messages: [{ role: "user", content: `ORIGINAL :\n${original.slice(0, 500)}\n\nMODIFIE :\n${modified.slice(0, 500)}` }],
-      });
+      const diffResult = await Promise.race([
+        anthropic.messages.create({
+          model: process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514",
+          max_tokens: 256,
+          system: "Compare ces deux versions d'un message. Decris en 1-2 phrases les modifications de style effectuees par l'utilisateur. Sois concis et actionnable.",
+          messages: [{ role: "user", content: `ORIGINAL :\n${original.slice(0, 500)}\n\nMODIFIE :\n${modified.slice(0, 500)}` }],
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 15000)),
+      ]);
       finalCorrection = diffResult.content[0].text.trim();
     } catch (e) {
       // Fallback: simple description

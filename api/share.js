@@ -109,9 +109,10 @@ export default async function handler(req, res) {
     if (error) { res.status(500).json({ error: "Failed to claim share" }); return; }
 
     // Mark token as used
-    await supabase.from("share_tokens")
+    const { error: markErr } = await supabase.from("share_tokens")
       .update({ used_at: new Date().toISOString() })
       .eq("token", token);
+    if (markErr) console.log(JSON.stringify({ event: "share_token_mark_error", token, error: markErr.message }));
 
     res.json({ ok: true, persona_id: st.persona_id });
   }

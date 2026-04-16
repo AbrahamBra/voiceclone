@@ -6,8 +6,6 @@
 
   let ruleSaved = $state(false);
 
-  let validated = $state(false);
-
   let blocks = $derived(
     message.role === "bot" && message.content
       ? message.content.split(/\n\n+/).filter((b) => b.trim())
@@ -62,11 +60,6 @@
   {#if message.role === "bot" && !message.typing && message.content}
     <div class="msg-actions">
       <button class="action-btn" onclick={copyFull}>Copier</button>
-      {#if validated}
-        <span class="action-validated">✓ Noté</span>
-      {:else}
-        <button class="action-btn action-validate" onclick={() => { validated = true; onValidate?.(message); }}>✓</button>
-      {/if}
       <button class="action-btn" onclick={() => onCorrect?.(message)}>Corriger</button>
     </div>
   {/if}
@@ -164,16 +157,6 @@
   .action-btn:hover {
     color: var(--text-secondary);
     border-color: var(--text-tertiary);
-  }
-
-  .action-validate {
-    color: var(--success);
-    border-color: rgba(34, 197, 94, 0.3);
-  }
-
-  .action-validate:hover {
-    color: var(--success);
-    border-color: var(--success);
   }
 
   .action-validated {
