@@ -4,9 +4,18 @@
   import { showToast } from "$lib/stores/ui.js";
   import { fly } from "svelte/transition";
 
-  let step = $state(1);
+  let cloneType = $state(null); // 'posts' | 'dm' | 'both'
+  let step = $state('type');
   let direction = $state(1);
-  const TOTAL = 4;
+
+  const steps = $derived([
+    'type',
+    'info',
+    ...(cloneType !== 'dm'    ? ['posts'] : []),
+    ...(cloneType !== 'posts' ? ['dm']    : []),
+    'docs',
+  ]);
+  const TOTAL = $derived(steps.length);
 
   // Step 1: Infos générales
   let linkedinUrl = $state("");
@@ -139,7 +148,7 @@
     ].filter(Boolean).join("\n\n");
 
     const posts = postsText.trim().split(/\n---\n/).map(p => p.trim()).filter(p => p.length > 30);
-    if (posts.length < 3) {
+    if (cloneType !== 'dm' && posts.length < 3) {
       showToast("Minimum 3 posts (séparés par ---)");
       return;
     }
@@ -156,10 +165,11 @@
         method: "POST",
         body: JSON.stringify({
           linkedin_text: linkedin,
-          posts,
+          posts: cloneType !== 'dm' ? posts : undefined,
           dms: dms.length > 0 ? dms : undefined,
           documents: docsText.trim() || undefined,
           name: personaName.trim() || undefined,
+          cloneType,
         }),
       });
 
@@ -177,9 +187,26 @@
     }
   }
 
-  function goToStep(n) {
-    direction = n > step ? 1 : -1;
-    step = n;
+  function setCloneType(value) {
+    cloneType = value;
+    if (value === 'dm')    postsText = '';
+    if (value === 'posts') dmsText = '';
+  }
+
+  function nextStep() {
+    const idx = steps.indexOf(step);
+    if (idx < steps.length - 1) {
+      direction = 1;
+      step = steps[idx + 1];
+    }
+  }
+
+  function prevStep() {
+    const idx = steps.indexOf(step);
+    if (idx > 0) {
+      direction = -1;
+      step = steps[idx - 1];
+    }
   }
 
   $derived: postsCount = postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length;
@@ -189,10 +216,12 @@
 <div class="create-page">
   <div class="create-container">
     <h2>Créer un clone</h2>
-    <p class="create-subtitle">Étape {step}/{TOTAL}</p>
+    <p class="create-subtitle">
+      {#if step !== 'type'}Étape {steps.indexOf(step)}/{TOTAL - 1}{/if}
+    </p>
     <div class="step-bar">
-      {#each Array(TOTAL) as _, i}
-        <div class="step-bar-item" class:active={i + 1 <= step}></div>
+      {#each steps.slice(1) as s, i}
+        <div class="step-bar-item" class:active={steps.indexOf(step) > i}></div>
       {/each}
     </div>
 
@@ -202,7 +231,51 @@
         in:fly={{ x: 100 * direction, duration: 250 }}
         out:fly={{ x: -100 * direction, duration: 200 }}
       >
-        {#if step === 1}
+        {#if step === 'type'}
+          <div class="create-step">
+            <div class="step-header">
+              <strong>Pourquoi créer ce clone ?</strong>
+              <span>Le flow de création s'adapte selon ton choix.</span>
+            </div>
+
+            <div class="type-cards">
+              <button
+                class="type-card"
+                class:type-card-selected={cloneType === 'posts'}
+                onclick={() => setCloneType('posts')}
+              >
+                <span class="type-card-icon">✍️</span>
+                <strong>Posts LinkedIn</strong>
+                <span>Génère du contenu écrit, hooks, carrousels</span>
+              </button>
+              <button
+                class="type-card"
+                class:type-card-selected={cloneType === 'dm'}
+                onclick={() => setCloneType('dm')}
+              >
+                <span class="type-card-icon">💬</span>
+                <strong>DMs LinkedIn</strong>
+                <span>Répond en prospection et qualification</span>
+              </button>
+              <button
+                class="type-card"
+                class:type-card-selected={cloneType === 'both'}
+                onclick={() => setCloneType('both')}
+              >
+                <span class="type-card-icon">⚡</span>
+                <strong>Les deux</strong>
+                <span>Flow complet, 5 étapes</span>
+              </button>
+            </div>
+
+            <div class="create-actions">
+              <button onclick={nextStep} disabled={!cloneType}>
+                Continuer →
+              </button>
+            </div>
+          </div>
+
+        {:else if step === 'info'}
           <!-- Step 1: Infos générales -->
           <div class="create-step">
             <div class="step-header">
@@ -230,13 +303,13 @@
             <textarea rows="4" bind:value={profileText} placeholder="Expertise, thèmes abordés, valeur ajoutée..."></textarea>
 
             <div class="create-actions">
-              <button onclick={() => goToStep(2)} disabled={!personaName.trim() && !profileText.trim()}>
+              <button onclick={nextStep} disabled={!personaName.trim() && !profileText.trim()}>
                 Suivant →
               </button>
             </div>
           </div>
 
-        {:else if step === 2}
+        {:else if step === 'posts'}
           <!-- Step 2: Posts LinkedIn -->
           <div class="create-step">
             <div class="step-header">
@@ -255,14 +328,14 @@
             </div>
 
             <div class="create-actions">
-              <button class="btn-secondary" onclick={() => goToStep(1)}>← Retour</button>
-              <button onclick={() => goToStep(3)} disabled={postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length < 3}>
+              <button class="btn-secondary" onclick={prevStep}>← Retour</button>
+              <button onclick={nextStep} disabled={postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length < 3}>
                 Suivant →
               </button>
             </div>
           </div>
 
-        {:else if step === 3}
+        {:else if step === 'dm'}
           <!-- Step 3: DMs LinkedIn -->
           <div class="create-step">
             <div class="step-header">
@@ -282,13 +355,15 @@
             {/if}
 
             <div class="create-actions">
-              <button class="btn-secondary" onclick={() => goToStep(2)}>← Retour</button>
-              <button class="btn-secondary" onclick={() => goToStep(4)}>Passer</button>
-              <button onclick={() => goToStep(4)} disabled={!dmsText.trim()}>Suivant →</button>
+              <button class="btn-secondary" onclick={prevStep}>← Retour</button>
+              {#if cloneType === 'both'}
+                <button class="btn-secondary" onclick={nextStep}>Passer</button>
+              {/if}
+              <button onclick={nextStep} disabled={cloneType === 'dm' && !dmsText.trim()}>Suivant →</button>
             </div>
           </div>
 
-        {:else if step === 4}
+        {:else if step === 'docs'}
           <!-- Step 4: Documents + Génération -->
           <div class="create-step">
             <div class="step-header">
@@ -334,14 +409,18 @@
                 <span class="recap-label">Infos</span>
                 <span>{personaName || "—"}{personaTitle ? ` · ${personaTitle}` : ""}</span>
               </div>
-              <div class="recap-item">
-                <span class="recap-label">Posts</span>
-                <span>{postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length} posts</span>
-              </div>
-              <div class="recap-item">
-                <span class="recap-label">DMs</span>
-                <span>{dmsText.trim() ? `${dmsText.trim().split(/\n---\n/).filter(d => d.trim().length > 20).length} conversations` : "non renseigné"}</span>
-              </div>
+              {#if cloneType !== 'dm'}
+                <div class="recap-item">
+                  <span class="recap-label">Posts</span>
+                  <span>{postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length} posts</span>
+                </div>
+              {/if}
+              {#if cloneType !== 'posts'}
+                <div class="recap-item">
+                  <span class="recap-label">DMs</span>
+                  <span>{dmsText.trim() ? `${dmsText.trim().split(/\n---\n/).filter(d => d.trim().length > 20).length} conversations` : "non renseigné"}</span>
+                </div>
+              {/if}
               {#if docsText.trim()}
                 <div class="recap-item">
                   <span class="recap-label">Docs</span>
@@ -359,7 +438,7 @@
             {/if}
 
             <div class="create-actions">
-              <button class="btn-secondary" onclick={() => goToStep(3)} disabled={generating}>← Retour</button>
+              <button class="btn-secondary" onclick={prevStep} disabled={generating}>← Retour</button>
             </div>
           </div>
         {/if}
@@ -672,5 +751,56 @@
   @media (max-width: 480px) {
     .create-page { padding: 1rem; }
     .scrape-row { flex-direction: column; }
+  }
+
+  .type-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .type-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--font);
+    color: var(--text);
+    transition: border-color 0.15s;
+    width: 100%;
+  }
+
+  .type-card:hover {
+    border-color: var(--text-tertiary);
+  }
+
+  .type-card-selected {
+    border-color: var(--text-secondary);
+    background: var(--surface);
+  }
+
+  .type-card-icon {
+    font-size: 1.25rem;
+    flex-shrink: 0;
+  }
+
+  .type-card strong {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  .type-card span:last-child {
+    display: block;
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+    margin-top: 0.125rem;
   }
 </style>
