@@ -43,6 +43,12 @@
       "description": "{name} vous aide a ecrire un post LinkedIn dans votre style",
       "file": "scenarios/post.md",
       "welcome": "Salut ! De quoi tu veux parler dans ton prochain post ? Donne-moi le sujet et ta cible, et je te redige un post dans ton style."
+    },
+    "qualification": {
+      "label": "Qualifier un lead",
+      "description": "{name} analyse un profil LinkedIn et redige les DMs de prospection",
+      "file": "scenarios/qualification.md",
+      "welcome": "Salut ! Colle-moi le profil LinkedIn du prospect que tu veux qualifier. Le texte du profil (titre, a propos, experience) ou juste copie-colle la page."
     }
   },
 
