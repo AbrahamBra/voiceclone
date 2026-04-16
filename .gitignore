@@ -6,3 +6,5 @@ node_modules/
 eval/results/
 .claude/settings.local.json
 .svelte-kit
+
+.env*.local
