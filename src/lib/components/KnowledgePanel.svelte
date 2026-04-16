@@ -3,7 +3,7 @@
   import { showToast } from "$lib/stores/ui.js";
   import { getRelativeTime } from "$lib/utils.js";
 
-  let { personaId } = $props();
+  let { personaId, onupload } = $props();
 
   let files = $state([]);
   let loading = $state(true);
@@ -81,6 +81,7 @@
       // Store original filename alongside server path for display
       files = [{ ...data.file, displayName: filename }, ...files];
       showToast("Document ajouté");
+      onupload?.();
     } catch (e) {
       showToast(e.message || "Erreur lors de l'upload");
     } finally {

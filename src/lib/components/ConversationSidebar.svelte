@@ -7,6 +7,16 @@
   import KnowledgePanel from "./KnowledgePanel.svelte";
 
   let activeTab = $state("conversations");
+  let intelligenceExtracting = $state(false);
+  let extractingTimeout = $state(null);
+
+  function handleKnowledgeUpload() {
+    intelligenceExtracting = true;
+    if (extractingTimeout) clearTimeout(extractingTimeout);
+    extractingTimeout = setTimeout(() => {
+      intelligenceExtracting = false;
+    }, 15000);
+  }
 
   let {
     personaId,
@@ -127,11 +137,11 @@
 
   {#if activeTab === "intelligence"}
     <div class="sidebar-content">
-      <IntelligencePanel {personaId} />
+      <IntelligencePanel {personaId} extracting={intelligenceExtracting} />
     </div>
   {:else if activeTab === "knowledge"}
     <div class="sidebar-content">
-      <KnowledgePanel {personaId} />
+      <KnowledgePanel {personaId} onupload={handleKnowledgeUpload} />
     </div>
   {:else}
   <div class="conv-sidebar-header">
