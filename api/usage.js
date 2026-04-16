@@ -82,19 +82,28 @@ export default async function handler(req, res) {
         { data: clients },
         { data: usageLogs },
         { data: recentConvs },
+        { data: allUsageLogs },
       ] = await Promise.all([
-        supabase.from("clients").select("id, name, tier, budget_cents, spent_cents, created_at").eq("is_active", true).order("created_at", { ascending: false }),
+        supabase.from("clients").select("id, name, tier, budget_cents, created_at").eq("is_active", true).order("created_at", { ascending: false }),
         supabase.from("usage_log").select("client_id, input_tokens, output_tokens").gte("created_at", sevenDaysAgo),
         supabase.from("conversations").select("client_id, last_message_at").gte("last_message_at", sevenDaysAgo),
+        supabase.from("usage_log").select("client_id, cost_cents"),
       ]);
 
-      // Aggregate usage by client
+      // Aggregate usage by client (7d)
       const usageByClient = {};
       for (const row of (usageLogs || [])) {
         if (!row.client_id) continue;
         const a = usageByClient[row.client_id] ||= { tokens: 0, requests: 0 };
         a.tokens += (row.input_tokens || 0) + (row.output_tokens || 0);
         a.requests += 1;
+      }
+
+      // Aggregate total spent by client (all time, from usage_log)
+      const spentByClient = {};
+      for (const row of (allUsageLogs || [])) {
+        if (!row.client_id) continue;
+        spentByClient[row.client_id] = (spentByClient[row.client_id] || 0) + (row.cost_cents || 0);
       }
 
       // Aggregate conversations by client
@@ -106,18 +115,22 @@ export default async function handler(req, res) {
         if (!a.last_active || row.last_message_at > a.last_active) a.last_active = row.last_message_at;
       }
 
-      const result = (clients || []).map(c => ({
-        id: c.id,
-        name: c.name,
-        tier: c.tier,
-        budget_cents: c.budget_cents || 0,
-        spent_cents: c.spent_cents || 0,
-        remaining_cents: Math.max(0, (c.budget_cents || 0) - (c.spent_cents || 0)),
-        tokens_7d: usageByClient[c.id]?.tokens || 0,
-        requests_7d: usageByClient[c.id]?.requests || 0,
-        conversations_7d: convByClient[c.id]?.count || 0,
-        last_active: convByClient[c.id]?.last_active || null,
-      }));
+      const result = (clients || []).map(c => {
+        const budget = c.budget_cents || 0;
+        const spent = Math.ceil(spentByClient[c.id] || 0);
+        return {
+          id: c.id,
+          name: c.name,
+          tier: c.tier,
+          budget_cents: budget,
+          spent_cents: spent,
+          remaining_cents: Math.max(0, budget - spent),
+          tokens_7d: usageByClient[c.id]?.tokens || 0,
+          requests_7d: usageByClient[c.id]?.requests || 0,
+          conversations_7d: convByClient[c.id]?.count || 0,
+          last_active: convByClient[c.id]?.last_active || null,
+        };
+      });
 
       res.json({ clients: result });
     } catch (err) {
@@ -222,11 +235,13 @@ export default async function handler(req, res) {
     const { data: persona } = await supabase
       .from("personas").select("client_id").eq("id", req.query.persona).single();
     if (persona?.client_id) {
-      const { data: c } = await supabase
-        .from("clients").select("budget_cents, spent_cents, anthropic_api_key").eq("id", persona.client_id).single();
+      const [{ data: c }, { data: spentRows }] = await Promise.all([
+        supabase.from("clients").select("budget_cents, anthropic_api_key").eq("id", persona.client_id).single(),
+        supabase.from("usage_log").select("cost_cents").eq("client_id", persona.client_id),
+      ]);
       if (c) {
         const budget = c.budget_cents || 0;
-        const spent = c.spent_cents || 0;
+        const spent = Math.ceil((spentRows || []).reduce((sum, r) => sum + (r.cost_cents || 0), 0));
         res.json({ budget_cents: budget, spent_cents: spent, remaining_cents: Math.max(0, budget - spent), has_own_key: !!c.anthropic_api_key });
         return;
       }
@@ -247,15 +262,21 @@ export default async function handler(req, res) {
   }
 
   // ── Client: own usage ──
-  const { data: logs } = await supabase
-    .from("usage_log")
-    .select("input_tokens, output_tokens, cost_cents, created_at")
-    .eq("client_id", client.id)
-    .order("created_at", { ascending: false })
-    .limit(50);
+  const [{ data: logs }, { data: spentRows }] = await Promise.all([
+    supabase
+      .from("usage_log")
+      .select("input_tokens, output_tokens, cost_cents, created_at")
+      .eq("client_id", client.id)
+      .order("created_at", { ascending: false })
+      .limit(50),
+    supabase
+      .from("usage_log")
+      .select("cost_cents")
+      .eq("client_id", client.id),
+  ]);
 
   const budget = client.budget_cents || 0;
-  const spent = client.spent_cents || 0;
+  const spent = Math.ceil((spentRows || []).reduce((sum, r) => sum + (r.cost_cents || 0), 0));
   res.json({
     budget_cents: budget,
     spent_cents: spent,
