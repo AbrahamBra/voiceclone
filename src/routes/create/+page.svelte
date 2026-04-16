@@ -4,9 +4,18 @@
   import { showToast } from "$lib/stores/ui.js";
   import { fly } from "svelte/transition";
 
-  let step = $state(1);
+  let cloneType = $state(null); // 'posts' | 'dm' | 'both'
+  let step = $state('type');
   let direction = $state(1);
-  const TOTAL = 4;
+
+  const steps = $derived([
+    'type',
+    'info',
+    ...(cloneType !== 'dm'    ? ['posts'] : []),
+    ...(cloneType !== 'posts' ? ['dm']    : []),
+    'docs',
+  ]);
+  const TOTAL = $derived(steps.length);
 
   // Step 1: Infos générales
   let linkedinUrl = $state("");
@@ -177,9 +186,26 @@
     }
   }
 
-  function goToStep(n) {
-    direction = n > step ? 1 : -1;
-    step = n;
+  function setCloneType(value) {
+    cloneType = value;
+    if (value === 'dm')    postsText = '';
+    if (value === 'posts') dmsText = '';
+  }
+
+  function nextStep() {
+    const idx = steps.indexOf(step);
+    if (idx < steps.length - 1) {
+      direction = 1;
+      step = steps[idx + 1];
+    }
+  }
+
+  function prevStep() {
+    const idx = steps.indexOf(step);
+    if (idx > 0) {
+      direction = -1;
+      step = steps[idx - 1];
+    }
   }
 
   $derived: postsCount = postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length;
@@ -189,10 +215,12 @@
 <div class="create-page">
   <div class="create-container">
     <h2>Créer un clone</h2>
-    <p class="create-subtitle">Étape {step}/{TOTAL}</p>
+    <p class="create-subtitle">
+      {#if step !== 'type'}Étape {steps.indexOf(step)}/{TOTAL - 1}{/if}
+    </p>
     <div class="step-bar">
-      {#each Array(TOTAL) as _, i}
-        <div class="step-bar-item" class:active={i + 1 <= step}></div>
+      {#each steps.slice(1) as s, i}
+        <div class="step-bar-item" class:active={steps.indexOf(step) > i}></div>
       {/each}
     </div>
 
