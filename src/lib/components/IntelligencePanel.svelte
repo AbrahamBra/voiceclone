@@ -15,6 +15,9 @@
   let fidelity = $state(null);
   let fidelityLoading = $state(true);
   let recalculating = $state(false);
+  let showPostsModal = $state(false);
+  let postsText = $state("");
+  let submittingPosts = $state(false);
 
   // Extraction progress state
   let exProgress = $state(0);
@@ -53,6 +56,25 @@
       else showToast("Erreur de recalcul");
     } finally {
       recalculating = false;
+    }
+  }
+
+  async function submitReferencePosts() {
+    if (!postsText.trim()) return;
+    submittingPosts = true;
+    try {
+      const result = await api("/api/knowledge", {
+        method: "POST",
+        body: JSON.stringify({ personaId, content: postsText.trim(), source_type: "linkedin_post" }),
+      });
+      showToast(`${result.chunk_count} posts indexes`);
+      showPostsModal = false;
+      postsText = "";
+      await loadFidelity();
+    } catch {
+      showToast("Erreur lors de l'indexation");
+    } finally {
+      submittingPosts = false;
     }
   }
 
@@ -268,6 +290,30 @@
   <div class="fidelity-section fidelity-empty">
     <span class="fidelity-title">FIDELITE VOCALE</span>
     <p>Pas assez de posts LinkedIn pour calculer (minimum 3).</p>
+    <button class="fidelity-add-posts" onclick={() => showPostsModal = true}>
+      Ajouter des posts de reference
+    </button>
+  </div>
+{/if}
+
+{#if showPostsModal}
+  <div class="posts-modal-backdrop" onclick={() => showPostsModal = false}>
+    <div class="posts-modal" onclick={(e) => e.stopPropagation()}>
+      <h4>Posts LinkedIn de reference</h4>
+      <p class="posts-modal-hint">Collez les posts LinkedIn originaux, separes par --- sur une ligne seule.</p>
+      <textarea
+        class="posts-modal-textarea"
+        bind:value={postsText}
+        placeholder={"Premier post ici...\n\n---\n\nDeuxieme post ici...\n\n---\n\nTroisieme post..."}
+        rows="12"
+      ></textarea>
+      <div class="posts-modal-actions">
+        <button class="posts-modal-cancel" onclick={() => showPostsModal = false}>Annuler</button>
+        <button class="posts-modal-submit" onclick={submitReferencePosts} disabled={submittingPosts || !postsText.trim()}>
+          {submittingPosts ? "Indexation..." : "Indexer les posts"}
+        </button>
+      </div>
+    </div>
   </div>
 {/if}
 
@@ -760,4 +806,81 @@
     color: var(--text-tertiary);
     margin: 0.375rem 0 0;
   }
+  .fidelity-add-posts {
+    margin-top: 0.5rem;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-secondary);
+    padding: 0.25rem 0.625rem;
+    font-size: 0.6875rem;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .fidelity-add-posts:hover { color: var(--text); border-color: var(--text-tertiary); }
+  .posts-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  .posts-modal {
+    background: var(--surface, #1a1a2e);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg, 12px);
+    padding: 1.25rem;
+    width: 90%;
+    max-width: 500px;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+  .posts-modal h4 {
+    margin: 0 0 0.25rem;
+    font-size: 0.875rem;
+    color: var(--text);
+  }
+  .posts-modal-hint {
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+    margin: 0 0 0.75rem;
+  }
+  .posts-modal-textarea {
+    width: 100%;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 0.75rem;
+    font-family: inherit;
+    padding: 0.625rem;
+    resize: vertical;
+    min-height: 150px;
+  }
+  .posts-modal-textarea:focus { outline: none; border-color: var(--accent); }
+  .posts-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+  .posts-modal-cancel, .posts-modal-submit {
+    padding: 0.375rem 0.75rem;
+    border-radius: var(--radius);
+    font-size: 0.75rem;
+    cursor: pointer;
+    border: 1px solid var(--border);
+  }
+  .posts-modal-cancel {
+    background: transparent;
+    color: var(--text-secondary);
+  }
+  .posts-modal-submit {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+  .posts-modal-submit:disabled { opacity: 0.4; cursor: default; }
 </style>

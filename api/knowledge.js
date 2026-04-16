@@ -134,6 +134,36 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── POST: Upload reference posts (linkedin_post source type) ──
+  if (req.body?.source_type === "linkedin_post") {
+    const { personaId, content } = req.body;
+    if (!personaId || !content) {
+      res.status(400).json({ error: "personaId and content are required" }); return;
+    }
+    if (content.length > 250_000) {
+      res.status(400).json({ error: "Content too large" }); return;
+    }
+
+    const { data: pData } = await supabase
+      .from("personas").select("client_id, intelligence_source_id").eq("id", personaId).single();
+    if (!isAdmin && (!pData || pData.client_id !== client?.id)) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+    const intellId = pData ? getIntelligenceId(pData) : personaId;
+
+    const chunks = chunkText(content);
+    let chunkCount = 0;
+    try {
+      chunkCount = await embedAndStore(supabase, chunks, intellId, "linkedin_post");
+    } catch (e) {
+      console.log(JSON.stringify({ event: "embed_error", error: e.message }));
+    }
+
+    clearIntelligenceCache(intellId);
+    res.json({ chunk_count: chunkCount });
+    return;
+  }
+
   // ── POST: Upload file ──
   const { personaId, filename, content } = req.body || {};
   if (!personaId || !filename || !content) {
