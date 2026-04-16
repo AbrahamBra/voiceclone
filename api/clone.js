@@ -120,6 +120,12 @@ export default async function handler(req, res) {
 
   const { linkedin_text, posts, dms, documents, name, cloneType } = req.body || {};
 
+  const validTypes = ['posts', 'dm', 'both'];
+  if (cloneType && !validTypes.includes(cloneType)) {
+    res.status(400).json({ error: "cloneType must be 'posts', 'dm', or 'both'" });
+    return;
+  }
+
   if (!linkedin_text || typeof linkedin_text !== "string" || linkedin_text.length < 50) {
     res.status(400).json({ error: "linkedin_text required (min 50 chars)" });
     return;
