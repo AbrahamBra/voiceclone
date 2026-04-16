@@ -56,6 +56,8 @@ export default async function handler(req, res) {
       }
     }
 
+    // Always bypass cache for Intelligence panel — entities may have just been added
+    clearCache(personaId);
     const data = await loadPersonaData(personaId);
     if (!data) { res.status(404).json({ error: "Persona not found" }); return; }
 
@@ -327,10 +329,11 @@ async function extractGraphKnowledge(personaId, correctionText, botMsg, userMsg,
     if (!graphData.has_graph_update) return;
 
     if (graphData.new_entities?.length > 0) {
+      const VALID_ENTITY_TYPES = new Set(["concept", "framework", "person", "company", "metric", "belief", "tool", "style_rule"]);
       const entityRows = graphData.new_entities.map(e => ({
         persona_id: personaId,
         name: e.name,
-        type: e.type || "concept",
+        type: VALID_ENTITY_TYPES.has(e.type) ? e.type : "concept",
         description: e.description || "",
         confidence: 0.8,
       }));
@@ -346,13 +349,14 @@ async function extractGraphKnowledge(personaId, correctionText, botMsg, userMsg,
         const entityMap = {};
         for (const e of (allEntities || [])) entityMap[e.name] = e.id;
 
+        const VALID_RELATION_TYPES = new Set(["equals", "includes", "contradicts", "causes", "uses", "prerequisite", "enforces"]);
         const relationRows = graphData.new_relations
           .filter(r => entityMap[r.from] && entityMap[r.to])
           .map(r => ({
             persona_id: personaId,
             from_entity_id: entityMap[r.from],
             to_entity_id: entityMap[r.to],
-            relation_type: r.type || "uses",
+            relation_type: VALID_RELATION_TYPES.has(r.type) ? r.type : "uses",
             description: r.description || "",
             confidence: 0.8,
           }));
