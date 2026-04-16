@@ -60,7 +60,7 @@
   <div class="modal">
     <h3>Parametres</h3>
     <p class="hint">
-      Budget : {(usage.spent_cents / 100).toFixed(2)}&euro; / {(usage.budget_cents / 100).toFixed(2)}&euro; utilises{usage.has_own_key ? " (cle perso active)" : ""}
+      Budget : {((usage.spent_cents || 0) / 100).toFixed(2)}&euro; / {((usage.budget_cents || 0) / 100).toFixed(2)}&euro; utilises{usage.has_own_key ? " (cle perso active)" : ""}
     </p>
     <div class="field">
       <label for="settings-key">Cle API Anthropic (optionnel)</label>
