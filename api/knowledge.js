@@ -151,10 +151,11 @@ export default async function handler(req, res) {
     }
     const intellId = pData ? getIntelligenceId(pData) : personaId;
 
-    const chunks = chunkText(content);
+    // Split by --- separator, each post is its own chunk (not merged by chunkText)
+    const posts = content.split(/\n---\n|\n---$|^---\n/).map(p => p.trim()).filter(p => p.length > 20);
     let chunkCount = 0;
     try {
-      chunkCount = await embedAndStore(supabase, chunks, intellId, "linkedin_post");
+      chunkCount = await embedAndStore(supabase, posts, intellId, "linkedin_post");
     } catch (e) {
       console.log(JSON.stringify({ event: "embed_error", error: e.message }));
     }
