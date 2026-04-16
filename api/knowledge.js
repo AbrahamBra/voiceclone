@@ -232,7 +232,7 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
     });
     const result = await Promise.race([
       extractPromise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 10000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 25000)),
     ]);
 
     const raw = result.content[0].text.trim();
