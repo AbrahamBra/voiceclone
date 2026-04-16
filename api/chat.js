@@ -245,6 +245,7 @@ export default async function handler(req, res) {
       corrections,
       apiKey,
       model: routing.model,
+      personaId: persona.id,
     });
     // Persist messages + update conversation (await to avoid Vercel killing the function)
     if (convId && supabase) {
