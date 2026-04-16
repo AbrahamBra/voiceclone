@@ -217,6 +217,24 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Admin: lookup specific persona's client budget ──
+  if (isAdmin && req.query?.persona) {
+    const { data: persona } = await supabase
+      .from("personas").select("client_id").eq("id", req.query.persona).single();
+    if (persona?.client_id) {
+      const { data: c } = await supabase
+        .from("clients").select("budget_cents, spent_cents, anthropic_api_key").eq("id", persona.client_id).single();
+      if (c) {
+        const budget = c.budget_cents || 0;
+        const spent = c.spent_cents || 0;
+        res.json({ budget_cents: budget, spent_cents: spent, remaining_cents: Math.max(0, budget - spent), has_own_key: !!c.anthropic_api_key });
+        return;
+      }
+    }
+    res.json({ budget_cents: 0, spent_cents: 0, remaining_cents: 0, has_own_key: false });
+    return;
+  }
+
   // ── Admin: client list (default) ──
   if (isAdmin) {
     const { data: clients } = await supabase

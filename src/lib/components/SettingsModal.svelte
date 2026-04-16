@@ -25,7 +25,8 @@
 
   async function fetchUsage() {
     try {
-      const resp = await fetch("/api/usage", { headers: authHeaders() });
+      const url = personaId ? `/api/usage?persona=${personaId}` : "/api/usage";
+      const resp = await fetch(url, { headers: authHeaders() });
       if (resp.ok) usage = await resp.json();
     } catch {}
   }
