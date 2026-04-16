@@ -192,7 +192,13 @@ export default async function handler(req, res) {
     const configRaw = configResult.content[0].text.trim();
     const jsonMatch = configRaw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("Failed to parse persona config JSON");
-    const personaConfig = JSON.parse(jsonMatch[0]);
+    let personaConfig;
+    try {
+      personaConfig = JSON.parse(jsonMatch[0]);
+    } catch (parseErr) {
+      console.log(JSON.stringify({ event: "config_parse_error", raw: configRaw.slice(0, 300) }));
+      throw new Error("Invalid persona config JSON from Claude");
+    }
 
     if (name) personaConfig.name = name;
 
@@ -293,25 +299,21 @@ export default async function handler(req, res) {
       await logUsage(client.id, persona.id, finalInput, finalOutput);
     }
 
-    // Respond immediately — clone is usable
-    res.json({
-      ok: true,
-      persona: { id: persona.id, slug: persona.slug, name: persona.name, title: persona.title, avatar: persona.avatar },
-    });
-
-    // Step 3: Extract ontology AFTER response (fire-and-forget, non-blocking)
-    (async () => {
-      try {
-        const ontologyResult = await anthropic.messages.create({
-          model: MODEL, max_tokens: 2048,
+    // Step 3: Extract ontology BEFORE response — Vercel kills the function after res.json()
+    let ontologyCount = 0;
+    try {
+      const ontologyResult = await Promise.race([
+        anthropic.messages.create({
+          model: "claude-haiku-4-5-20251001", max_tokens: 4096,
           system: ONTOLOGY_PROMPT,
           messages: [{ role: "user", content: userContent.join("\n") }],
-        });
-        const ontRaw = ontologyResult.content[0].text.trim();
-        const ontJson = ontRaw.match(/\{[\s\S]*\}/);
-        if (!ontJson) return;
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 25000)),
+      ]);
+      const ontRaw = ontologyResult.content[0].text.trim();
+      const ontJson = ontRaw.match(/\{[\s\S]*\}/);
+      if (ontJson) {
         const ontology = JSON.parse(ontJson[0]);
-
         if (ontology.entities?.length > 0) {
           const entityRows = ontology.entities.map(e => ({
             persona_id: persona.id, name: e.name,
@@ -321,6 +323,8 @@ export default async function handler(req, res) {
             .from("knowledge_entities")
             .upsert(entityRows, { onConflict: "persona_id,name" })
             .select("id, name");
+
+          ontologyCount = inserted?.length || 0;
 
           if (inserted && ontology.relations?.length > 0) {
             const entityMap = {};
@@ -337,33 +341,39 @@ export default async function handler(req, res) {
             }
           }
         }
-        console.log(JSON.stringify({ event: "ontology_extracted", persona: persona.id, entities: ontology.entities?.length || 0 }));
-      } catch (e) {
-        console.log(JSON.stringify({ event: "ontology_error", persona: persona.id, error: e.message }));
       }
+      console.log(JSON.stringify({ event: "ontology_extracted", persona: persona.id, entities: ontologyCount }));
+    } catch (e) {
+      console.log(JSON.stringify({ event: "ontology_error", persona: persona.id, error: e.message }));
+    }
 
-      // Embed knowledge files for RAG (also fire-and-forget)
-      if (isEmbeddingAvailable()) {
-        try {
-          if (styleBody) {
-            const styleChunks = chunkText(styleBody);
-            await embedAndStore(supabase, styleChunks, persona.id, "knowledge_file", "topics/style-posts-linkedin.md");
-          }
-          if (documents && documents.length > 50) {
-            const docChunks = chunkText(documents);
-            await embedAndStore(supabase, docChunks, persona.id, "document", "documents/client-docs.md");
-          }
-          if (posts?.length > 0) {
-            const postsTextForEmbed = posts.join("\n\n---\n\n");
-            const postChunks = chunkText(postsTextForEmbed);
-            await embedAndStore(supabase, postChunks, persona.id, "linkedin_post");
-          }
-          console.log(JSON.stringify({ event: "chunks_embedded", persona: persona.id }));
-        } catch (e) {
-          console.log(JSON.stringify({ event: "embed_error", persona: persona.id, error: e.message }));
+    // Embed knowledge files for RAG (best-effort before response)
+    if (isEmbeddingAvailable()) {
+      try {
+        if (styleBody) {
+          const styleChunks = chunkText(styleBody);
+          await embedAndStore(supabase, styleChunks, persona.id, "knowledge_file", "topics/style-posts-linkedin.md");
         }
+        if (documents && documents.length > 50) {
+          const docChunks = chunkText(documents);
+          await embedAndStore(supabase, docChunks, persona.id, "document", "documents/client-docs.md");
+        }
+        if (posts?.length > 0) {
+          const postsTextForEmbed = posts.join("\n\n---\n\n");
+          const postChunks = chunkText(postsTextForEmbed);
+          await embedAndStore(supabase, postChunks, persona.id, "linkedin_post");
+        }
+        console.log(JSON.stringify({ event: "chunks_embedded", persona: persona.id }));
+      } catch (e) {
+        console.log(JSON.stringify({ event: "embed_error", persona: persona.id, error: e.message }));
       }
-    })();
+    }
+
+    res.json({
+      ok: true,
+      persona: { id: persona.id, slug: persona.slug, name: persona.name, title: persona.title, avatar: persona.avatar },
+      entities_extracted: ontologyCount,
+    });
 
   } catch (err) {
     console.log(JSON.stringify({ event: "clone_error", ts: new Date().toISOString(), error: err.message }));

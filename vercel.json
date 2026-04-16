@@ -5,6 +5,8 @@
   "functions": {
     "api/chat.js": { "maxDuration": 60 },
     "api/clone.js": { "maxDuration": 60 },
-    "api/knowledge.js": { "maxDuration": 60 }
+    "api/knowledge.js": { "maxDuration": 60 },
+    "api/calibrate.js": { "maxDuration": 60 },
+    "api/feedback.js": { "maxDuration": 60 }
   }
 }
