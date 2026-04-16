@@ -5,7 +5,7 @@ import { initSSE } from "../lib/sse.js";
 import { validateInput } from "../lib/validate.js";
 import { authenticateRequest, checkBudget, getApiKey, logUsage, setCors, supabase } from "../lib/supabase.js";
 import { getPersonaFromDb, findRelevantKnowledgeFromDb, loadScenarioFromDb, getCorrectionsFromDb, findRelevantEntities } from "../lib/knowledge-db.js";
-import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, looksLikeDirectInstruction } from "../lib/feedback-detect.js";
+import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, looksLikeDirectInstruction, looksLikeNegativeFeedback, detectNegativeFeedback } from "../lib/feedback-detect.js";
 
 /** Extract a smart conversation title from the first message */
 function extractConvTitle(message, scenario) {
@@ -139,6 +139,39 @@ export default async function handler(req, res) {
 
   const sse = initSSE(res);
   const apiKey = getApiKey(client);
+
+  // Short-circuit: negative feedback — user wants to undo/weaken a rule
+  if (looksLikeNegativeFeedback(message)) {
+    try {
+      const result = await detectNegativeFeedback(personaId, message, messages, client);
+      if (result && result.demoted > 0) {
+        const confirm = result.demoted === 1
+          ? `Règle affaiblie : "${result.corrections[0].slice(0, 60)}". Elle aura moins d'influence.`
+          : `${result.demoted} règles affaiblies. Elles auront moins d'influence.`;
+        sse("delta", { text: confirm });
+        sse("done", {});
+
+        if (convId && supabase) {
+          Promise.all([
+            supabase.from("messages").insert([
+              { conversation_id: convId, role: "user", content: message },
+              { conversation_id: convId, role: "assistant", content: confirm },
+            ]),
+            supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
+            supabase.from("conversations")
+              .update({ title: extractConvTitle(message, scenario) })
+              .eq("id", convId).is("title", null),
+          ]).catch(() => {});
+        }
+
+        if (convId) sse("conversation", { id: convId });
+        res.end();
+        return;
+      }
+    } catch (e) {
+      console.log(JSON.stringify({ event: "negative_feedback_shortcircuit_error", ts: new Date().toISOString(), error: e.message }));
+    }
+  }
 
   // Short-circuit: if the message is a direct instruction, save it and confirm
   // without calling Claude (avoids the "I can't modify my settings" response)

@@ -64,15 +64,27 @@ export default async function handler(req, res) {
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
       .slice(0, 50);
 
+    // Find contradiction relations
+    const contradictions = data.relations
+      .filter(r => r.relation_type === "contradicts")
+      .map(r => ({
+        from: entityMap[r.from_entity_id] || "?",
+        to: entityMap[r.to_entity_id] || "?",
+        description: r.description,
+        confidence: r.confidence,
+      }));
+
     res.json({
       stats: {
         corrections_total: data.corrections.length,
         entities_total: entities.length,
         relations_total: data.relations.length,
         confidence_avg: confidenceAvg,
+        contradictions_count: contradictions.length,
       },
       corrections,
       entities,
+      contradictions,
     });
     return;
   }
@@ -151,6 +163,55 @@ export default async function handler(req, res) {
 
     clearCache(personaId);
     res.json({ ok: true, message: "Validated" });
+    return;
+  }
+
+  // ── Type "reject": negative reinforcement — demote specific entities/corrections ──
+  // Frontend sends entityIds[] and/or correctionIds[] to demote explicitly.
+  if (type === "reject") {
+    const { entityIds, correctionIds } = req.body || {};
+    if (!entityIds?.length && !correctionIds?.length) {
+      res.status(400).json({ error: "entityIds or correctionIds required" }); return;
+    }
+
+    let demotedEntities = 0;
+    let demotedCorrections = 0;
+
+    // Demote specific entities by ID
+    if (entityIds?.length > 0) {
+      for (const id of entityIds) {
+        const { data: entity } = await supabase
+          .from("knowledge_entities")
+          .select("confidence")
+          .eq("id", id).eq("persona_id", personaId).single();
+        if (!entity) continue;
+        const newConf = Math.max(0.0, (entity.confidence || 0.8) - 0.1);
+        await supabase.from("knowledge_entities")
+          .update({ confidence: newConf, last_matched_at: new Date().toISOString() })
+          .eq("id", id);
+        demotedEntities++;
+      }
+    }
+
+    // Demote specific corrections by ID
+    if (correctionIds?.length > 0) {
+      for (const id of correctionIds) {
+        const { data: corr } = await supabase
+          .from("corrections")
+          .select("confidence")
+          .eq("id", id).eq("persona_id", personaId).single();
+        if (!corr) continue;
+        const newConf = Math.max(0.0, (corr.confidence || 0.8) - 0.15);
+        const newStatus = newConf <= 0.1 ? "archived" : "active";
+        await supabase.from("corrections")
+          .update({ confidence: newConf, status: newStatus })
+          .eq("id", id);
+        demotedCorrections++;
+      }
+    }
+
+    clearCache(personaId);
+    res.json({ ok: true, message: "Rejected", entities_demoted: demotedEntities, corrections_demoted: demotedCorrections });
     return;
   }
 
@@ -302,7 +363,7 @@ export default async function handler(req, res) {
   }
 
   // 2. Extract graph knowledge — await before response (Vercel kills fire-and-forget)
-  const entityCount = await extractGraphKnowledge(personaId, finalCorrection, botMessage || original, userMessage, client);
+  const { entityCount, contradictions } = await extractGraphKnowledge(personaId, finalCorrection, botMessage || original, userMessage, client);
 
   clearCache(personaId);
 
@@ -310,6 +371,7 @@ export default async function handler(req, res) {
     ok: true,
     message: "Correction enregistree",
     entities_extracted: entityCount,
+    contradictions: contradictions.length > 0 ? contradictions : undefined,
   });
 }
 
