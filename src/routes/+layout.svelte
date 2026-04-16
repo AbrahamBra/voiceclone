@@ -9,7 +9,8 @@
 
   $effect(() => {
     if (!$isHydrated) return;
-    if ($page.url.pathname !== "/" && !$accessCode && !$sessionToken) {
+    const pub = $page.url.pathname === "/" || $page.url.pathname === "/guide";
+    if (!pub && !$accessCode && !$sessionToken) {
       goto("/");
     }
   });
