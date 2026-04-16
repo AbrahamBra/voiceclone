@@ -236,9 +236,11 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
     ]);
 
     const raw = result.content[0].text.trim();
+    console.log(JSON.stringify({ event: "graph_extraction_raw", persona: personaId, raw: raw.slice(0, 500) }));
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return 0;
     const graphData = JSON.parse(jsonMatch[0]);
+    console.log(JSON.stringify({ event: "graph_extraction_result", persona: personaId, has_update: graphData.has_graph_update, entities: graphData.new_entities?.length || 0 }));
     if (!graphData.has_graph_update) return 0;
 
     let insertedCount = 0;
