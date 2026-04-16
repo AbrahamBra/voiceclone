@@ -193,9 +193,9 @@ export default async function handler(req, res) {
 
   // Await extraction before responding — Vercel terminates the function after res.json(),
   // so fire-and-forget doesn't work. We accept the slower response (~15s) for reliability.
-  const entitiesAdded = await extractGraphKnowledgeFromFile(personaId, content, client);
+  const { count: entitiesAdded, debug: extractDebug } = await extractGraphKnowledgeFromFile(personaId, content, client);
 
-  res.json({ file: { path, chunk_count: chunkCount }, entities_added: entitiesAdded });
+  res.json({ file: { path, chunk_count: chunkCount }, entities_added: entitiesAdded, _debug: extractDebug });
 }
 
 /**
@@ -207,8 +207,7 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
   try {
     const apiKey = getApiKey(client);
     if (!apiKey) {
-      console.log(JSON.stringify({ event: "file_graph_extraction_error", persona: personaId, error: "no_api_key" }));
-      return 0;
+      return { count: 0, debug: "no_api_key" };
     }
     const anthropic = new Anthropic({ apiKey });
 
@@ -236,12 +235,10 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
     ]);
 
     const raw = result.content[0].text.trim();
-    console.log(JSON.stringify({ event: "graph_extraction_raw", persona: personaId, raw: raw.slice(0, 500) }));
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return 0;
+    if (!jsonMatch) return { count: 0, debug: `no_json_in_response: ${raw.slice(0, 200)}` };
     const graphData = JSON.parse(jsonMatch[0]);
-    console.log(JSON.stringify({ event: "graph_extraction_result", persona: personaId, has_update: graphData.has_graph_update, entities: graphData.new_entities?.length || 0 }));
-    if (!graphData.has_graph_update) return 0;
+    if (!graphData.has_graph_update) return { count: 0, debug: `has_graph_update=false` };
 
     let insertedCount = 0;
 
@@ -261,8 +258,7 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
         .select("id, name");
 
       if (upsertError) {
-        console.log(JSON.stringify({ event: "entity_upsert_error", persona: personaId, error: upsertError.message }));
-        return 0;
+        return { count: 0, debug: `upsert_error: ${upsertError.message}` };
       }
 
       insertedCount = inserted?.length || 0;
@@ -298,9 +294,8 @@ async function extractGraphKnowledgeFromFile(personaId, content, client) {
       }
     }
 
-    return insertedCount;
+    return { count: insertedCount, debug: `ok: ${insertedCount} entities` };
   } catch (e) {
-    console.log(JSON.stringify({ event: "file_graph_extraction_error", persona: personaId, error: e.message }));
-    return 0;
+    return { count: 0, debug: `exception: ${e.message}` };
   }
 }
