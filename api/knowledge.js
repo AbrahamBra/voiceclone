@@ -8,10 +8,18 @@ Retourne UNIQUEMENT un tableau JSON de strings, sans aucun autre texte ni balise
 Exemple: ["stratégie", "linkedin", "contenu", "audience", "engagement"]`;
 
 const FILE_GRAPH_PROMPT = `Tu es un expert en extraction de connaissances business.
-Analyse ce document et extrais toutes les entités et relations utiles pour enrichir la connaissance d'un clone IA.
+Analyse ce document et extrais toutes les entités et relations NOUVELLES pour enrichir la connaissance d'un clone IA.
+
+IMPORTANT : Un graphe d'entités existe déjà. Tu DOIS chercher ce qui est NOUVEAU ou COMPLÉMENTAIRE :
+- Nouveaux segments d'audience, personas, ICPs, noms de personnes
+- Nouvelles objections, pain points, motivations d'achat
+- Nouveaux canaux, outils, métriques, chiffres clés
+- Nouvelles croyances, principes business, frameworks
+- Entreprises, partenaires, concurrents pas encore dans le graphe
+- Entités existantes dont la description peut être enrichie
 
 Concentre-toi sur :
-1. Entreprises et organisations (clients actuels, prospects, concurrents, partenaires)
+1. Entreprises et organisations (clients, prospects, concurrents, partenaires)
 2. Personas et cibles (ICP, segments, décideurs, utilisateurs)
 3. Positionnement et proposition de valeur
 4. Concepts métier, frameworks, méthodologies propres au domaine
@@ -23,13 +31,13 @@ Types de relations : equals, includes, contradicts, causes, uses, prerequisite, 
 
 Reponds en JSON :
 {
-  "has_graph_update": true/false,
+  "has_graph_update": true,
   "new_entities": [{ "name": "...", "type": "...", "description": "..." }],
   "new_relations": [{ "from": "...", "to": "...", "type": "...", "description": "..." }],
-  "updated_entities": [{ "name": "...", "description": "nouvelle description" }]
+  "updated_entities": [{ "name": "...", "description": "description enrichie" }]
 }
 
-Reponds {"has_graph_update": false} si le document ne contient aucune entité exploitable.`;
+Sois EXHAUSTIF. Extrais au minimum 10 entités de tout document non-trivial. Ne reponds has_graph_update: false que si le document est réellement vide ou sans aucune information exploitable.`;
 
 export default async function handler(req, res) {
   setCors(res, "GET, POST, DELETE, OPTIONS");

@@ -44,6 +44,7 @@ async function createClients() {
   const clients = [
     { access_code: "paolo2026", name: "Paolo", tier: "free", max_clones: 2 },
     { access_code: "thomas2026", name: "Thomas", tier: "free", max_clones: 2 },
+    { access_code: "victor2026", name: "Victor", tier: "free", max_clones: 2 },
   ];
 
   for (const c of clients) {
@@ -137,6 +138,7 @@ async function main() {
   // Get client IDs
   const { data: paoloClient } = await supabase.from("clients").select("id").eq("access_code", "paolo2026").single();
   const { data: thomasClient } = await supabase.from("clients").select("id").eq("access_code", "thomas2026").single();
+  const { data: victorClient } = await supabase.from("clients").select("id").eq("access_code", "victor2026").single();
 
   // Migrate each persona
   for (const dir of readdirSync(PERSONAS_DIR)) {
@@ -147,6 +149,7 @@ async function main() {
     let clientId = null;
     if (dir === "paolo") clientId = paoloClient?.id;
     else if (dir === "thomas") clientId = thomasClient?.id;
+    else if (dir === "victor") clientId = victorClient?.id;
     // alex stays as platform persona (client_id = null)
 
     await migratePersona(personaDir, dir, clientId);
