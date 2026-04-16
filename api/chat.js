@@ -5,7 +5,7 @@ import { initSSE } from "../lib/sse.js";
 import { validateInput } from "../lib/validate.js";
 import { authenticateRequest, checkBudget, getApiKey, logUsage, setCors, supabase } from "../lib/supabase.js";
 import { getPersonaFromDb, findRelevantKnowledgeFromDb, loadScenarioFromDb, getCorrectionsFromDb, findRelevantEntities } from "../lib/knowledge-db.js";
-import { detectChatFeedback, detectDirectInstruction } from "../lib/feedback-detect.js";
+import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, looksLikeDirectInstruction } from "../lib/feedback-detect.js";
 
 /** Extract a smart conversation title from the first message */
 function extractConvTitle(message, scenario) {
@@ -140,6 +140,41 @@ export default async function handler(req, res) {
   const sse = initSSE(res);
   const apiKey = getApiKey(client);
 
+  // Short-circuit: if the message is a direct instruction, save it and confirm
+  // without calling Claude (avoids the "I can't modify my settings" response)
+  if (looksLikeDirectInstruction(message)) {
+    try {
+      const saved = await detectDirectInstruction(personaId, message, messages, client);
+      if (saved > 0) {
+        const confirm = saved === 1
+          ? "Règle ajoutée. Elle sera active dès ton prochain message."
+          : `${saved} règles ajoutées. Elles seront actives dès ton prochain message.`;
+        sse("token", { text: confirm });
+
+        // Persist user message + confirmation
+        if (convId && supabase) {
+          Promise.all([
+            supabase.from("messages").insert([
+              { conversation_id: convId, role: "user", content: message },
+              { conversation_id: convId, role: "assistant", content: confirm },
+            ]),
+            supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
+            supabase.from("conversations")
+              .update({ title: extractConvTitle(message, scenario) })
+              .eq("id", convId).is("title", null),
+          ]).catch(() => {});
+        }
+
+        if (convId) sse("conversation", { id: convId });
+        res.end();
+        return;
+      }
+    } catch (e) {
+      // Extraction failed — fall through to normal chat
+      console.log(JSON.stringify({ event: "direct_instruction_shortcircuit_error", ts: new Date().toISOString(), error: e.message }));
+    }
+  }
+
   try {
     const result = await runPipeline({
       systemPrompt,
@@ -170,12 +205,13 @@ export default async function handler(req, res) {
       });
     }
 
-    // Detect coaching feedback when user validates (e.g. "ok top", "parfait")
-    // OR detect direct instructions/rules (e.g. "ajoute une règle", "ne jamais...")
-    // Runs after response is streamed — slight delay before res.end() is invisible to user
+    // Detect feedback from user message (runs in background, doesn't block response):
+    // 1. Coaching corrections: "trop long", "plus direct", etc.
+    // 2. Validation signals: "ok top", "parfait" → extracts corrections from coaching history
+    // Note: direct instructions are handled above (short-circuit path)
     Promise.all([
+      detectCoachingCorrection(personaId, message, messages, client),
       detectChatFeedback(personaId, message, messages, client),
-      detectDirectInstruction(personaId, message, messages, client),
     ]).catch(err => console.log(JSON.stringify({
         event: "feedback_detect_bg_error", ts: new Date().toISOString(), error: err.message,
       })));
