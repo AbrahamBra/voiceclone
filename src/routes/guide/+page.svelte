@@ -131,7 +131,7 @@
 <div class="guide-page">
   <div class="guide-container">
     <header class="guide-header">
-      <button class="back-btn" onclick={() => goto("/")}>
+      <button class="back-btn" onclick={() => history.back()}>
         &larr; Retour
       </button>
       <h1>Guide d'onboarding</h1>
