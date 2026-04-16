@@ -148,7 +148,7 @@
     ].filter(Boolean).join("\n\n");
 
     const posts = postsText.trim().split(/\n---\n/).map(p => p.trim()).filter(p => p.length > 30);
-    if (posts.length < 3) {
+    if (cloneType !== 'dm' && posts.length < 3) {
       showToast("Minimum 3 posts (séparés par ---)");
       return;
     }
@@ -165,10 +165,11 @@
         method: "POST",
         body: JSON.stringify({
           linkedin_text: linkedin,
-          posts,
+          posts: cloneType !== 'dm' ? posts : undefined,
           dms: dms.length > 0 ? dms : undefined,
           documents: docsText.trim() || undefined,
           name: personaName.trim() || undefined,
+          cloneType,
         }),
       });
 
@@ -408,14 +409,18 @@
                 <span class="recap-label">Infos</span>
                 <span>{personaName || "—"}{personaTitle ? ` · ${personaTitle}` : ""}</span>
               </div>
-              <div class="recap-item">
-                <span class="recap-label">Posts</span>
-                <span>{postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length} posts</span>
-              </div>
-              <div class="recap-item">
-                <span class="recap-label">DMs</span>
-                <span>{dmsText.trim() ? `${dmsText.trim().split(/\n---\n/).filter(d => d.trim().length > 20).length} conversations` : "non renseigné"}</span>
-              </div>
+              {#if cloneType !== 'dm'}
+                <div class="recap-item">
+                  <span class="recap-label">Posts</span>
+                  <span>{postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length} posts</span>
+                </div>
+              {/if}
+              {#if cloneType !== 'posts'}
+                <div class="recap-item">
+                  <span class="recap-label">DMs</span>
+                  <span>{dmsText.trim() ? `${dmsText.trim().split(/\n---\n/).filter(d => d.trim().length > 20).length} conversations` : "non renseigné"}</span>
+                </div>
+              {/if}
               {#if docsText.trim()}
                 <div class="recap-item">
                   <span class="recap-label">Docs</span>
