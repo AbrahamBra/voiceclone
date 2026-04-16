@@ -77,7 +77,10 @@
         "[Contexte lead \u2014 " + profile.name + "]",
         postSection,
         "PROFIL :\nTitre: " + profile.headline + "\n" + profile.text.slice(0, 500),
-        "Aide-moi a preparer une approche personnalisee pour ce prospect. Utilise ses sujets recents comme angle d'ouverture.",
+        "CONSIGNE : Reponds dans ce format exact :\n\n" +
+        "MESSAGE A ENVOYER :\n[Le message d'approche pret a copier/coller, en plusieurs messages courts style WhatsApp]\n\n" +
+        "POURQUOI CETTE APPROCHE :\n[2-3 lignes max expliquant l'angle choisi et pourquoi il devrait accrocher ce prospect]\n\n" +
+        "Utilise ses sujets recents comme angle d'ouverture.",
       ]
         .filter(Boolean)
         .join("\n\n");
