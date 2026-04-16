@@ -120,9 +120,9 @@
   <div class="sidebar-tabs">
     <button
       class="sidebar-tab"
-      class:active={activeTab === "conversations"}
-      onclick={() => activeTab = "conversations"}
-    >Conversations</button>
+      class:active={activeTab === "knowledge"}
+      onclick={() => activeTab = "knowledge"}
+    >Connaissance</button>
     <button
       class="sidebar-tab"
       class:active={activeTab === "intelligence"}
@@ -130,9 +130,9 @@
     >Intelligence</button>
     <button
       class="sidebar-tab"
-      class:active={activeTab === "knowledge"}
-      onclick={() => activeTab = "knowledge"}
-    >Connaissance</button>
+      class:active={activeTab === "conversations"}
+      onclick={() => activeTab = "conversations"}
+    >Conversations</button>
   </div>
 
   {#if activeTab === "intelligence"}
