@@ -189,11 +189,11 @@ export default async function handler(req, res) {
     res.status(500).json({ error: "Failed to save file" }); return;
   }
 
-  // Extract graph knowledge from file content (fire-and-forget)
-  extractGraphKnowledgeFromFile(personaId, content, client).catch(() => {});
-
   clearCache(personaId);
   res.json({ file: { path, chunk_count: chunkCount } });
+
+  // Extract graph knowledge from file content (fire-and-forget, after response)
+  extractGraphKnowledgeFromFile(personaId, content, client).catch(() => {});
 }
 
 /**

@@ -3,7 +3,7 @@
   import { getRelativeTime } from "$lib/utils.js";
   import { showToast } from "$lib/stores/ui.js";
 
-  let { personaId } = $props();
+  let { personaId, extracting = false } = $props();
 
   let data = $state(null);
   let loading = $state(true);
@@ -16,6 +16,16 @@
 
   $effect(() => {
     if (personaId) loadData();
+  });
+
+  let reloadTimeout = $state(null);
+  $effect(() => {
+    if (extracting) {
+      if (reloadTimeout) clearTimeout(reloadTimeout);
+      reloadTimeout = setTimeout(() => {
+        loadData();
+      }, 12000);
+    }
   });
 
   async function loadData() {
@@ -76,6 +86,10 @@
     return "var(--error)";
   }
 </script>
+
+{#if extracting}
+  <div class="intel-extracting">Analyse en cours...</div>
+{/if}
 
 {#if loading}
   <div class="intel-loading">Chargement...</div>
@@ -188,6 +202,30 @@
 {/if}
 
 <style>
+  .intel-extracting {
+    padding: 0.375rem 1rem;
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+  .intel-extracting::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: inline-block;
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+  }
+
   .intel-loading, .intel-error {
     padding: 1rem;
     color: var(--text-secondary);
