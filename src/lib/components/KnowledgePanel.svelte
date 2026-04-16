@@ -66,6 +66,8 @@
     if (content.length > 200_000) {
       content = content.slice(0, 200_000);
       showToast("Document tronqué à 200 000 caractères");
+    } else if (content.length > 50_000) {
+      showToast("Document volumineux — l'extraction intelligence peut être partielle");
     }
 
     uploading = true;
