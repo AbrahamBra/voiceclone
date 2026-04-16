@@ -83,7 +83,7 @@ Reponds UNIQUEMENT en JSON valide :
   ]
 }
 
-Sois precis. Extrais 15-30 entites et 10-20 relations. Les entites doivent refleter les concepts UNIQUES de cette personne, pas des generalites.`;
+Sois EXHAUSTIF. Extrais TOUTES les entites et relations pertinentes — il n'y a pas de limite. Plus tu en extrais, mieux c'est. Chaque concept, croyance, outil, methode, personne, entreprise mentionnee doit etre capturee. Les entites doivent refleter les concepts UNIQUES de cette personne, pas des generalites.`;
 
 export default async function handler(req, res) {
   setCors(res, "POST, OPTIONS");
@@ -299,21 +299,26 @@ export default async function handler(req, res) {
       await logUsage(client.id, persona.id, finalInput, finalOutput);
     }
 
-    // Step 3: Extract ontology BEFORE response — Vercel kills the function after res.json()
+    // Step 3: Extract ontology BEFORE response — retry once on failure
     let ontologyCount = 0;
-    try {
-      const ontologyResult = await Promise.race([
-        anthropic.messages.create({
-          model: "claude-haiku-4-5-20251001", max_tokens: 4096,
-          system: ONTOLOGY_PROMPT,
-          messages: [{ role: "user", content: userContent.join("\n") }],
-        }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 25000)),
-      ]);
-      const ontRaw = ontologyResult.content[0].text.trim();
-      const ontJson = ontRaw.match(/\{[\s\S]*\}/);
-      if (ontJson) {
-        const ontology = JSON.parse(ontJson[0]);
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const ontologyResult = await Promise.race([
+          anthropic.messages.create({
+            model: "claude-haiku-4-5-20251001", max_tokens: 4096,
+            system: ONTOLOGY_PROMPT,
+            messages: [{ role: "user", content: userContent.join("\n") }],
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 50000)),
+        ]);
+        const ontRaw = ontologyResult.content[0].text.trim();
+        let depth = 0, start = -1, end = -1;
+        for (let i = 0; i < ontRaw.length; i++) {
+          if (ontRaw[i] === "{") { if (depth === 0) start = i; depth++; }
+          if (ontRaw[i] === "}") { depth--; if (depth === 0) { end = i + 1; break; } }
+        }
+        if (start === -1) throw new Error("no_json");
+        const ontology = JSON.parse(ontRaw.slice(start, end));
         if (ontology.entities?.length > 0) {
           const entityRows = ontology.entities.map(e => ({
             persona_id: persona.id, name: e.name,
@@ -341,10 +346,12 @@ export default async function handler(req, res) {
             }
           }
         }
+        console.log(JSON.stringify({ event: "ontology_extracted", persona: persona.id, entities: ontologyCount, attempt }));
+        break; // success — exit retry loop
+      } catch (e) {
+        console.log(JSON.stringify({ event: "ontology_error", persona: persona.id, error: e.message, attempt }));
+        if (attempt === 2) break; // last attempt, give up gracefully
       }
-      console.log(JSON.stringify({ event: "ontology_extracted", persona: persona.id, entities: ontologyCount }));
-    } catch (e) {
-      console.log(JSON.stringify({ event: "ontology_error", persona: persona.id, error: e.message }));
     }
 
     // Embed knowledge files for RAG (best-effort before response)
