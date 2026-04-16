@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { authenticateRequest, supabase, getApiKey, logUsage, checkBudget, setCors } from "../lib/supabase.js";
 import { isEmbeddingAvailable, chunkText, embedAndStore } from "../lib/embeddings.js";
+import { extractEntitiesFromContent } from "../lib/graph-extraction.js";
 
 const CLONE_SYSTEM_PROMPT = `Tu es un expert en personal branding et analyse de style d'ecriture LinkedIn.
 On te donne le profil LinkedIn d'une personne, ses posts, et optionnellement de la documentation.
@@ -418,6 +419,35 @@ Presente le post ainsi :
       } catch (e) {
         console.log(JSON.stringify({ event: "embed_error", persona: persona.id, error: e.message }));
       }
+    }
+
+    // Auto-extract entities from knowledge files (best-effort, non-blocking timeout)
+    try {
+      const extractionPromises = [];
+      if (styleBody) {
+        extractionPromises.push(
+          extractEntitiesFromContent(persona.id, styleBody, "topics/style-posts-linkedin.md", client)
+        );
+      }
+      if (dmResult) {
+        const dmBody = dmResult.content[0].text.trim().replace(/^---\n[\s\S]*?\n---\n?/, "");
+        extractionPromises.push(
+          extractEntitiesFromContent(persona.id, dmBody, "topics/style-conversations.md", client)
+        );
+      }
+      if (documents && documents.length > 50) {
+        extractionPromises.push(
+          extractEntitiesFromContent(persona.id, documents, "documents/client-docs.md", client)
+        );
+      }
+      if (extractionPromises.length > 0) {
+        await Promise.race([
+          Promise.all(extractionPromises),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("extraction_timeout")), 25000)),
+        ]);
+      }
+    } catch (e) {
+      console.log(JSON.stringify({ event: "auto_extraction_error", persona: persona.id, error: e.message }));
     }
 
     res.json({
