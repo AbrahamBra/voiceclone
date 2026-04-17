@@ -68,7 +68,7 @@
 
 <div class="feed">
   <div class="header">
-    <h3>Learning feed</h3>
+    <h3>Flux d'apprentissage</h3>
     {#if loading && events.length === 0}
       <span class="muted">Chargement...</span>
     {/if}
@@ -97,7 +97,7 @@
           {/if}
           {#if fid}
             <div class="fidelity">
-              Fidelity <strong>{fid.before} → {fid.after}</strong>
+              Fidélité <strong>{fid.before} → {fid.after}</strong>
               <span class:up={fid.delta > 0} class:down={fid.delta < 0} class:flat={fid.delta === 0}>
                 {fid.delta > 0 ? "+" : ""}{fid.delta}
               </span>

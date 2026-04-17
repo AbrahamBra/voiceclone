@@ -86,8 +86,8 @@
           >
             <span class="result-caret mono" aria-hidden="true">{i === selectedIndex ? "›" : " "}</span>
             <span class="result-title">{conv.title || "Sans titre"}</span>
-            {#if conv.updatedAt}
-              <span class="result-date mono">{fmtDate(conv.updatedAt)}</span>
+            {#if conv.last_message_at}
+              <span class="result-date mono">{fmtDate(conv.last_message_at)}</span>
             {/if}
           </button>
         {/each}

@@ -341,10 +341,36 @@
       <span class="intel-stat-label">entites</span>
     </div>
     <div class="intel-stat">
+      <span class="intel-stat-value">{data.stats.relations_total ?? 0}</span>
+      <span class="intel-stat-label">relations</span>
+    </div>
+    <div class="intel-stat" class:intel-stat-alert={data.stats.contradictions_count > 0}>
+      <span class="intel-stat-value">{data.stats.contradictions_count ?? 0}</span>
+      <span class="intel-stat-label">contradictions</span>
+    </div>
+    <div class="intel-stat">
       <span class="intel-stat-value">{data.stats.confidence_avg}</span>
       <span class="intel-stat-label">confiance</span>
     </div>
   </div>
+
+  {#if data.contradictions?.length > 0}
+    <div class="intel-section">
+      <h4 class="intel-section-title">Contradictions <span class="intel-count">{data.contradictions.length}</span></h4>
+      {#each data.contradictions as c}
+        <div class="intel-contradiction">
+          <div class="intel-contradiction-pair mono">
+            <span class="intel-contradiction-from">{c.from}</span>
+            <span class="intel-contradiction-arrow">↮</span>
+            <span class="intel-contradiction-to">{c.to}</span>
+          </div>
+          {#if c.description}
+            <p class="intel-contradiction-desc">{c.description}</p>
+          {/if}
+        </div>
+      {/each}
+    </div>
+  {/if}
 
   <!-- Corrections -->
   <div class="intel-section">
@@ -522,17 +548,19 @@
 
   .intel-stats {
     display: flex;
+    flex-wrap: wrap;
     gap: 1px;
     padding: 0;
     border-bottom: 1px solid var(--rule-strong);
     background: var(--rule-strong);
   }
   .intel-stat {
-    flex: 1;
+    flex: 1 0 33%;
     text-align: center;
     padding: 10px 8px;
     background: var(--paper-subtle);
   }
+  .intel-stat-alert .intel-stat-value { color: var(--vermillon); }
   .intel-stat-value {
     display: block;
     font-family: var(--font-mono);
@@ -548,6 +576,29 @@
     color: var(--ink-40);
     text-transform: uppercase;
     letter-spacing: 0.1em;
+  }
+
+  .intel-contradiction {
+    padding: 6px 8px;
+    border-left: 2px solid var(--vermillon);
+    background: color-mix(in srgb, var(--vermillon) 4%, transparent);
+    margin-bottom: 4px;
+  }
+  .intel-contradiction-pair {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 10.5px;
+    color: var(--ink);
+  }
+  .intel-contradiction-arrow { color: var(--vermillon); font-weight: 600; }
+  .intel-contradiction-from,
+  .intel-contradiction-to { color: var(--ink-70); }
+  .intel-contradiction-desc {
+    margin: 3px 0 0;
+    font-size: 11px;
+    color: var(--ink-40);
+    line-height: 1.4;
   }
 
   .intel-section {
