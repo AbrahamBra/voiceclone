@@ -7,6 +7,7 @@ import {
   computeStyleMetrics,
   compositeScore,
   computeCollapseIndex,
+  kmeansSelectRepresentatives,
 } from "../lib/fidelity.js";
 
 // --- cosineSim ---
@@ -236,5 +237,53 @@ describe("computeCollapseIndex", () => {
     const capped = computeCollapseIndex(1.0, 0.0, 2.0, 1.0, null); // draftTTR > sourceTTR
     const equal  = computeCollapseIndex(1.0, 0.0, 1.0, 1.0, null);
     assert.equal(capped, equal);
+  });
+});
+
+// --- kmeansSelectRepresentatives ---
+
+// Helper: build a unit vector pointing in direction [x, y]
+const vec2 = (x, y) => { const n = Math.sqrt(x*x + y*y); return [x/n, y/n]; };
+
+describe("kmeansSelectRepresentatives", () => {
+  it("returns all posts when count <= k * repsPerCluster", () => {
+    const posts = ["a", "b", "c"];
+    const embeddings = posts.map(() => vec2(1, 0));
+    const result = kmeansSelectRepresentatives(embeddings, posts, { k: 3, repsPerCluster: 3 });
+    assert.deepEqual(result, posts);
+  });
+
+  it("returns all posts when embeddings are missing or mismatched", () => {
+    const posts = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
+    assert.deepEqual(kmeansSelectRepresentatives([], posts), posts);
+    assert.deepEqual(kmeansSelectRepresentatives(null, posts), posts);
+  });
+
+  it("returns at most k * repsPerCluster items", () => {
+    // 20 posts in 2 tight clusters
+    const cluster1 = Array.from({ length: 10 }, (_, i) => ({ e: vec2(1 + i*0.01, 0), p: `c1-${i}` }));
+    const cluster2 = Array.from({ length: 10 }, (_, i) => ({ e: vec2(0, 1 + i*0.01), p: `c2-${i}` }));
+    const all = [...cluster1, ...cluster2];
+    const result = kmeansSelectRepresentatives(all.map(x => x.e), all.map(x => x.p), { k: 2, repsPerCluster: 2 });
+    assert.ok(result.length <= 4, `expected ≤4 but got ${result.length}`);
+  });
+
+  it("covers both modes of a bimodal distribution", () => {
+    // 6 posts near [1,0] (punchlines) and 6 posts near [0,1] (stories)
+    const punchlines = Array.from({ length: 6 }, (_, i) => ({ e: vec2(1, i * 0.05), p: `punch-${i}` }));
+    const stories    = Array.from({ length: 6 }, (_, i) => ({ e: vec2(i * 0.05, 1), p: `story-${i}` }));
+    const all = [...punchlines, ...stories];
+    const result = kmeansSelectRepresentatives(all.map(x => x.e), all.map(x => x.p), { k: 2, repsPerCluster: 2 });
+    const hasPunchline = result.some(p => p.startsWith("punch-"));
+    const hasStory = result.some(p => p.startsWith("story-"));
+    assert.ok(hasPunchline, "should include at least one punchline post");
+    assert.ok(hasStory, "should include at least one story post");
+  });
+
+  it("handles fewer posts than k (returns all)", () => {
+    const posts = ["x", "y"];
+    const embeddings = [vec2(1, 0), vec2(0, 1)];
+    const result = kmeansSelectRepresentatives(embeddings, posts, { k: 5, repsPerCluster: 3 });
+    assert.deepEqual(result, posts);
   });
 });

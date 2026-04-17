@@ -2,7 +2,8 @@ export const maxDuration = 90;
 
 import Anthropic from "@anthropic-ai/sdk";
 import { authenticateRequest, supabase, getApiKey, logUsage, checkBudget, setCors } from "../lib/supabase.js";
-import { isEmbeddingAvailable, chunkText, embedAndStore } from "../lib/embeddings.js";
+import { isEmbeddingAvailable, chunkText, embedAndStore, embed } from "../lib/embeddings.js";
+import { kmeansSelectRepresentatives } from "../lib/fidelity.js";
 import { extractEntitiesFromContent } from "../lib/graph-extraction.js";
 import { rateLimit, getClientIp } from "./_rateLimit.js";
 
@@ -154,9 +155,18 @@ export default async function handler(req, res) {
   const allDms = dms || [];
   const allDocuments = documents || "";
   linkedin_text = linkedin_text.slice(0, 8000);
-  if (posts) posts = posts.slice(0, 30).map(p => p.slice(0, 3000));
   if (dms) dms = dms.slice(0, 15).map(d => d.slice(0, 4000));
   if (documents) documents = documents.slice(0, 20000);
+
+  // K-means sampling: cluster all posts by embedding, pick representatives per cluster
+  // so bimodal voices (short punchlines + long stories) are both captured.
+  if (posts && posts.length > 9) {
+    const truncated = posts.map(p => p.slice(0, 3000));
+    const embeddings = await embed(truncated).catch(() => null);
+    posts = kmeansSelectRepresentatives(embeddings, truncated, { k: 3, repsPerCluster: 3 });
+  } else if (posts) {
+    posts = posts.slice(0, 30).map(p => p.slice(0, 3000));
+  }
 
   const apiKey = getApiKey(client);
   const anthropic = new Anthropic({ apiKey });
