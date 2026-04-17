@@ -12,13 +12,15 @@
     sending,
   } from "$lib/stores/chat.js";
   import { showToast } from "$lib/stores/ui.js";
-  import { authHeaders } from "$lib/api.js";
+  import { api, authHeaders } from "$lib/api.js";
   import { streamChat } from "$lib/sse.js";
   import ChatMessage from "$lib/components/ChatMessage.svelte";
   import ChatInput from "$lib/components/ChatInput.svelte";
   import ConversationSidebar from "$lib/components/ConversationSidebar.svelte";
-  import FeedbackModal from "$lib/components/FeedbackModal.svelte";
-  import SettingsModal from "$lib/components/SettingsModal.svelte";
+  import ChatCockpit from "$lib/components/ChatCockpit.svelte";
+  import RulesPanel from "$lib/components/RulesPanel.svelte";
+  import FeedbackPanel from "$lib/components/FeedbackPanel.svelte";
+  import SettingsPanel from "$lib/components/SettingsPanel.svelte";
   import LeadModal from "$lib/components/LeadModal.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
 
@@ -30,11 +32,51 @@
   let messagesEl = $state(undefined);
   let scrollAnchor = $state(undefined);
 
-  // Modal state
-  let feedbackTarget = $state(null);
-  let showSettings = $state(false);
+  // Panel state (demodalized)
+  let feedbackTarget = $state(null);      // bot message to correct
+  let feedbackOpen = $state(false);
+  let settingsOpen = $state(false);
+  let rulesPanelOpen = $state(false);
   let showLead = $state(false);
   let showCommandPalette = $state(false);
+
+  // Cockpit live readings — collapseIdx & fidelity from /api/fidelity,
+  // updated after each message via breakdown + rewritten events.
+  let collapseIdx = $state(null);
+  let fidelity = $state(null);
+  let breakdown = $state(null);
+
+  // Rule activation stats for this conversation
+  /** @type {Record<string, { count: number, lastFiredAt: number|null, lastDetail: string|null, lastSeverity: string|null }>} */
+  let ruleStats = $state({});
+  let rulesActiveCount = $derived(
+    Object.values(ruleStats).reduce((n, s) => n + (s.count > 0 ? 1 : 0), 0)
+  );
+
+  async function refreshFidelity() {
+    if (!personaId) return;
+    try {
+      const data = await api(`/api/fidelity?personas=${personaId}`);
+      const s = data.scores?.[personaId];
+      if (s) {
+        fidelity = typeof s.score_global === "number" ? s.score_global / 100 : null;
+        collapseIdx = typeof s.collapse_index === "number" ? s.collapse_index : null;
+        breakdown = s.metrics || s.breakdown || null;
+      }
+    } catch {
+      // fidelity is best-effort
+    }
+  }
+
+  // Reset per-conversation stats when conversation changes
+  $effect(() => {
+    const _cid = $currentConversationId;
+    ruleStats = {};
+  });
+
+  $effect(() => {
+    if (!loading && personaId) refreshFidelity();
+  });
 
   // Scroll to bottom when messages change
   $effect(() => {
@@ -210,10 +252,14 @@
           );
         },
         onClear() {
+          // Rewrite is about to start — preserve the pass-1 text as `original`
+          const originalText = botText;
           botText = "";
           messages.update((msgs) =>
             msgs.map((m) =>
-              m.id === botId ? { ...m, content: "", status: undefined } : m
+              m.id === botId
+                ? { ...m, content: "", status: undefined, original: originalText || m.original }
+                : m
             )
           );
         },
@@ -225,6 +271,23 @@
                 : m
             )
           );
+          // Bump rule activation counters from the SSE violations payload
+          if (evt?.violations?.length) {
+            const now = Date.now();
+            const next = { ...ruleStats };
+            for (const v of evt.violations) {
+              const prev = next[v.type] || { count: 0, lastFiredAt: null, lastDetail: null, lastSeverity: null };
+              next[v.type] = {
+                count: prev.count + 1,
+                lastFiredAt: now,
+                lastDetail: v.detail || prev.lastDetail,
+                lastSeverity: v.severity || prev.lastSeverity,
+              };
+            }
+            ruleStats = next;
+          }
+          // Refresh the cockpit gauges from the server's aggregate
+          refreshFidelity();
         },
         onConversation(id) {
           if (id && !$currentConversationId) {
@@ -296,6 +359,7 @@
   function handleCorrect(message) {
     feedbackTarget = message.content;
     feedbackMessageId = message.id;
+    feedbackOpen = true;
   }
 
   async function handleValidate(message) {
@@ -345,8 +409,9 @@
     const mod = e.metaKey || e.ctrlKey;
     if (e.key === "Escape") {
       if (showCommandPalette) showCommandPalette = false;
-      else if (feedbackTarget) feedbackTarget = null;
-      else if (showSettings) showSettings = false;
+      else if (feedbackOpen) { feedbackOpen = false; feedbackTarget = null; feedbackMessageId = null; }
+      else if (settingsOpen) settingsOpen = false;
+      else if (rulesPanelOpen) rulesPanelOpen = false;
       else if (showLead) showLead = false;
       return;
     }
@@ -411,17 +476,27 @@
     {/if}
 
     <div class="chat-main">
-      <div class="chat-header">
-        <button class="mobile-menu-btn" onclick={() => (sidebarOpen = !sidebarOpen)}>
-          &#9776;
-        </button>
-        <button class="back-btn" onclick={handleBack}>&larr;</button>
-        <div class="chat-avatar">{$personaConfig?.avatar || "?"}</div>
-        <div class="chat-name">{$personaConfig?.name || "Clone"}</div>
-        <button class="lead-btn" title="Analyser un prospect" onclick={() => (showLead = true)}>&#128269;</button>
-        <a href="/guide" class="guide-btn" title="Guide d'onboarding">?</a>
-        <button class="settings-btn" title="Parametres" onclick={() => (showSettings = true)}>&#9881;</button>
-      </div>
+      <ChatCockpit
+        personaName={$personaConfig?.name || "Clone"}
+        personaAvatar={$personaConfig?.avatar || "?"}
+        scenario={$currentScenario || ""}
+        {collapseIdx}
+        {fidelity}
+        {breakdown}
+        {rulesActiveCount}
+        {rulesPanelOpen}
+        {feedbackOpen}
+        {settingsOpen}
+        {sidebarOpen}
+        onBack={handleBack}
+        onToggleSidebar={() => sidebarOpen = !sidebarOpen}
+        onToggleRules={() => rulesPanelOpen = !rulesPanelOpen}
+        onToggleFeedback={() => {
+          feedbackOpen = !feedbackOpen;
+          if (!feedbackOpen) { feedbackTarget = null; feedbackMessageId = null; }
+        }}
+        onToggleSettings={() => settingsOpen = !settingsOpen}
+      />
 
       <div class="chat-messages" bind:this={messagesEl}>
         {#each $messages as message (message.id)}
@@ -440,13 +515,24 @@
     </div>
   </div>
 
-  {#if feedbackTarget}
-    <FeedbackModal botMessage={feedbackTarget} onclose={() => { feedbackTarget = null; feedbackMessageId = null; }} onreplace={handleReplace} />
-  {/if}
+  <RulesPanel
+    open={rulesPanelOpen}
+    {ruleStats}
+    onClose={() => rulesPanelOpen = false}
+  />
 
-  {#if showSettings}
-    <SettingsModal onclose={() => (showSettings = false)} {personaId} />
-  {/if}
+  <FeedbackPanel
+    open={feedbackOpen}
+    botMessage={feedbackTarget || ""}
+    onClose={() => { feedbackOpen = false; feedbackTarget = null; feedbackMessageId = null; }}
+    onReplace={handleReplace}
+  />
+
+  <SettingsPanel
+    open={settingsOpen}
+    {personaId}
+    onClose={() => settingsOpen = false}
+  />
 
   {#if showLead}
     <LeadModal onclose={() => (showLead = false)} onanalyzed={handleLeadAnalyzed} />
@@ -475,93 +561,6 @@
     flex-direction: column;
     min-width: 0;
   }
-
-  .chat-header {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg);
-  }
-
-  .chat-avatar {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: var(--border);
-    color: var(--text-secondary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.625rem;
-    font-weight: 600;
-  }
-
-  .chat-name {
-    font-weight: 500;
-    font-size: 0.8125rem;
-    color: var(--text);
-  }
-
-  .back-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    font-size: 1.1rem;
-    cursor: pointer;
-    padding: 0.25rem 0.5rem;
-    border-radius: var(--radius);
-    transition: color 0.15s;
-    flex-shrink: 0;
-  }
-
-  .back-btn:hover { color: var(--text); }
-
-  .lead-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-    cursor: pointer;
-    padding: 0.25rem 0.5rem;
-    margin-left: auto;
-    transition: color 0.15s;
-  }
-
-  .lead-btn:hover { color: var(--text); }
-
-  .guide-btn {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text-tertiary);
-    font-size: 0.6875rem;
-    font-weight: 600;
-    font-family: var(--font);
-    cursor: pointer;
-    width: 1.375rem;
-    height: 1.375rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    transition: color 0.15s, border-color 0.15s;
-    text-decoration: none;
-  }
-
-  .guide-btn:hover { color: var(--text-secondary); border-color: var(--text-tertiary); }
-
-  .settings-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-tertiary);
-    font-size: 1rem;
-    cursor: pointer;
-    padding: 0.25rem;
-    transition: color 0.15s;
-  }
-
-  .settings-btn:hover { color: var(--text-secondary); }
 
   .chat-messages {
     flex: 1;
@@ -592,25 +591,11 @@
     30% { opacity: 0.8; }
   }
 
-  .mobile-menu-btn {
-    display: none;
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    font-size: 1.25rem;
-    cursor: pointer;
-    padding: 0.25rem;
-  }
-
   .sidebar-backdrop {
     display: none;
   }
 
   @media (max-width: 768px) {
-    .mobile-menu-btn {
-      display: block;
-    }
-
     .sidebar-backdrop {
       display: block;
       position: absolute;

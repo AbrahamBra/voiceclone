@@ -1,36 +1,186 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Inter+Tight:wght@400;500;600;700&display=swap');
+
+/* ════════════════════════════════════════════════════════════════
+   Design system — Laboratoire / Observatoire
+   paper ↔ ink · single signal (vermillon) · mono + serif + ui
+   ════════════════════════════════════════════════════════════════ */
 
 :root {
-  --accent: #e5e5e5;
-  --bg: #09090b;
-  --surface: #18181b;
-  --border: #27272a;
-  --text: #fafafa;
-  --text-secondary: #a1a1aa;
-  --text-tertiary: #71717a;
-  --radius: 8px;
-  --radius-lg: 12px;
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --error: #ef4444;
-  --max-width: 640px;
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  /* ── Surface ───────────────────────────────────── */
+  --paper:         #f5f2ec;
+  --paper-subtle:  #ecebe4;
+  --ink:           #14141a;
+  --ink-90:        #1c1c23;
+  --ink-70:        #35353f;
+  --ink-40:        #6f6f7a;
+  --ink-20:        #a8a8b1;
+  --ink-10:        #cdcdd3;
+
+  /* ── Single signal ────────────────────────────── */
+  --vermillon:     #d64933;
+  --vermillon-dim: #b43b28;
+
+  /* ── Structural lines ─────────────────────────── */
+  --rule:          rgba(20, 20, 26, 0.08);
+  --rule-strong:   rgba(20, 20, 26, 0.18);
+  --grid:          rgba(20, 20, 26, 0.04);
+  --tick:          #14141a;
+
+  /* ── Semantic remaps (legacy) ─────────────────── */
+  --bg:              var(--paper);
+  --surface:         var(--paper);
+  --surface-hover:   var(--paper-subtle);
+  --border:          var(--rule-strong);
+  --text:            var(--ink);
+  --text-secondary:  var(--ink-70);
+  --text-tertiary:   var(--ink-40);
+  --accent:          var(--vermillon);
+  --success:         #2d7a3e;
+  --warning:         #b87300;
+  --error:           var(--vermillon);
+
+  /* ── Type families ────────────────────────────── */
+  --font:       'Newsreader', Georgia, serif;
+  --font-mono:  'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-ui:    'Inter Tight', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* ── Type scale (modular, 1.25 ratio for UI; serif display escapes it) ── */
+  --fs-nano:      9.5px;   /* regulatory labels, ticks */
+  --fs-micro:     10.5px;  /* meta, kv keys, chip labels */
+  --fs-tiny:      11px;    /* mono data, inline code */
+  --fs-small:     12px;    /* rule names, secondary UI */
+  --fs-body:      13.5px;  /* default body (serif & ui) */
+  --fs-standout:  15.5px;  /* prose output in chat & lab */
+  --fs-h3:        18px;    /* section heads */
+  --fs-h2:        22px;    /* sub headlines */
+  --fs-h1:        clamp(32px, 5.2vw, 64px); /* landing display */
+  --fs-data-lg:   34px;    /* fidelity big number */
+
+  /* ── Line heights ─────────────────────────────── */
+  --lh-tight:   1.1;
+  --lh-snug:    1.3;
+  --lh-normal:  1.5;
+  --lh-loose:   1.65;
+
+  /* ── Letter spacing ───────────────────────────── */
+  --ls-caps:    0.1em;   /* uppercase labels */
+  --ls-display: -0.022em;/* headline */
+  --ls-tight:   -0.01em; /* data */
+
+  /* ── Weights ──────────────────────────────────── */
+  --fw-regular: 400;
+  --fw-medium:  500;
+  --fw-semi:    600;
+  --fw-bold:    700;
+
+  /* ── Spacing (4px base) ───────────────────────── */
+  --s-1:   4px;
+  --s-2:   8px;
+  --s-3:   12px;
+  --s-4:   16px;
+  --s-5:   20px;
+  --s-6:   24px;
+  --s-8:   32px;
+  --s-10:  40px;
+  --s-12:  48px;
+  --s-16:  64px;
+
+  /* ── Geometry ─────────────────────────────────── */
+  --radius:     0;
+  --radius-sm:  0;
+  --radius-lg:  0;
+
+  /* ── Touch targets (WCAG 2.5.5 level AAA = 44px, AA = 24px) ── */
+  --touch-min:  44px;
+
+  /* ── Motion ───────────────────────────────────── */
+  --ease:       linear;   /* observatory aesthetic: no easing */
+  --dur-fast:   80ms;
+  --dur-med:    140ms;
+
+  /* ── Z-indices ────────────────────────────────── */
+  --z-header:    10;
+  --z-sidebar:   20;
+  --z-panel:     30;
+  --z-modal:     40;
+  --z-toast:     50;
+
+  --max-width: 1200px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper:         #14141a;
+    --paper-subtle:  #1c1c23;
+    --ink:           #f5f2ec;
+    --ink-90:        #ecebe4;
+    --ink-70:        #cdcdd3;
+    --ink-40:        #8a8a93;
+    --ink-20:        #4a4a54;
+    --ink-10:        #2e2e37;
+
+    --rule:          rgba(245, 242, 236, 0.08);
+    --rule-strong:   rgba(245, 242, 236, 0.18);
+    --grid:          rgba(245, 242, 236, 0.04);
+    --tick:          #f5f2ec;
+
+    --vermillon:     #ef6b57;
+    --vermillon-dim: #d64933;
+    --error:         var(--vermillon);
+  }
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: var(--font);
-  background: var(--bg);
-  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+  background: var(--paper);
+  color: var(--ink);
   min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01", "cv01";
 }
 
 .hidden { display: none !important; }
 
 html, body { overflow-x: hidden; }
+
+/* Tabular numbers everywhere data is shown */
+[data-num], .num, .mono { font-variant-numeric: tabular-nums; }
+
+/* Motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Focus-visible — vermillon */
+:focus-visible {
+  outline: 2px solid var(--vermillon);
+  outline-offset: 2px;
+}
+
+/* Skip-to-content link — visible when focused */
+.skip-link {
+  position: fixed;
+  top: -40px;
+  left: 8px;
+  padding: 6px 10px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: var(--fs-tiny);
+  text-decoration: none;
+  z-index: var(--z-toast);
+  transition: top var(--dur-fast) var(--ease);
+}
+.skip-link:focus-visible { top: 8px; }
 
 @media (max-width: 480px) {
   body { font-size: 14px; }

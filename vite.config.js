@@ -7,4 +7,10 @@ export default defineConfig({
     include: ["pdfjs-dist"],
     exclude: ["pdfjs-dist/build/pdf.worker.min.mjs"],
   },
+  server: {
+    fs: {
+      // Allow hoisted node_modules (needed when running from a git worktree)
+      allow: ["../../../.."],
+    },
+  },
 });

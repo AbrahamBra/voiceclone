@@ -5,6 +5,7 @@
   let { message, onCorrect, onValidate, onSaveRule, onCopyBlock } = $props();
 
   let ruleSaved = $state(false);
+  let showDiff = $state(false);
 
   let blocks = $derived(
     message.role === "bot" && message.content
@@ -65,7 +66,27 @@
   {/if}
 
   {#if message.rewritten}
-    <div class="rewrite-badge">Corrige automatiquement</div>
+    <div class="rewrite-line">
+      {#if message.original}
+        <button
+          class="rewrite-toggle"
+          class:open={showDiff}
+          onclick={() => showDiff = !showDiff}
+          aria-expanded={showDiff}
+        >
+          <span class="rt-badge">rewritten</span>
+          <span class="rt-action">{showDiff ? "cacher l'original" : "voir l'original"}</span>
+        </button>
+      {:else}
+        <span class="rewrite-badge mono">rewritten</span>
+      {/if}
+    </div>
+    {#if showDiff && message.original}
+      <details class="diff-inline" open>
+        <summary class="diff-inline-head mono">pass 1 · original (overridden)</summary>
+        <div class="diff-inline-body">{message.original}</div>
+      </details>
+    {/if}
   {/if}
 
   {#if message.status}
@@ -205,15 +226,79 @@
     color: var(--text-secondary);
   }
 
+  .rewrite-line {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 0.375rem;
+  }
   .rewrite-badge {
     display: inline-block;
-    margin-top: 0.375rem;
-    padding: 0.125rem 0.5rem;
-    background: rgba(245, 158, 11, 0.1);
-    border: 1px solid rgba(245, 158, 11, 0.2);
-    border-radius: var(--radius);
-    font-size: 0.6875rem;
-    color: var(--warning);
+    padding: 1px 6px;
+    background: color-mix(in srgb, var(--vermillon, #d64933) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--vermillon, #d64933) 35%, transparent);
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--vermillon, #d64933);
+  }
+  .rewrite-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    color: var(--ink-40);
+  }
+  .rewrite-toggle .rt-badge {
+    padding: 1px 6px;
+    background: color-mix(in srgb, var(--vermillon, #d64933) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--vermillon, #d64933) 35%, transparent);
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--vermillon, #d64933);
+  }
+  .rewrite-toggle .rt-action {
+    font-size: 10.5px;
+    color: var(--ink-40);
+    border-bottom: 1px dashed var(--ink-40);
+    transition: color 0.08s linear, border-color 0.08s linear;
+  }
+  .rewrite-toggle:hover .rt-action,
+  .rewrite-toggle.open .rt-action {
+    color: var(--vermillon, #d64933);
+    border-color: var(--vermillon, #d64933);
+  }
+
+  .diff-inline {
+    margin-top: 6px;
+    border-left: 2px solid var(--vermillon, #d64933);
+    padding: 4px 0 4px 10px;
+    background: color-mix(in srgb, var(--vermillon, #d64933) 3%, transparent);
+  }
+  .diff-inline-head {
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-40, #6f6f7a);
+    padding: 2px 0 6px;
+    cursor: pointer;
+    list-style: none;
+  }
+  .diff-inline-head::-webkit-details-marker { display: none; }
+  .diff-inline-body {
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--ink-40, #6f6f7a);
+    text-decoration: line-through;
+    text-decoration-color: var(--vermillon, #d64933);
+    white-space: pre-wrap;
+    padding-top: 2px;
   }
 
   .status {
