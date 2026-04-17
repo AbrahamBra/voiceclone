@@ -4,6 +4,7 @@
   // Renders blocks: stamp, timing, fidelity, rules active, style, diff toggle.
 
   import StyleFingerprint from "./StyleFingerprint.svelte";
+  import { ruleLabelFor } from "$lib/rule-catalog.js";
 
   let {
     message,
@@ -103,7 +104,7 @@
         {#each message.violations as v}
           <li class="marg-rule severity-{v.severity || 'light'}">
             <span class="marg-rule-tick" aria-hidden="true">●</span>
-            <span class="marg-rule-name mono">{v.type}</span>
+            <span class="marg-rule-name mono">{ruleLabelFor(v.type)}</span>
             {#if v.detail && v.detail !== "—"}
               <span class="marg-rule-detail">{v.detail}</span>
             {/if}

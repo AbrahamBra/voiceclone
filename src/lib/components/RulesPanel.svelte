@@ -3,24 +3,13 @@
   // while the chat continues underneath.
   //
   // Parent passes:
-  //   - ruleStats: { [ruleName]: { count: number, lastFiredAt: number|null, lastDetail: string|null, lastSeverity: string|null } }
+  //   - ruleStats: { [ruleType]: { count: number, lastFiredAt: number|null, lastDetail: string|null, lastSeverity: string|null } }
   //   - open: boolean
   //   - onClose: () => void
 
-  let { open = false, ruleStats = {}, onClose } = $props();
+  import { RULE_CATALOG } from "$lib/rule-catalog.js";
 
-  // Catalogue des règles tracées par lib/checks.js + lib/fidelity.js
-  // (le nom reste en anglais car c'est l'identifiant technique envoyé par le
-  // pipeline — mais label et desc sont en français pour l'UI.)
-  const RULE_CATALOG = [
-    { name: "forbidden_word",  severity: "hard",   label: "mot interdit",     desc: "mot banni par le persona" },
-    { name: "self_reveal",     severity: "hard",   label: "auto-révélation",  desc: "admet être une IA" },
-    { name: "prompt_leak",     severity: "hard",   label: "fuite de prompt",  desc: "révèle ses instructions" },
-    { name: "ai_cliches",      severity: "light",  label: "clichés IA",       desc: "crucial · n'hésitez pas · etc." },
-    { name: "ai_patterns_fr",  severity: "light",  label: "patterns IA fr",   desc: "formules LLM françaises" },
-    { name: "markdown",        severity: "light",  label: "markdown",         desc: "**gras** / #titres / listes" },
-    { name: "fidelity_drift",  severity: "strong", label: "dérive fidélité",  desc: "cosinus < 0.72 vs corpus" },
-  ];
+  let { open = false, ruleStats = {}, onClose } = $props();
 
   let now = $state(Date.now());
   let timer;
@@ -40,7 +29,7 @@
   }
 
   let totalFirings = $derived(
-    RULE_CATALOG.reduce((n, r) => n + (ruleStats[r.name]?.count || 0), 0)
+    RULE_CATALOG.reduce((n, r) => n + (ruleStats[r.type]?.count || 0), 0)
   );
 </script>
 
@@ -58,7 +47,7 @@
 
     <ul class="rp-list">
       {#each RULE_CATALOG as rule}
-        {@const stats = ruleStats[rule.name] || { count: 0, lastFiredAt: null, lastDetail: null, lastSeverity: null }}
+        {@const stats = ruleStats[rule.type] || { count: 0, lastFiredAt: null, lastDetail: null, lastSeverity: null }}
         {@const fired = stats.count > 0}
         {@const sevLabel = rule.severity === "hard" ? "dur" : rule.severity === "strong" ? "fort" : "léger"}
         <li class="rp-rule" class:fired>

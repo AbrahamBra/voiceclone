@@ -32,9 +32,9 @@ export const SCENARIOS = [
     rules: [
       { rule: "forbidden_word", severity: "hard", detail: "—", fires_at_ms: 0 },
       { rule: "self_reveal", severity: "hard", detail: "—", fires_at_ms: 0 },
-      { rule: "ai_cliches", severity: "light", detail: "—", fires_at_ms: 0 },
-      { rule: "ai_patterns_fr", severity: "light", detail: "—", fires_at_ms: 0 },
-      { rule: "markdown", severity: "light", detail: "—", fires_at_ms: 0 },
+      { rule: "ai_pattern_fr", severity: "hard", detail: "—", fires_at_ms: 0 },
+      { rule: "ai_cliche", severity: "strong", detail: "—", fires_at_ms: 0 },
+      { rule: "markdown", severity: "strong", detail: "—", fires_at_ms: 0 },
       { rule: "fidelity_drift", severity: "strong", detail: "—", fires_at_ms: 0 },
     ],
     metrics: [
@@ -54,13 +54,13 @@ export const SCENARIOS = [
     prompt_context: "relance après 7 jours — prospect chaud, stack e-commerce",
     prompt_text: "Relance-le. Pas trop commercial.",
     pass1_text:
-      "**Bonjour Sophie**, il est crucial que nous reprenions contact. En conclusion de nos échanges précédents, je pense qu'il est important de noter que notre solution permet de résoudre fondamentalement vos enjeux. N'hésitez pas à revenir vers moi.",
+      "**Bonjour Sophie**, il est crucial que nous reprenions contact. En conclusion de nos échanges précédents, je pense qu'il est important de noter que notre solution permet de résoudre fondamentalement vos enjeux. La vraie question c'est : n'hésitez pas à revenir vers moi.",
     rules: [
       { rule: "forbidden_word", severity: "hard", detail: "—", fires_at_ms: 0 },
       { rule: "self_reveal", severity: "hard", detail: "—", fires_at_ms: 0 },
-      { rule: "ai_cliches", severity: "light", detail: "crucial · en conclusion · il est important de noter · fondamentalement · n'hésitez pas", fires_at_ms: 900 },
-      { rule: "ai_patterns_fr", severity: "light", detail: "—", fires_at_ms: 0 },
-      { rule: "markdown", severity: "light", detail: "**Bonjour Sophie**", fires_at_ms: 600 },
+      { rule: "ai_pattern_fr", severity: "hard", detail: "la vraie question c'est", fires_at_ms: 1000 },
+      { rule: "ai_cliche", severity: "strong", detail: "crucial · en conclusion · il est important de noter · fondamentalement · n'hésitez pas", fires_at_ms: 900 },
+      { rule: "markdown", severity: "strong", detail: "**Bonjour Sophie**", fires_at_ms: 600 },
       { rule: "fidelity_drift", severity: "strong", detail: "cosine=0.612 < 0.72", fires_at_ms: 1200 },
     ],
     metrics: [
@@ -85,9 +85,9 @@ export const SCENARIOS = [
     rules: [
       { rule: "forbidden_word", severity: "hard", detail: "—", fires_at_ms: 0 },
       { rule: "self_reveal", severity: "hard", detail: "—", fires_at_ms: 0 },
-      { rule: "ai_cliches", severity: "light", detail: "permettre de", fires_at_ms: 1100 },
-      { rule: "ai_patterns_fr", severity: "light", detail: "—", fires_at_ms: 0 },
-      { rule: "markdown", severity: "light", detail: "—", fires_at_ms: 0 },
+      { rule: "ai_pattern_fr", severity: "hard", detail: "—", fires_at_ms: 0 },
+      { rule: "ai_cliche", severity: "strong", detail: "permettre de", fires_at_ms: 1100 },
+      { rule: "markdown", severity: "strong", detail: "—", fires_at_ms: 0 },
       { rule: "fidelity_drift", severity: "strong", detail: "cosine=0.681 < 0.72", fires_at_ms: 1400 },
     ],
     metrics: [
