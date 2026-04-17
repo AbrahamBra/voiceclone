@@ -223,10 +223,13 @@ describe("computeCollapseIndex", () => {
     assert.equal(idx, 100);
   });
 
-  it("embeddingVariance branch penalizes low diversity", () => {
-    const diverse   = computeCollapseIndex(1.0, 0.0, 1.0, 1.0, 0.20);
-    const collapsed = computeCollapseIndex(1.0, 0.0, 1.0, 1.0, 0.00);
-    assert.ok(diverse > collapsed, `diverse (${diverse}) should exceed collapsed (${collapsed})`);
+  it("embeddingVariance branch rewards drafts close to source centroid", () => {
+    // Semantics changed: embeddingVariance is now MEAN COSINE between drafts
+    // and the persona source centroid. Higher = clone faithful to source.
+    // Rescaled over [0.40, 0.85]: 0.80 ≈ 0.89 proximity, 0.40 = 0 (floor).
+    const faithful = computeCollapseIndex(1.0, 0.0, 1.0, 1.0, 0.80);
+    const drifted  = computeCollapseIndex(1.0, 0.0, 1.0, 1.0, 0.40);
+    assert.ok(faithful > drifted, `faithful (${faithful}) should exceed drifted (${drifted})`);
   });
 
   it("ttrRatio caps at 1 (draft more diverse than source does not boost)", () => {
