@@ -56,7 +56,7 @@
   );
 </script>
 
-<SidePanel {open} title="Settings" width={380} {onClose}>
+<SidePanel {open} title="Réglages" width={380} {onClose}>
   <section class="block">
     <div class="kv-line">
       <span class="kv-k mono">budget</span>

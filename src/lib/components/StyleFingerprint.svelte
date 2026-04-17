@@ -35,12 +35,12 @@
   } = $props();
 
   const AXES = [
-    { key: "ttr",   short: "ttr", label: "lexical diversity (ttr)" },
-    { key: "q",     short: "q",   label: "question ratio" },
-    { key: "sig",   short: "sig", label: "signature presence" },
-    { key: "clean", short: "cln", label: "clean (inv. forbidden)" },
-    { key: "len",   short: "len", label: "avg sentence length" },
-    { key: "kurt",  short: "krt", label: "kurtosis (tail)" },
+    { key: "ttr",   short: "ttr", label: "diversité lexicale (ttr)" },
+    { key: "q",     short: "q",   label: "ratio questions" },
+    { key: "sig",   short: "sig", label: "présence signature" },
+    { key: "clean", short: "cln", label: "propre (inv. interdits)" },
+    { key: "len",   short: "lon", label: "longueur phrase moy." },
+    { key: "kurt",  short: "krt", label: "kurtosis (queue)" },
   ];
 
   function clamp01(v) {
@@ -105,7 +105,7 @@
   width={size}
   height={size}
   viewBox="0 0 {size} {size}"
-  aria-label={label || "Style fingerprint"}
+  aria-label={label || "Empreinte stylistique"}
   role="img"
 >
   <!-- Grid rings -->
@@ -155,7 +155,7 @@
 
 {#if tooltip && draftNorm}
   <span class="fp-tip" role="tooltip">
-    <span class="fp-tip-head mono">style fingerprint</span>
+    <span class="fp-tip-head mono">empreinte stylistique</span>
     {#each AXES as axis}
       <span class="fp-tip-row">
         <span class="fp-tip-label">{axis.label}</span>
@@ -166,7 +166,7 @@
       </span>
     {/each}
     {#if sourceNorm}
-      <span class="fp-tip-foot mono">draft / source</span>
+      <span class="fp-tip-foot mono">brouillon / source</span>
     {/if}
   </span>
 {/if}

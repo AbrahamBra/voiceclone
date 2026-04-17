@@ -89,7 +89,7 @@
   }
 </script>
 
-<SidePanel {open} title="Feedback" width={420} {onClose}>
+<SidePanel {open} title="Correction" width={420} {onClose}>
   {#if botMessage}
     <section class="target">
       <div class="target-label mono">message corrigé</div>

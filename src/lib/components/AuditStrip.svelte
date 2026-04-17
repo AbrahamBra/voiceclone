@@ -67,7 +67,7 @@
   let anyActivity = $derived(totals.msgCount > 0 || !!sessionStart);
 </script>
 
-<div class="audit-strip mono" class:idle={!anyActivity} role="status" aria-label="Session totals">
+<div class="audit-strip mono" class:idle={!anyActivity} role="status" aria-label="Totaux de session">
   <span class="cell cell-primary">
     <span class="k">session</span>
     <span class="v">{fmtDuration(elapsed)}</span>
@@ -81,19 +81,19 @@
   <span class="sep">·</span>
 
   <span class="cell" class:hot={totals.rewriteCount > 0}>
-    <span class="k">rewrites</span>
+    <span class="k">réécritures</span>
     <span class="v">{totals.rewriteCount}</span>
   </span>
   <span class="sep">·</span>
 
   <span class="cell" class:hot={totals.driftCount > 0}>
-    <span class="k">drifts</span>
+    <span class="k">dérives</span>
     <span class="v">{totals.driftCount}</span>
   </span>
   <span class="sep">·</span>
 
   <span class="cell">
-    <span class="k">rules</span>
+    <span class="k">règles</span>
     <span class="v">{totals.ruleFireCount}</span>
   </span>
   <span class="sep">·</span>

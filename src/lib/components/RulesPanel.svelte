@@ -9,15 +9,17 @@
 
   let { open = false, ruleStats = {}, onClose } = $props();
 
-  // Full list of rule types tracked by lib/checks.js + lib/fidelity.js
+  // Catalogue des règles tracées par lib/checks.js + lib/fidelity.js
+  // (le nom reste en anglais car c'est l'identifiant technique envoyé par le
+  // pipeline — mais label et desc sont en français pour l'UI.)
   const RULE_CATALOG = [
-    { name: "forbidden_word",  severity: "hard",   label: "forbidden word",   desc: "mot banni par le persona" },
-    { name: "self_reveal",     severity: "hard",   label: "self reveal",      desc: "admet être une IA" },
-    { name: "prompt_leak",     severity: "hard",   label: "prompt leak",      desc: "révèle le system prompt" },
-    { name: "ai_cliches",      severity: "light",  label: "ai clichés",       desc: "crucial · n'hésitez pas · etc." },
-    { name: "ai_patterns_fr",  severity: "light",  label: "ai patterns fr",   desc: "formules LLM françaises" },
+    { name: "forbidden_word",  severity: "hard",   label: "mot interdit",     desc: "mot banni par le persona" },
+    { name: "self_reveal",     severity: "hard",   label: "auto-révélation",  desc: "admet être une IA" },
+    { name: "prompt_leak",     severity: "hard",   label: "fuite de prompt",  desc: "révèle ses instructions" },
+    { name: "ai_cliches",      severity: "light",  label: "clichés IA",       desc: "crucial · n'hésitez pas · etc." },
+    { name: "ai_patterns_fr",  severity: "light",  label: "patterns IA fr",   desc: "formules LLM françaises" },
     { name: "markdown",        severity: "light",  label: "markdown",         desc: "**gras** / #titres / listes" },
-    { name: "fidelity_drift",  severity: "strong", label: "fidelity drift",   desc: "cosine < 0.72 vs corpus" },
+    { name: "fidelity_drift",  severity: "strong", label: "dérive fidélité",  desc: "cosinus < 0.72 vs corpus" },
   ];
 
   let now = $state(Date.now());
@@ -45,11 +47,11 @@
 {#if open}
   <aside class="rules-panel" aria-label="Règles actives">
     <header class="rp-head">
-      <div class="rp-title mono">RULES ENGINE</div>
+      <div class="rp-title mono">MOTEUR DE RÈGLES</div>
       <div class="rp-meta mono">
-        <span>{totalFirings} firings</span>
+        <span>{totalFirings} déclenchements</span>
         <span class="sep">·</span>
-        <span>{RULE_CATALOG.length} rules</span>
+        <span>{RULE_CATALOG.length} règles</span>
       </div>
       <button class="rp-close mono" onclick={() => onClose?.()} aria-label="Fermer">✕</button>
     </header>
@@ -58,11 +60,12 @@
       {#each RULE_CATALOG as rule}
         {@const stats = ruleStats[rule.name] || { count: 0, lastFiredAt: null, lastDetail: null, lastSeverity: null }}
         {@const fired = stats.count > 0}
+        {@const sevLabel = rule.severity === "hard" ? "dur" : rule.severity === "strong" ? "fort" : "léger"}
         <li class="rp-rule" class:fired>
           <div class="rp-rule-head">
             <span class="rp-rule-tick" aria-hidden="true">{fired ? "●" : "○"}</span>
-            <span class="rp-rule-name mono">{rule.name}</span>
-            <span class="rp-rule-sev mono sev-{rule.severity}">{rule.severity}</span>
+            <span class="rp-rule-name mono">{rule.label}</span>
+            <span class="rp-rule-sev mono sev-{rule.severity}">{sevLabel}</span>
             <span class="rp-rule-count mono">{stats.count}</span>
           </div>
           <div class="rp-rule-desc">{rule.desc}</div>
@@ -79,7 +82,7 @@
     </ul>
 
     <footer class="rp-foot mono">
-      <span>counts reset per conversation</span>
+      <span>compteurs remis à zéro par conversation</span>
     </footer>
   </aside>
 {/if}

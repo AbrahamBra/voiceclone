@@ -222,10 +222,10 @@
       <span class="brand-sub">/ laboratoire</span>
     </div>
     <nav class="head-meta">
-      <span class="kv"><span class="k">clock</span><span class="v">{fmtClock(now)}</span></span>
-      <span class="kv"><span class="k">build</span><span class="v">{BUILD_HASH}</span></span>
-      <span class="kv"><span class="k">pipeline</span><span class="v">4-stage</span></span>
-      <span class="kv status-on"><span class="dot"></span><span class="v">live</span></span>
+      <span class="kv"><span class="k">heure</span><span class="v">{fmtClock(now)}</span></span>
+      <span class="kv"><span class="k">version</span><span class="v">{BUILD_HASH}</span></span>
+      <span class="kv"><span class="k">pipeline</span><span class="v">4 étapes</span></span>
+      <span class="kv status-on"><span class="dot"></span><span class="v">en direct</span></span>
     </nav>
   </header>
 
@@ -261,21 +261,21 @@
         </div>
       </article>
 
-      <!-- Output panel -->
+      <!-- Panel sortie -->
       <article class="panel">
         <header class="p-head">
           <span class="p-idx">02</span>
-          <span class="p-name">output</span>
+          <span class="p-name">sortie</span>
           <span class="p-meta">
-            {#if phase === "thinking"}thinking…{/if}
-            {#if phase === "stream1"}pass 1 / stream{/if}
-            {#if phase === "checks"}checks / {current.rules.filter(r => firesAt.has(r.rule)).length} violations{/if}
-            {#if phase === "rewrite"}rewrite / feedback injected{/if}
-            {#if phase === "stream2"}pass 2 / stream{/if}
+            {#if phase === "thinking"}réflexion…{/if}
+            {#if phase === "stream1"}passe 1 / stream{/if}
+            {#if phase === "checks"}vérification / {current.rules.filter(r => firesAt.has(r.rule)).length} violations{/if}
+            {#if phase === "rewrite"}réécriture / retour injecté{/if}
+            {#if phase === "stream2"}passe 2 / stream{/if}
             {#if phase === "done"}
-              {#if current.outcome === "pass"}✓ passed clean{/if}
-              {#if current.outcome === "rewrite"}✓ rewritten{/if}
-              {#if current.outcome === "drift"}! drift unresolved{/if}
+              {#if current.outcome === "pass"}✓ passé propre{/if}
+              {#if current.outcome === "rewrite"}✓ réécrit{/if}
+              {#if current.outcome === "drift"}! dérive non résolue{/if}
             {/if}
           </span>
         </header>
@@ -289,7 +289,7 @@
               <details class="diff-wrap" open>
                 <summary>
                   <span class="diff-badge">diff</span>
-                  <span class="diff-label">voir pass 1 original</span>
+                  <span class="diff-label">voir la passe 1 d'origine</span>
                 </summary>
                 <div class="diff-old mono-body">{current.pass1_text}</div>
               </details>
@@ -300,32 +300,33 @@
       </article>
     </div>
 
-    <!-- Col 2 — Rules engine -->
+    <!-- Col 2 — Moteur de règles -->
     <div class="col col-side">
       <article class="panel">
         <header class="p-head">
           <span class="p-idx">03</span>
-          <span class="p-name">rules engine</span>
-          <span class="p-meta">{current.rules.filter(r => firesAt.has(r.rule)).length}/{current.rules.length} active</span>
+          <span class="p-name">moteur de règles</span>
+          <span class="p-meta">{current.rules.filter(r => firesAt.has(r.rule)).length}/{current.rules.length} actives</span>
         </header>
         <ul class="rules">
           {#each current.rules as r}
             {@const fired = firesAt.has(r.rule)}
+            {@const sevLabel = r.severity === "hard" ? "dur" : r.severity === "strong" ? "fort" : "léger"}
             <li class="rule" class:fired class:severity-hard={r.severity === "hard"} class:severity-strong={r.severity === "strong"}>
               <span class="rule-tick" aria-hidden="true">{fired ? "●" : "○"}</span>
               <span class="rule-name mono">{r.rule}</span>
-              <span class="rule-sev">{r.severity}</span>
+              <span class="rule-sev">{sevLabel}</span>
               <span class="rule-detail mono">{fired ? r.detail : ""}</span>
             </li>
           {/each}
         </ul>
       </article>
 
-      <!-- Metrics -->
+      <!-- Métriques live -->
       <article class="panel">
         <header class="p-head">
           <span class="p-idx">04</span>
-          <span class="p-name">live metrics</span>
+          <span class="p-name">métriques en direct</span>
           <span class="p-meta">phase / {phase}</span>
         </header>
         <div class="metrics">
@@ -341,19 +342,19 @@
         </div>
       </article>
 
-      <!-- Fidelity -->
+      <!-- Fidélité -->
       <article class="panel panel-fidelity">
         <header class="p-head">
           <span class="p-idx">05</span>
-          <span class="p-name">fidelity</span>
-          <span class="p-meta">cosine vs. source corpus</span>
+          <span class="p-name">fidélité</span>
+          <span class="p-meta">cosinus vs. corpus source</span>
         </header>
         <div class="fidelity">
           <div class="fid-big mono">{fmtNum(liveFidelity, 3)}</div>
           <div class="fid-delta" class:negative={liveFidelity < current.fidelity_before}>
             Δ {fmtNum(liveFidelity - current.fidelity_before, 3)}
           </div>
-          <div class="fid-threshold mono">threshold 0.720</div>
+          <div class="fid-threshold mono">seuil 0.720</div>
           <div class="fid-bar">
             <div class="fid-bar-fill" style="width: {liveFidelity * 100}%" class:below={liveFidelity < 0.72}></div>
             <div class="fid-bar-threshold" style="left: 72%"></div>
@@ -382,12 +383,12 @@
   <!-- ═══════ Footer (access + manifest link) ═══════ -->
   <footer class="lab-foot">
     <div class="foot-left">
-      <span class="kv"><span class="k">open</span><span class="v">mock pipeline · données scriptées</span></span>
-      <a class="foot-link" href="/guide">notes d'onboarding</a>
+      <span class="kv"><span class="k">ouvert</span><span class="v">pipeline factice · données scriptées</span></span>
+      <a class="foot-link" href="/guide">guide</a>
     </div>
 
     <form class="access" onsubmit={submitCode}>
-      <span class="access-k">◇ access</span>
+      <span class="access-k">◇ accès</span>
       <input
         type="password"
         autocomplete="off"

@@ -200,7 +200,7 @@
 
     {#if personaConfigs.some(e => e.persona._shared)}
       <section class="hub-section">
-        <h2 class="hub-section-title">Clones partages</h2>
+        <h2 class="hub-section-title">Clones partagés</h2>
         {#each personaConfigs.filter(e => e.persona._shared) as entry, i}
           <div class="clone-card" transition:fly={{ y: 12, delay: i * 80, duration: 200 }}>
             <button class="clone-header" onclick={() => openPersona(entry)}>
@@ -255,7 +255,7 @@
         <button class="action-card" onclick={() => goto("/create")} transition:fly={{ y: 12, delay: personaConfigs.length * 80 + 40, duration: 200 }}>
           <div class="action-icon">+</div>
           <div class="action-info">
-            <strong>Creer un clone</strong>
+            <strong>Créer un clone</strong>
             <span>A partir d'un profil de reseau social</span>
           </div>
         </button>

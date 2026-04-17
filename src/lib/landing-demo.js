@@ -24,8 +24,8 @@
 export const SCENARIOS = [
   {
     id: "pass",
-    label: "CASE 01 / CLEAN PASS",
-    prompt_context: "inbound LinkedIn — CTO fintech, 40 personnes, série B",
+    label: "CAS 01 / PASSE PROPRE",
+    prompt_context: "entrant LinkedIn — CTO fintech, 40 personnes, série B",
     prompt_text: "Ecris un premier message de prise de contact.",
     pass1_text:
       "Salut Marc, j'ai vu ta levée la semaine dernière — félicitations. Une question honnête : sur 40 personnes, combien sont effectivement sur la route pour vendre vs. dans le produit ? Je creuse ça parce qu'on voit souvent des séries B où la montée en charge commerciale est le vrai goulot, pas la tech. Pas d'agenda caché, juste curieux.",
@@ -50,8 +50,8 @@ export const SCENARIOS = [
   },
   {
     id: "rewrite",
-    label: "CASE 02 / HARD REWRITE",
-    prompt_context: "relance après 7 jours de silence — lead chaud, stack e-commerce",
+    label: "CAS 02 / RÉÉCRITURE DURE",
+    prompt_context: "relance après 7 jours — prospect chaud, stack e-commerce",
     prompt_text: "Relance-le. Pas trop commercial.",
     pass1_text:
       "**Bonjour Sophie**, il est crucial que nous reprenions contact. En conclusion de nos échanges précédents, je pense qu'il est important de noter que notre solution permet de résoudre fondamentalement vos enjeux. N'hésitez pas à revenir vers moi.",
@@ -77,8 +77,8 @@ export const SCENARIOS = [
   },
   {
     id: "drift",
-    label: "CASE 03 / FIDELITY DRIFT",
-    prompt_context: "discovery call — note rapide post-meeting",
+    label: "CAS 03 / DÉRIVE DE FIDÉLITÉ",
+    prompt_context: "appel découverte — note rapide post-réunion",
     prompt_text: "Rédige mon compte-rendu en 3 bullets.",
     pass1_text:
       "Voici le compte-rendu structuré de l'appel. Premièrement, les besoins identifiés sont multiples. Deuxièmement, le budget semble aligné. Troisièmement, les prochaines étapes sont claires et permettent de faire avancer le projet efficacement.",

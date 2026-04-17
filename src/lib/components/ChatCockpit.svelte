@@ -53,7 +53,7 @@
   <!-- Left cluster — identity -->
   <div class="left">
     <button class="icon-btn mobile-menu" onclick={() => onToggleSidebar?.()} aria-label="Conversations">☰</button>
-    <button class="icon-btn back" onclick={() => onBack?.()} aria-label="Retour">←</button>
+    <button class="icon-btn back" onclick={() => onBack?.()} aria-label="Retour à l'accueil">←</button>
     <div class="id">
       <span class="avatar">{personaAvatar}</span>
       <div class="fp-slot">
@@ -68,22 +68,22 @@
     </div>
   </div>
 
-  <!-- Center cluster — live readings -->
-  <div class="gauges" role="group" aria-label="Live pipeline readings">
+  <!-- Center cluster — lectures en direct -->
+  <div class="gauges" role="group" aria-label="Lectures pipeline en direct">
     <div
       class="gauge"
       data-state={collapseState}
       tabindex="0"
-      aria-label="Collapse index: {fmt(collapseIdx, 1)}"
+      aria-label="Indice collapse : {fmt(collapseIdx, 1)}"
     >
       <span class="g-key">collapse</span>
       <span class="g-val mono">{fmt(collapseIdx, 1)}</span>
       <div class="tip" role="tooltip">
-        <div class="tip-head">collapse index</div>
-        <div class="tip-row"><span>style preservation score 0–100</span></div>
-        <div class="tip-row"><span>≥ 70</span><span class="tip-ok">healthy</span></div>
-        <div class="tip-row"><span>50–70</span><span class="tip-warn">warn</span></div>
-        <div class="tip-row"><span>&lt; 50</span><span class="tip-bad">collapsed</span></div>
+        <div class="tip-head">indice collapse</div>
+        <div class="tip-row"><span>score de préservation du style, 0–100</span></div>
+        <div class="tip-row"><span>≥ 70</span><span class="tip-ok">sain</span></div>
+        <div class="tip-row"><span>50–70</span><span class="tip-warn">alerte</span></div>
+        <div class="tip-row"><span>&lt; 50</span><span class="tip-bad">effondré</span></div>
       </div>
     </div>
 
@@ -91,32 +91,32 @@
       class="gauge"
       data-state={fidelityState}
       tabindex="0"
-      aria-label="Fidelity cosine: {fmt(fidelity, 3)}, threshold {FIDELITY_THRESHOLD}"
+      aria-label="Fidélité cosinus : {fmt(fidelity, 3)}, seuil {FIDELITY_THRESHOLD}"
     >
-      <span class="g-key">fidelity</span>
+      <span class="g-key">fidélité</span>
       <span class="g-val mono">{fmt(fidelity, 3)}</span>
       <div class="tip" role="tooltip">
-        <div class="tip-head">fidelity · cosine to source corpus</div>
+        <div class="tip-head">fidélité · cosinus au corpus source</div>
         {#if breakdown}
           <div class="tip-row"><span>ttr</span><span class="mono">{fmt(breakdown.ttr, 2)}</span></div>
           <div class="tip-row"><span>kurtosis</span><span class="mono">{fmt(breakdown.kurtosis, 2)}</span></div>
-          <div class="tip-row"><span>q ratio</span><span class="mono">{fmt(breakdown.questionRatio, 2)}</span></div>
+          <div class="tip-row"><span>ratio questions</span><span class="mono">{fmt(breakdown.questionRatio, 2)}</span></div>
           <div class="tip-row"><span>signature</span><span class="mono">{fmt(breakdown.signaturePresence, 2)}</span></div>
-          <div class="tip-row"><span>forbidden</span><span class="mono">{breakdown.forbiddenHits ?? 0}</span></div>
-          <div class="tip-row"><span>avg sent.</span><span class="mono">{fmt(breakdown.avgSentenceLen, 0)}</span></div>
+          <div class="tip-row"><span>interdits</span><span class="mono">{breakdown.forbiddenHits ?? 0}</span></div>
+          <div class="tip-row"><span>phrase moy.</span><span class="mono">{fmt(breakdown.avgSentenceLen, 0)}</span></div>
         {:else}
-          <div class="tip-row"><span>no breakdown yet — send a message</span></div>
+          <div class="tip-row"><span>aucune décomposition — envoie un message</span></div>
         {/if}
-        <div class="tip-row tip-thresh"><span>threshold</span><span class="mono">{FIDELITY_THRESHOLD.toFixed(3)}</span></div>
+        <div class="tip-row tip-thresh"><span>seuil</span><span class="mono">{FIDELITY_THRESHOLD.toFixed(3)}</span></div>
       </div>
     </div>
 
     <div
       class="gauge gauge-rules"
       data-state={rulesActiveCount > 0 ? "fired" : "idle"}
-      aria-label="Rules fired: {rulesActiveCount}"
+      aria-label="Règles déclenchées : {rulesActiveCount}"
     >
-      <span class="g-key">rules</span>
+      <span class="g-key">règles</span>
       <span class="g-val mono">{rulesActiveCount}</span>
     </div>
   </div>
@@ -128,25 +128,25 @@
       class:active={rulesPanelOpen}
       onclick={() => onToggleRules?.()}
       aria-pressed={rulesPanelOpen}
-    >rules</button>
+    >règles</button>
     <button
       class="tab-btn mono"
       class:active={leadOpen}
       onclick={() => onToggleLead?.()}
       aria-pressed={leadOpen}
-    >lead</button>
+    >prospect</button>
     <button
       class="tab-btn mono"
       class:active={feedbackOpen}
       onclick={() => onToggleFeedback?.()}
       aria-pressed={feedbackOpen}
-    >feedback</button>
+    >correction</button>
     <button
       class="tab-btn mono"
       class:active={settingsOpen}
       onclick={() => onToggleSettings?.()}
       aria-pressed={settingsOpen}
-    >settings</button>
+    >réglages</button>
   </div>
 </header>
 

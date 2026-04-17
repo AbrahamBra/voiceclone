@@ -50,7 +50,7 @@
   );
 </script>
 
-<aside class="marg" aria-label="Message annotations">
+<aside class="marg" aria-label="Annotations du message">
   <header class="marg-head mono">
     <span class="marg-tag">bot{seqStr ? `:${seqStr}` : ""}</span>
     {#if stamp}<span class="marg-time">{stamp}</span>{/if}
@@ -59,12 +59,12 @@
 
   {#if hasTiming || message?.tokens}
     <section class="marg-block">
-      <div class="marg-label mono">timing</div>
+      <div class="marg-label mono">délai</div>
       <div class="marg-row mono">
         {#if hasTiming}
           <span>{fmtMs(message.timing.totalMs)}</span>
           {#if message.timing.generateMs && message.timing.generateMs !== message.timing.totalMs}
-            <span class="marg-sub">(gen {fmtMs(message.timing.generateMs)})</span>
+            <span class="marg-sub">(gén. {fmtMs(message.timing.generateMs)})</span>
           {/if}
         {/if}
       </div>
@@ -81,7 +81,7 @@
 
   {#if hasFidelity}
     <section class="marg-block">
-      <div class="marg-label mono">fidelity</div>
+      <div class="marg-label mono">fidélité</div>
       <div class="marg-row marg-row-big mono">
         <span class="marg-big">{fmtNum(message.fidelity.similarity, 3)}</span>
         {#if fidelityDelta !== null}
@@ -91,14 +91,14 @@
         {/if}
       </div>
       {#if typeof message.fidelity.threshold === "number"}
-        <div class="marg-sub mono">threshold {message.fidelity.threshold.toFixed(3)}</div>
+        <div class="marg-sub mono">seuil {message.fidelity.threshold.toFixed(3)}</div>
       {/if}
     </section>
   {/if}
 
   {#if hasRules}
     <section class="marg-block">
-      <div class="marg-label mono">rules / {message.violations.length}</div>
+      <div class="marg-label mono">règles / {message.violations.length}</div>
       <ul class="marg-rules">
         {#each message.violations as v}
           <li class="marg-rule severity-{v.severity || 'light'}">
@@ -122,8 +122,8 @@
           <span class="marg-k">kurt</span><span class="marg-v">{fmtNum(message.live_style.kurtosis, 2)}</span>
           <span class="marg-k">q</span><span class="marg-v">{fmtNum(message.live_style.questionRatio, 2)}</span>
           <span class="marg-k">sig</span><span class="marg-v">{fmtNum(message.live_style.signaturePresence, 2)}</span>
-          <span class="marg-k">fbd</span><span class="marg-v">{message.live_style.forbiddenHits ?? 0}</span>
-          <span class="marg-k">len</span><span class="marg-v">{fmtNum(message.live_style.avgSentenceLen, 0)}</span>
+          <span class="marg-k">int</span><span class="marg-v">{message.live_style.forbiddenHits ?? 0}</span>
+          <span class="marg-k">lon</span><span class="marg-v">{fmtNum(message.live_style.avgSentenceLen, 0)}</span>
         </div>
         <div class="marg-fp" title="Ce message vs. signature source">
           <StyleFingerprint
@@ -146,15 +146,15 @@
         aria-expanded={showDiff}
       >
         <span class="marg-diff-arrow">{showDiff ? "▾" : "▸"}</span>
-        <span>{showDiff ? "cacher" : "voir"} pass 1</span>
-        <span class="marg-diff-badge">overridden</span>
+        <span>{showDiff ? "cacher" : "voir"} passe 1</span>
+        <span class="marg-diff-badge">remplacée</span>
       </button>
     </section>
   {/if}
 
   {#if message?.rewritten && !hasDiff}
     <section class="marg-block">
-      <span class="marg-rewrite-badge mono">rewritten</span>
+      <span class="marg-rewrite-badge mono">réécrit</span>
     </section>
   {/if}
 </aside>
