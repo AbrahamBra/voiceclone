@@ -91,12 +91,14 @@ describe("buildSystemPrompt", () => {
   });
 
   it("respects token budget — truncates knowledge", () => {
+    // TOKEN_BUDGET is 12000 → ~48000 chars max. Feed 60000 chars so truncation fires.
+    const INPUT_SIZE = 60000;
     const bigKnowledge = [
-      { path: "big.md", content: "X".repeat(30000) },
+      { path: "big.md", content: "X".repeat(INPUT_SIZE) },
     ];
     const { prompt } = buildSystemPrompt({ persona: PERSONA, knowledgeMatches: bigKnowledge });
-    // Should be truncated, not full 30k chars
-    assert.ok(prompt.length < 30000);
+    // Should be truncated — final prompt must be smaller than the raw input
+    assert.ok(prompt.length < INPUT_SIZE, `expected truncation below ${INPUT_SIZE}, got ${prompt.length}`);
     assert.ok(prompt.includes("[...]"));
   });
 

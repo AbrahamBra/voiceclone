@@ -8,6 +8,7 @@ import { getPersonaFromDb, findRelevantKnowledgeFromDb, loadScenarioFromDb, getC
 import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, detectMetacognitiveInsights, looksLikeDirectInstruction, looksLikeNegativeFeedback, detectNegativeFeedback, classifyMessage } from "../lib/feedback-detect.js";
 import { selectModel } from "../lib/model-router.js";
 import { consolidateCorrections } from "../lib/correction-consolidation.js";
+import { logLearningEvent } from "../lib/learning-events.js";
 
 /** Extract a smart conversation title from the first message */
 function extractConvTitle(message, scenario) {
@@ -167,6 +168,10 @@ export default async function handler(req, res) {
           : `${result.demoted} règles affaiblies. Elles auront moins d'influence.`;
         sse("delta", { text: confirm });
         sse("done", {});
+        logLearningEvent(personaId, "rule_weakened", {
+          corrections: result.corrections || [],
+          demoted: result.demoted,
+        });
 
         if (convId && supabase) {
           try {
@@ -204,6 +209,10 @@ export default async function handler(req, res) {
           : `${saved} règles ajoutées. Elles seront actives dès ton prochain message.`;
         sse("delta", { text: confirm });
         sse("done", {});
+        logLearningEvent(personaId, "rule_added", {
+          count: saved,
+          source_message: message.slice(0, 200),
+        });
 
         if (convId && supabase) {
           try {
@@ -286,13 +295,23 @@ export default async function handler(req, res) {
       const postResults = await Promise.all(postTasks);
 
       // Auto-consolidation: check if new corrections were saved, trigger every 10th
-      const feedbackSaved = postResults.filter(r => typeof r === "number" && r > 0).length > 0;
+      const totalSaved = postResults.reduce((sum, r) => sum + (typeof r === "number" && r > 0 ? r : 0), 0);
+      const feedbackSaved = totalSaved > 0;
       if (feedbackSaved) {
+        logLearningEvent(personaId, "correction_saved", {
+          source: msgIntent === "CORRECTION" ? "coaching" : (msgIntent === "VALIDATION" ? "validation" : "chat"),
+          count: totalSaved,
+          text: message.slice(0, 200),
+        });
         try {
           const { count } = await supabase.from("corrections")
             .select("id", { count: "exact", head: true })
             .eq("persona_id", intellId).eq("status", "active");
-          if (count && count % 10 === 0 && count >= 15) {
+          // DEMO_MODE lowers thresholds so consolidation fires during live demos (every 3, min 3)
+          const demo = process.env.DEMO_MODE === "true";
+          const everyN = demo ? 3 : 10;
+          const minN = demo ? 3 : 15;
+          if (count && count % everyN === 0 && count >= minN) {
             consolidateCorrections(personaId, { client }).catch(err =>
               console.log(JSON.stringify({ event: "auto_consolidation_error", ts: new Date().toISOString(), error: err.message }))
             );

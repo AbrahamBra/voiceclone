@@ -2,6 +2,7 @@
   import { api } from "$lib/api.js";
   import { getRelativeTime } from "$lib/utils.js";
   import { showToast } from "$lib/stores/ui.js";
+  import LearningFeed from "./LearningFeed.svelte";
 
   let { personaId, extracting = false } = $props();
 
@@ -295,6 +296,10 @@
     </button>
   </div>
 {/if}
+
+<div class="learning-section">
+  <LearningFeed {personaId} />
+</div>
 
 {#if showPostsModal}
   <div class="posts-modal-backdrop" onclick={() => showPostsModal = false}>
