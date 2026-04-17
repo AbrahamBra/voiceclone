@@ -1,0 +1,32 @@
+{
+  "persona": { "name": "Thomas", "slugs": ["thomas", "thomas-abdelhay"] },
+  "selected_at": "2026-04-17",
+  "rationale": "25 drafts Thomas sélectionnés par cohérence interne : voix décontractée (tu/toi), signatures (C'est propre, Nice, Ok intéressant, ;)), questions-punch non salesy, alternance courtes/longues, coupures sèches, pas de corporate speak ni d'auto-promotion précoce. Diversifiés sur 13 prospects pour éviter le biais d'un seul pattern conversationnel.",
+  "ids": [
+    "117dca8e-a311-4d9c-a001-b03bb6e35161",
+    "f4ce89db-4aa7-4fac-94d7-2902e66723b2",
+    "6407c001-1df8-4c17-bf12-f80d302ea662",
+    "f8ddf888-fbd8-4b05-a25e-3413ced41294",
+    "228c04e1-bfba-4853-8daf-5f5d1d86aabf",
+    "73a964bf-24cf-4e22-8fc4-17af63275bc0",
+    "99103f3e-ce81-4757-8d0b-9025b7ed09e1",
+    "29d1db39-dc69-431d-9a3b-7ac76d3846ed",
+    "1c24bd89-799c-4cc1-aeb2-6ae2718f40d2",
+    "82fa09c2-2b62-4ef2-9a5a-e1ece224a6ae",
+    "3b7300ca-c611-41dd-b15b-0545fa5dc7fd",
+    "b062642a-782a-4a6b-9be2-6a9d59b55c44",
+    "3c8464f9-b351-443d-8452-e58b7e209524",
+    "4c81d682-30dc-4b7d-8495-84b8154d1dbb",
+    "1c78256b-25c8-47ec-8afa-b5d3ea46bbc1",
+    "bbc5cd38-46fb-4867-be04-01956c4c4663",
+    "964fdc26-acc2-441f-8663-26610977f1dc",
+    "67bcf77e-84cf-4482-8f90-b184a0ec1537",
+    "50cceed3-662a-4b00-8fd1-c2e408cf98cc",
+    "8ebd94ae-fe60-490e-8290-4726f657c773",
+    "07f503e0-5d38-45e2-80a3-71ce5b282179",
+    "9121ebd2-44c0-46d2-993b-304566c3399d",
+    "64d3797b-964a-4e4b-8013-bd1953178737",
+    "f3942d97-9da6-4e4d-b414-197729654588",
+    "3e4ab184-d325-4b0c-abb8-2d1bb240d380"
+  ]
+}
