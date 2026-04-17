@@ -335,6 +335,53 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Type "rdv_triggered": user credits a specific message as what got the RDV ──
+  if (type === "rdv_triggered" || type === "rdv_signed" || type === "rdv_no_show" || type === "rdv_lost") {
+    const { conversation_id, message_id, value, note } = req.body || {};
+    if (!conversation_id) { res.status(400).json({ error: "conversation_id required" }); return; }
+    try {
+      const row = {
+        conversation_id,
+        message_id: message_id || null,
+        persona_id: intellId,
+        client_id: client?.id || null,
+        outcome: type,
+        value: value ?? null,
+        note: note?.slice(0, 500) || null,
+      };
+      const { error: outErr } = await supabase.from("business_outcomes").insert(row);
+      if (outErr && !outErr.message?.includes("duplicate")) {
+        res.status(500).json({ error: "Failed to record outcome: " + outErr.message });
+        return;
+      }
+      res.json({ ok: true, outcome: type });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+    return;
+  }
+
+  // ── Type "rhythm_flag_agree": user validates (or not) a rhythm-critic flag ──
+  if (type === "rhythm_flag_agree") {
+    const { shadow_id, agree } = req.body || {};
+    if (!shadow_id || typeof agree !== "boolean") {
+      res.status(400).json({ error: "shadow_id and agree (bool) required" });
+      return;
+    }
+    try {
+      // Store as a lightweight learning_event — precision tracking only, no entity graph impact.
+      await supabase.from("learning_events").insert({
+        persona_id: intellId,
+        event_type: "rhythm_flag_feedback",
+        payload: { shadow_id, agree, client_id: client?.id || null },
+      });
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+    return;
+  }
+
   // Handle implicit feedback (diff between original and modified message)
   let finalCorrection = correction;
   if (type === "implicit") {
