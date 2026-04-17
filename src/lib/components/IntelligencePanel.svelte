@@ -434,9 +434,10 @@
 
 <style>
   .intel-extraction-bar {
-    padding: 0.625rem 1rem;
-    border-bottom: 1px solid var(--border);
-    background: rgba(255,255,255,0.02);
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--rule-strong);
+    background: var(--paper);
+    font-family: var(--font-mono);
   }
   .intel-ex-header {
     display: flex;
@@ -445,46 +446,52 @@
     margin-bottom: 0.375rem;
   }
   .intel-ex-step {
-    font-size: 0.6875rem;
-    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+    color: var(--ink-70);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
   .intel-ex-pct {
-    font-size: 0.625rem;
-    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    color: var(--ink-40);
     font-variant-numeric: tabular-nums;
   }
   .intel-ex-track {
     height: 3px;
-    background: var(--border);
-    border-radius: 2px;
+    background: var(--rule-strong);
     overflow: hidden;
-    margin-bottom: 0.5rem;
+    margin-bottom: 8px;
   }
   .intel-ex-fill {
     height: 100%;
-    background: var(--accent);
-    border-radius: 2px;
-    transition: width 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+    background: var(--vermillon);
+    transition: width 0.4s linear;
   }
   .intel-ex-labels {
     display: flex;
     justify-content: space-between;
   }
   .intel-ex-labels span {
-    font-size: 0.5625rem;
-    color: var(--text-tertiary);
-    transition: color 0.4s;
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    color: var(--ink-40);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    transition: color 0.4s linear;
   }
   .intel-ex-labels span.done {
-    color: var(--accent);
+    color: var(--vermillon);
   }
   .intel-ex-done {
     display: flex;
     align-items: center;
-    gap: 0.375rem;
-    font-size: 0.6875rem;
-    color: var(--success, #4ade80);
-    animation: fadeIn 0.3s ease;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+    color: #2d7a3e;
+    animation: fadeIn 0.3s linear;
   }
   .intel-ex-check {
     font-size: 0.75rem;
@@ -515,41 +522,49 @@
 
   .intel-stats {
     display: flex;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid var(--border);
+    gap: 1px;
+    padding: 0;
+    border-bottom: 1px solid var(--rule-strong);
+    background: var(--rule-strong);
   }
   .intel-stat {
     flex: 1;
     text-align: center;
+    padding: 10px 8px;
+    background: var(--paper-subtle);
   }
   .intel-stat-value {
     display: block;
-    font-size: 0.9375rem;
-    font-weight: 600;
-    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: var(--fs-h3);
+    font-weight: var(--fw-semi);
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
   }
   .intel-stat-label {
-    font-size: 0.625rem;
-    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    color: var(--ink-40);
     text-transform: uppercase;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.1em;
   }
 
   .intel-section {
     padding: 0.5rem;
   }
   .intel-section-title {
-    font-size: 0.6875rem;
-    font-weight: 600;
-    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    font-weight: var(--fw-semi);
+    color: var(--ink);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 0.5rem;
+    letter-spacing: 0.1em;
+    padding: 10px 8px 6px;
     margin: 0;
     display: flex;
     align-items: center;
-    gap: 0.375rem;
+    gap: 6px;
   }
   .intel-count {
     font-size: 0.625rem;
@@ -568,7 +583,7 @@
     margin-bottom: 2px;
     transition: background 0.1s;
   }
-  .intel-correction:hover { background: rgba(255, 255, 255, 0.03); }
+  .intel-correction:hover { background: var(--paper); }
   .intel-correction-header {
     display: flex;
     align-items: center;
@@ -636,7 +651,7 @@
     cursor: pointer;
     transition: background 0.1s;
   }
-  .intel-entity:hover { background: rgba(255, 255, 255, 0.03); }
+  .intel-entity:hover { background: var(--paper); }
   .intel-entity-header {
     display: flex;
     align-items: center;
@@ -710,10 +725,13 @@
     gap: 0.375rem;
   }
   .fidelity-big-score {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: var(--fs-data-lg);
+    font-weight: var(--fw-medium);
+    color: var(--ink);
     font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    line-height: 1;
   }
   .fidelity-delta {
     font-size: 0.6875rem;
@@ -724,16 +742,14 @@
   .fidelity-delta.negative { color: var(--error); }
   .fidelity-bar-track {
     height: 4px;
-    background: var(--border);
-    border-radius: 2px;
+    background: var(--rule-strong);
     overflow: hidden;
-    margin-bottom: 0.625rem;
+    margin-bottom: 10px;
   }
   .fidelity-bar-fill {
     height: 100%;
-    background: var(--accent);
-    border-radius: 2px;
-    transition: width 0.6s ease;
+    background: var(--ink);
+    transition: width 0.4s linear;
   }
   .fidelity-themes {
     display: flex;
@@ -854,7 +870,7 @@
   }
   .posts-modal-textarea {
     width: 100%;
-    background: rgba(255,255,255,0.04);
+    background: var(--paper-subtle);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--text);

@@ -3,6 +3,8 @@
   // Always-on readings: collapse_idx, fidelity, session-level rule count.
   // Hover on any metric reveals its mini-decomposition.
 
+  import StyleFingerprint from "./StyleFingerprint.svelte";
+
   let {
     personaName = "",
     personaAvatar = "?",
@@ -11,6 +13,7 @@
     collapseIdx = null,     // number 0..100 or null if unknown
     fidelity = null,        // number 0..1 or null
     breakdown = null,       // { ttr, kurtosis, questionRatio, signaturePresence, forbiddenHits, avgSentenceLen }
+    sourceStyle = null,     // baseline source_style for fingerprint ghost layer
     // UI slots
     rulesActiveCount = 0,
     rulesPanelOpen = false,
@@ -51,6 +54,9 @@
     <button class="icon-btn back" onclick={() => onBack?.()} aria-label="Retour">←</button>
     <div class="id">
       <span class="avatar">{personaAvatar}</span>
+      <div class="fp-slot" title="Style fingerprint (draft vs. source)">
+        <StyleFingerprint draft={breakdown} source={sourceStyle} size={32} strokeWidth={1} />
+      </div>
       <div class="id-text">
         <span class="pname">{personaName}</span>
         {#if scenario}
@@ -175,6 +181,12 @@
     font-size: 10px;
     font-weight: 600;
     color: var(--ink-70);
+  }
+  .fp-slot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
   }
   .id-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
   .pname {

@@ -2,7 +2,7 @@
   import { fly } from "svelte/transition";
   import { renderMarkdown } from "$lib/utils.js";
 
-  let { message, onCorrect, onValidate, onSaveRule, onCopyBlock } = $props();
+  let { message, seq = null, onCorrect, onValidate, onSaveRule, onCopyBlock } = $props();
 
   let ruleSaved = $state(false);
   let showDiff = $state(false);
@@ -22,13 +22,77 @@
     navigator.clipboard.writeText(block);
     onCopyBlock?.(block);
   }
+
+  // Lab-notebook stamp: `[usr:001 14:42:17]` / `[bot:001 14:42:17]`
+  function fmtClock(ts) {
+    if (!ts) return "";
+    const d = typeof ts === "number" ? new Date(ts) : ts;
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+  function fmtSeq(n) {
+    if (n === null || n === undefined) return "";
+    return String(n).padStart(3, "0");
+  }
+
+  // Per-message telemetry strip values (bot messages only)
+  function fmtMs(ms) {
+    if (!ms && ms !== 0) return null;
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(2)}s`;
+  }
+  function fmtTokenPair(t) {
+    if (!t) return null;
+    return `${t.input ?? 0}→${t.output ?? 0}t`;
+  }
+  function fmtCacheRate(t) {
+    if (!t || !t.input) return null;
+    const rate = Math.round(((t.cache_read ?? 0) / t.input) * 100);
+    return `cache ${rate}%`;
+  }
+
+  let stamp = $derived(fmtClock(message.timestamp));
+  let seqStr = $derived(fmtSeq(seq));
+  let telemetry = $derived(() => {
+    if (message.role !== "bot" || !message.content || message.typing) return null;
+    const parts = [];
+    const ms = fmtMs(message.timing?.totalMs);
+    const tokens = fmtTokenPair(message.tokens);
+    const cache = fmtCacheRate(message.tokens);
+    const fid = typeof message.fidelity?.similarity === "number"
+      ? `fidelity ${message.fidelity.similarity.toFixed(3)}`
+      : null;
+    const ruleN = message.violations?.length
+      ? `${message.violations.length} rules`
+      : null;
+    for (const p of [ms, tokens, cache, fid, ruleN]) if (p) parts.push(p);
+    return parts.length ? parts : null;
+  });
 </script>
+
+<article
+  class="msg-wrap"
+  class:msg-wrap-user={message.role === "user"}
+  class:msg-wrap-bot={message.role === "bot"}
+  transition:fly={{ y: 4, duration: 120 }}
+>
+  {#if seqStr && message.role === "bot"}
+    <header class="msg-stamp mono">
+      <span class="stamp-tag">bot:{seqStr}</span>
+      {#if stamp}<span class="stamp-time">{stamp}</span>{/if}
+      {#if message.model}<span class="stamp-model">{message.model.replace(/^claude-/, "").replace(/-\d{8}$/, "")}</span>{/if}
+    </header>
+  {:else if seqStr && message.role === "user"}
+    <header class="msg-stamp mono stamp-user">
+      <span class="stamp-tag">usr:{seqStr}</span>
+      {#if stamp}<span class="stamp-time">{stamp}</span>{/if}
+    </header>
+  {/if}
 
 <div
   class="msg"
   class:msg-user={message.role === "user"}
   class:msg-bot={message.role === "bot"}
-  transition:fly={{ y: 4, duration: 120 }}
 >
   {#if message.role === "user"}
     {message.content}
@@ -94,18 +158,80 @@
   {/if}
 </div>
 
+  {#if message.role === "bot" && telemetry() }
+    <footer class="msg-telemetry mono" aria-label="Message telemetry">
+      {#each telemetry() as cell, i}
+        {#if i > 0}<span class="tel-sep">·</span>{/if}
+        <span class="tel-cell">{cell}</span>
+      {/each}
+    </footer>
+  {/if}
+</article>
+
 <style>
-  .msg {
+  /* Outer article groups stamp + message + telemetry into one "observation" */
+  .msg-wrap {
+    display: flex;
+    flex-direction: column;
     max-width: 68ch;
+    width: fit-content;
+  }
+  .msg-wrap-user {
+    align-self: flex-end;
+    align-items: flex-end;
+  }
+  .msg-wrap-bot {
+    align-self: flex-start;
+    align-items: flex-start;
+  }
+
+  .msg-stamp {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 0 2px 4px;
+    font-size: 9.5px;
+    color: var(--ink-40);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .msg-stamp.stamp-user { color: var(--ink-40); }
+  .stamp-tag {
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .stamp-time {
+    color: var(--ink-40);
+    font-variant-numeric: tabular-nums;
+  }
+  .stamp-model {
+    color: var(--ink-20);
+    font-size: 9px;
+  }
+  .msg-wrap-user .stamp-tag { color: var(--vermillon); }
+
+  .msg-telemetry {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 4px 2px 0;
+    margin-top: 2px;
+    font-size: 9.5px;
+    color: var(--ink-40);
+    letter-spacing: 0.02em;
+  }
+  .tel-cell { font-variant-numeric: tabular-nums; }
+  .tel-sep { color: var(--ink-20); }
+
+  .msg {
     padding: 10px 14px;
     font-size: var(--fs-standout);
     line-height: var(--lh-normal);
     position: relative;
   }
 
-  /* User message: ink-on-paper, right-aligned, mono for compact feel */
+  /* User message: ink-on-paper, mono for compact feel */
   .msg-user {
-    align-self: flex-end;
     background: var(--ink);
     color: var(--paper);
     font-family: var(--font-ui);
@@ -115,7 +241,6 @@
 
   /* Bot message: serif prose on paper-subtle, lab-notebook feel */
   .msg-bot {
-    align-self: flex-start;
     background: var(--paper-subtle);
     border: 1px solid var(--rule-strong);
     border-left: 2px solid var(--ink);

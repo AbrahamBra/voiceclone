@@ -21,6 +21,7 @@
   import RulesPanel from "$lib/components/RulesPanel.svelte";
   import FeedbackPanel from "$lib/components/FeedbackPanel.svelte";
   import SettingsPanel from "$lib/components/SettingsPanel.svelte";
+  import AuditStrip from "$lib/components/AuditStrip.svelte";
   import LeadModal from "$lib/components/LeadModal.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
 
@@ -45,6 +46,7 @@
   let collapseIdx = $state(null);
   let fidelity = $state(null);
   let breakdown = $state(null);
+  let sourceStyle = $state(null);
 
   // Rule activation stats for this conversation
   /** @type {Record<string, { count: number, lastFiredAt: number|null, lastDetail: string|null, lastSeverity: string|null }>} */
@@ -52,6 +54,40 @@
   let rulesActiveCount = $derived(
     Object.values(ruleStats).reduce((n, s) => n + (s.count > 0 ? 1 : 0), 0)
   );
+
+  // Running totals for AuditStrip — accumulated across the current conversation.
+  let sessionStart = $state(null);
+  let sessionTotals = $state({
+    msgCount: 0,
+    rewriteCount: 0,
+    driftCount: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    ruleFireCount: 0,
+  });
+  function resetSessionTotals() {
+    sessionStart = null;
+    sessionTotals = {
+      msgCount: 0, rewriteCount: 0, driftCount: 0,
+      inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, ruleFireCount: 0,
+    };
+  }
+
+  // Bot message sequence number generator (per conversation)
+  let botSeq = $state(0);
+  let userSeq = $state(0);
+  function seqForMessage(msg, allMessages) {
+    // Count messages of the same role up to and including this one
+    let n = 0;
+    for (const m of allMessages) {
+      if (m.role !== msg.role) continue;
+      if (m.id === "welcome") continue; // welcome isn't numbered
+      n++;
+      if (m.id === msg.id) return n;
+    }
+    return null;
+  }
 
   async function refreshFidelity() {
     if (!personaId) return;
@@ -71,10 +107,12 @@
         // / signaturePresence / forbiddenHits — exactly what the hover tooltip
         // wants to show.
         breakdown = s.draft_style || null;
+        sourceStyle = s.source_style || null;
       } else {
         fidelity = null;
         collapseIdx = null;
         breakdown = null;
+        sourceStyle = null;
       }
     } catch {
       // fidelity is best-effort
@@ -85,6 +123,7 @@
   $effect(() => {
     const _cid = $currentConversationId;
     ruleStats = {};
+    resetSessionTotals();
   });
 
   $effect(() => {
@@ -221,11 +260,15 @@
     // Add user message
     const userId = crypto.randomUUID();
     const botId = crypto.randomUUID();
+    const now = Date.now();
+
+    // Start the session clock on the first user message.
+    if (!sessionStart) sessionStart = now;
 
     messages.update((msgs) => [
       ...msgs,
-      { id: userId, role: "user", content: text },
-      { id: botId, role: "bot", content: "", typing: true },
+      { id: userId, role: "user", content: text, timestamp: now },
+      { id: botId, role: "bot", content: "", typing: true, timestamp: now },
     ]);
 
     let botText = "";
@@ -275,16 +318,29 @@
           );
         },
         onDone(evt) {
+          // Attach per-message telemetry on the bot message for the
+          // lab-notebook strip to consume.
           messages.update((msgs) =>
             msgs.map((m) =>
               m.id === botId
-                ? { ...m, status: undefined, rewritten: evt?.rewritten || false }
+                ? {
+                    ...m,
+                    status: undefined,
+                    rewritten: evt?.rewritten || false,
+                    timing: evt?.timing || null,
+                    tokens: evt?.tokens || null,
+                    model: evt?.model || null,
+                    fidelity: evt?.fidelity || null,
+                    live_style: evt?.live_style || null,
+                    violations: evt?.violations || [],
+                  }
                 : m
             )
           );
+
           // Bump rule activation counters from the SSE violations payload
+          const now = Date.now();
           if (evt?.violations?.length) {
-            const now = Date.now();
             const next = { ...ruleStats };
             for (const v of evt.violations) {
               const prev = next[v.type] || { count: 0, lastFiredAt: null, lastDetail: null, lastSeverity: null };
@@ -297,6 +353,7 @@
             }
             ruleStats = next;
           }
+
           // Live per-message readings from the pipeline. These override the
           // persisted (cron-computed) aggregate for this turn — the cockpit
           // should feel live, not stuck on yesterday's score.
@@ -306,6 +363,19 @@
           if (evt?.live_style) {
             breakdown = evt.live_style;
           }
+
+          // AuditStrip running totals — accumulate per-message.
+          const drift = (evt?.violations || []).some(v => v.type === "fidelity_drift");
+          const ruleFireDelta = (evt?.violations || []).length;
+          sessionTotals = {
+            msgCount: sessionTotals.msgCount + 1,
+            rewriteCount: sessionTotals.rewriteCount + (evt?.rewritten ? 1 : 0),
+            driftCount: sessionTotals.driftCount + (drift ? 1 : 0),
+            inputTokens: sessionTotals.inputTokens + (evt?.tokens?.input || 0),
+            outputTokens: sessionTotals.outputTokens + (evt?.tokens?.output || 0),
+            cacheReadTokens: sessionTotals.cacheReadTokens + (evt?.tokens?.cache_read || 0),
+            ruleFireCount: sessionTotals.ruleFireCount + ruleFireDelta,
+          };
         },
         onConversation(id) {
           if (id && !$currentConversationId) {
@@ -501,6 +571,7 @@
         {collapseIdx}
         {fidelity}
         {breakdown}
+        {sourceStyle}
         {rulesActiveCount}
         {rulesPanelOpen}
         {feedbackOpen}
@@ -520,6 +591,7 @@
         {#each $messages as message (message.id)}
           <ChatMessage
             {message}
+            seq={seqForMessage(message, $messages)}
             onCorrect={handleCorrect}
             onValidate={handleValidate}
             onSaveRule={handleSaveRule}
@@ -530,6 +602,7 @@
       </div>
 
       <ChatInput onsend={handleSend} disabled={$sending} />
+      <AuditStrip totals={sessionTotals} {sessionStart} />
     </div>
   </div>
 

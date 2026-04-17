@@ -6,6 +6,7 @@
   import { personas, canCreateClone, personaConfig, currentPersonaId } from "$lib/stores/persona.js";
   import { showToast } from "$lib/stores/ui.js";
   import { api, authHeaders } from "$lib/api.js";
+  import StyleFingerprint from "$lib/components/StyleFingerprint.svelte";
 
   /** @type {Array<{persona: any, config: any, scenarios: Array<{key: string, label: string, description: string}>}>} */
   let personaConfigs = $state([]);
@@ -137,6 +138,16 @@
           <div class="clone-card" transition:fly={{ y: 12, delay: i * 80, duration: 200 }}>
             <button class="clone-header" onclick={() => openPersona(entry)}>
               <div class="clone-avatar">{entry.persona.avatar || "?"}</div>
+              {#if fidelityScores[entry.persona.id]?.draft_style}
+                <div class="clone-fingerprint">
+                  <StyleFingerprint
+                    draft={fidelityScores[entry.persona.id].draft_style}
+                    source={fidelityScores[entry.persona.id].source_style}
+                    size={34}
+                    strokeWidth={1}
+                  />
+                </div>
+              {/if}
               <div class="clone-info">
                 <strong>{entry.persona.name}</strong>
                 {#if entry.persona.title}
@@ -182,6 +193,16 @@
           <div class="clone-card" transition:fly={{ y: 12, delay: i * 80, duration: 200 }}>
             <button class="clone-header" onclick={() => openPersona(entry)}>
               <div class="clone-avatar">{entry.persona.avatar || "?"}</div>
+              {#if fidelityScores[entry.persona.id]?.draft_style}
+                <div class="clone-fingerprint">
+                  <StyleFingerprint
+                    draft={fidelityScores[entry.persona.id].draft_style}
+                    source={fidelityScores[entry.persona.id].source_style}
+                    size={34}
+                    strokeWidth={1}
+                  />
+                </div>
+              {/if}
               <div class="clone-info">
                 <strong>{entry.persona.name}</strong>
                 <span class="shared-badge">Partage par {entry.persona._shared_by}</span>
@@ -327,6 +348,14 @@
     font-size: 0.6875rem;
     font-weight: 600;
     flex-shrink: 0;
+  }
+
+  .clone-fingerprint {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-right: -4px;
   }
 
   .clone-info strong {

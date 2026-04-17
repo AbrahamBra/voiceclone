@@ -232,7 +232,7 @@
   <!-- ═══════ Hero rule ═══════ -->
   <section class="manifest">
     <h1 class="headline">
-      <span class="h-lead">Un pipeline de clonage vocal</span>
+      <span class="h-lead">Un clone d'écriture</span>
       <span class="h-accent">observable en direct</span>
       <span class="h-tail">— pas un chatbot de plus.</span>
     </h1>

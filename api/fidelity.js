@@ -36,9 +36,12 @@ export default async function handler(req, res) {
         }
       }
 
+      // Projection includes draft_style + collapse_index so the hub can render
+      // per-persona fingerprints + collapse gauges without N round-trips.
+      // draft_style is a small JSONB object (~200 bytes) — cheap.
       const { data: allScores } = await supabase
         .from("fidelity_scores")
-        .select("persona_id, score_global, calculated_at")
+        .select("persona_id, score_global, score_raw, collapse_index, draft_style, source_style, calculated_at")
         .in("persona_id", ids)
         .order("calculated_at", { ascending: false });
 
@@ -47,7 +50,14 @@ export default async function handler(req, res) {
       for (const id of ids) scores[id] = null;
       for (const row of (allScores || [])) {
         if (!scores[row.persona_id]) {
-          scores[row.persona_id] = { score_global: row.score_global, calculated_at: row.calculated_at };
+          scores[row.persona_id] = {
+            score_global: row.score_global,
+            score_raw: row.score_raw,
+            collapse_index: row.collapse_index,
+            draft_style: row.draft_style,
+            source_style: row.source_style,
+            calculated_at: row.calculated_at,
+          };
         }
       }
 
