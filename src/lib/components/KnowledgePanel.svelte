@@ -2,6 +2,7 @@
   import { api } from "$lib/api.js";
   import { showToast } from "$lib/stores/ui.js";
   import { getRelativeTime } from "$lib/utils.js";
+  import { extractFileText } from "$lib/file-extraction.js";
 
   let { personaId, onupload } = $props();
 
@@ -150,40 +151,13 @@
     let text = "";
 
     try {
-      if (file.type === "text/plain" || file.name.endsWith(".txt") || file.name.endsWith(".md")) {
-        text = await file.text();
-      } else if (file.name.endsWith(".pdf")) {
-        const pdfjsLib = await import("pdfjs-dist");
-        if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-          pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-            "pdfjs-dist/build/pdf.worker.min.mjs",
-            import.meta.url
-          ).href;
-        }
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        const pages = [];
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const pageContent = await page.getTextContent();
-          pages.push(pageContent.items.map(item => item.str).join(" "));
-        }
-        text = pages.join("\n\n");
-      } else if (file.name.endsWith(".docx")) {
-        const mammoth = await import("mammoth");
-        const arrayBuffer = await file.arrayBuffer();
-        const result = await mammoth.extractRawText({ arrayBuffer });
-        text = result.value;
-      } else {
+      text = await extractFileText(file);
+    } catch (err) {
+      if (/unsupported/i.test(err?.message || "")) {
         showToast("Format non supporté (.txt, .pdf, .docx uniquement)");
-        uploading = false;
-        currentStep = -1;
-        uploadCurrent = 0;
-        uploadTotal = 0;
-        return;
+      } else {
+        showToast("Erreur de lecture. Essayez de copier-coller le texte.");
       }
-    } catch {
-      showToast("Erreur de lecture. Essayez de copier-coller le texte.");
       uploading = false;
       currentStep = -1;
       uploadCurrent = 0;

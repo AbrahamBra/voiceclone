@@ -2,6 +2,7 @@
   import { goto } from "$app/navigation";
   import { api } from "$lib/api.js";
   import { showToast } from "$lib/stores/ui.js";
+  import { extractFileText } from "$lib/file-extraction.js";
   import { fly } from "svelte/transition";
 
   let cloneType = $state(null); // 'posts' | 'dm' | 'both'
@@ -36,15 +37,13 @@
   let dmsText = $state("");
 
   // Step 4: Documents + Génération
-  let docsText = $state("");
+  // pendingFiles: [{ name, content, status: 'pending'|'uploading'|'done'|'error', error? }]
+  let pendingFiles = $state([]);
   let showDocs = $state(false);
-  let fileTags = $state([]);
   let fileInputEl;
-  let docBlocks = $state([]);
-  let currentDocTitle = $state("");
-  let currentDocContent = $state("");
   let generating = $state(false);
   let generateStatus = $state("");
+  let ingestProgress = $state({ current: 0, total: 0 });
 
   // --- Scrape ---
   async function scrapeLinkedIn() {
@@ -77,72 +76,30 @@
     }
   }
 
-  // --- Doc blocks ---
-  function addDocBlock() {
-    const content = currentDocContent.trim();
-    if (!content) return;
-    const title = currentDocTitle.trim() || `Texte ${docBlocks.length + 1}`;
-    docBlocks = [...docBlocks, { title, content }];
-    docsText = docBlocks.map(b => `## ${b.title}\n\n${b.content}`).join("\n\n---\n\n");
-    currentDocTitle = "";
-    currentDocContent = "";
-  }
-
-  function removeDocBlock(i) {
-    docBlocks = docBlocks.filter((_, idx) => idx !== i);
-    docsText = docBlocks.map(b => `## ${b.title}\n\n${b.content}`).join("\n\n---\n\n");
-  }
-
-  // --- File handling ---
+  // --- File handling: extract text client-side, queue for post-creation ingestion ---
   async function handleFiles(e) {
     const files = Array.from(e.target.files);
     for (const file of files) {
-      const ext = file.name.split(".").pop().toLowerCase();
-      let text = "";
       try {
-        if (ext === "txt" || ext === "csv") {
-          text = await file.text();
-        } else if (ext === "pdf") {
-          text = await extractPdfText(file);
-        } else if (ext === "docx") {
-          text = await extractDocxText(file);
-        } else { continue; }
-        if (text.trim()) {
-          fileTags = [...fileTags, { name: file.name, chars: (text.length / 1000).toFixed(1) }];
-          docsText += (docsText ? "\n\n--- " + file.name + " ---\n\n" : "") + text.trim();
+        const content = await extractFileText(file);
+        if (!content.trim()) {
+          pendingFiles = [...pendingFiles, { name: file.name, content: "", status: "error", error: "vide" }];
+          continue;
         }
-      } catch {
-        fileTags = [...fileTags, { name: file.name, error: true }];
+        pendingFiles = [...pendingFiles, { name: file.name, content, status: "pending" }];
+      } catch (err) {
+        const msg = /unsupported/i.test(err?.message || "") ? "format" : "illisible";
+        pendingFiles = [...pendingFiles, { name: file.name, content: "", status: "error", error: msg }];
       }
     }
     e.target.value = "";
   }
 
-  async function extractPdfText(file) {
-    const arrayBuffer = await file.arrayBuffer();
-    if (window.pdfjsLib) {
-      const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      let text = "";
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        text += content.items.map(item => item.str).join(" ") + "\n";
-      }
-      return text;
-    }
-    return new TextDecoder().decode(arrayBuffer);
+  function removePendingFile(i) {
+    pendingFiles = pendingFiles.filter((_, idx) => idx !== i);
   }
 
-  async function extractDocxText(file) {
-    const arrayBuffer = await file.arrayBuffer();
-    try {
-      const blob = new Blob([arrayBuffer]);
-      const text = await blob.text();
-      return text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    } catch { return ""; }
-  }
-
-  // --- Generate ---
+  // --- Generate (two-phase: create persona, then ingest each file) ---
   async function createClone() {
     const linkedin = [
       personaName.trim() && `Nom: ${personaName.trim()}`,
@@ -161,8 +118,11 @@
       : [];
 
     generating = true;
-    generateStatus = "Analyse du style en cours, ça prend 20-30 secondes...";
+    generateStatus = "Création du clone (20-30 s)…";
+    ingestProgress = { current: 0, total: 0 };
 
+    // Phase 1: create the persona (no documents)
+    let persona;
     try {
       const data = await api("/api/clone", {
         method: "POST",
@@ -170,14 +130,11 @@
           linkedin_text: linkedin,
           posts: cloneType !== 'dm' ? posts : undefined,
           dms: dms.length > 0 ? dms : undefined,
-          documents: docsText.trim() || undefined,
           name: personaName.trim() || undefined,
           cloneType,
         }),
       });
-
-      generateStatus = `Clone "${data.persona.name}" créé avec succès !`;
-      setTimeout(() => { goto(`/calibrate/${data.persona.id}`); }, 1000);
+      persona = data.persona;
     } catch (err) {
       if (err.status === 402) {
         generateStatus = "Budget dépassé. Ajoutez votre clé API dans les paramètres.";
@@ -187,7 +144,37 @@
         generateStatus = "Erreur: " + (err.message || "Server error");
       }
       generating = false;
+      return;
     }
+
+    // Phase 2: absorb each queued file via /api/knowledge (sequential — each call is LLM-heavy)
+    const toUpload = pendingFiles.filter(f => f.status === "pending" && f.content.trim());
+    ingestProgress = { current: 0, total: toUpload.length };
+
+    for (let i = 0; i < toUpload.length; i++) {
+      const f = toUpload[i];
+      const idx = pendingFiles.indexOf(f);
+      pendingFiles[idx] = { ...f, status: "uploading" };
+      pendingFiles = [...pendingFiles];
+      try {
+        await api("/api/knowledge", {
+          method: "POST",
+          body: JSON.stringify({
+            personaId: persona.id,
+            filename: f.name,
+            content: f.content.slice(0, 200_000),
+          }),
+        });
+        pendingFiles[idx] = { ...f, status: "done" };
+      } catch (err) {
+        pendingFiles[idx] = { ...f, status: "error", error: err?.message || "upload" };
+      }
+      pendingFiles = [...pendingFiles];
+      ingestProgress = { current: i + 1, total: toUpload.length };
+    }
+
+    generateStatus = `Clone "${persona.name}" créé !`;
+    setTimeout(() => { goto(`/calibrate/${persona.id}`); }, 800);
   }
 
   function setCloneType(value) {
@@ -470,29 +457,29 @@
             {#if showDocs}
               <div class="file-upload-zone">
                 <button class="file-upload-btn" onclick={() => fileInputEl.click()}>
-                  + Ajouter des fichiers (.txt, .pdf, .docx)
+                  + Ajouter des fichiers (.txt, .md, .pdf, .docx)
                 </button>
-                <input type="file" accept=".txt,.csv,.pdf,.docx" multiple hidden bind:this={fileInputEl} onchange={handleFiles} />
-                {#if fileTags.length > 0 || docBlocks.length > 0}
-                  <div class="file-list">
-                    {#each fileTags as tag}
-                      <div class="file-tag" class:file-tag-error={tag.error}>
-                        {tag.error ? `${tag.name} — erreur` : `${tag.name} (${tag.chars}k)`}
-                      </div>
+                <input type="file" accept=".txt,.md,.csv,.pdf,.docx" multiple hidden bind:this={fileInputEl} onchange={handleFiles} />
+                <p class="upload-hint">Chaque fichier sera absorbé individuellement après création du clone.</p>
+                {#if pendingFiles.length > 0}
+                  <ul class="pending-files">
+                    {#each pendingFiles as f, i}
+                      <li class="pending-file" class:pending-file-error={f.status === 'error'} class:pending-file-done={f.status === 'done'}>
+                        <span class="pf-name">{f.name}</span>
+                        {#if f.status === 'pending'}
+                          <span class="pf-meta mono">{(f.content.length / 1000).toFixed(1)}k chars</span>
+                          <button class="pf-remove" onclick={() => removePendingFile(i)} aria-label="Retirer">×</button>
+                        {:else if f.status === 'uploading'}
+                          <span class="pf-meta mono">absorption…</span>
+                        {:else if f.status === 'done'}
+                          <span class="pf-meta mono">✓</span>
+                        {:else if f.status === 'error'}
+                          <span class="pf-meta mono">✗ {f.error || 'erreur'}</span>
+                        {/if}
+                      </li>
                     {/each}
-                    {#each docBlocks as block, i}
-                      <div class="file-tag doc-block-tag">
-                        {block.title}
-                        <button class="doc-block-remove" onclick={() => removeDocBlock(i)}>×</button>
-                      </div>
-                    {/each}
-                  </div>
+                  </ul>
                 {/if}
-                <input type="text" placeholder="Titre du texte (ex: Offre, Méthode...)" bind:value={currentDocTitle} />
-                <textarea rows="4" bind:value={currentDocContent} placeholder="Collez votre texte ici..."></textarea>
-                <button class="btn-add-block" onclick={addDocBlock} disabled={!currentDocContent.trim()}>
-                  + Valider et ajouter ce texte
-                </button>
               </div>
             {/if}
 
@@ -513,10 +500,10 @@
                   <span>{dmsText.trim() ? `${dmsText.trim().split(/\n---\n/).filter(d => d.trim().length > 20).length} conversations` : "non renseigné"}</span>
                 </div>
               {/if}
-              {#if docsText.trim()}
+              {#if pendingFiles.length > 0}
                 <div class="recap-item">
                   <span class="recap-label">Docs</span>
-                  <span>{(docsText.trim().length / 1000).toFixed(1)}k chars</span>
+                  <span>{pendingFiles.filter(f => f.status !== 'error').length} fichier(s) en file</span>
                 </div>
               {/if}
             </div>
@@ -525,7 +512,9 @@
               {generating ? "Génération en cours..." : "Générer le clone"}
             </button>
 
-            {#if generateStatus}
+            {#if generating && ingestProgress.total > 0}
+              <div class="generate-status">Absorption {ingestProgress.current}/{ingestProgress.total}…</div>
+            {:else if generateStatus}
               <div class="generate-status">{generateStatus}</div>
             {/if}
 
@@ -863,54 +852,49 @@
 
   .file-upload-btn:hover { border-color: var(--text-secondary); color: var(--text-secondary); }
 
-  .file-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-    margin-bottom: 0.5rem;
+  .upload-hint {
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+    margin: 0 0 0.5rem 0;
   }
 
-  .file-tag {
-    padding: 0.125rem 0.5rem;
+  .pending-files {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 0.5rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .pending-file {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 4px;
-    font-size: 0.6875rem;
-    color: var(--text-tertiary);
+    font-size: 0.75rem;
   }
 
-  .file-tag-error { border-color: var(--error); color: var(--error); }
+  .pending-file-done { border-color: var(--text-tertiary); opacity: 0.75; }
+  .pending-file-error { border-color: var(--error); color: var(--error); }
 
-  .doc-block-tag { display: flex; align-items: center; gap: 0.25rem; }
+  .pf-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pf-meta { color: var(--text-tertiary); font-size: 0.6875rem; }
 
-  .doc-block-remove {
+  .pf-remove {
     background: none;
     border: none;
     color: var(--text-tertiary);
     cursor: pointer;
-    font-size: 0.75rem;
+    font-size: 0.875rem;
     padding: 0;
     line-height: 1;
   }
 
-  .doc-block-remove:hover { color: var(--text); }
-
-  .btn-add-block {
-    width: 100%;
-    padding: 0.5rem;
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text-secondary);
-    font-size: 0.75rem;
-    font-family: var(--font);
-    cursor: pointer;
-    transition: border-color 0.15s, color 0.15s;
-    margin-top: 0.375rem;
-  }
-
-  .btn-add-block:hover:not(:disabled) { border-color: var(--text-secondary); color: var(--text); }
-  .btn-add-block:disabled { opacity: 0.4; cursor: default; }
+  .pf-remove:hover { color: var(--text); }
 
   .generate-recap {
     background: var(--surface);
