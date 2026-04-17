@@ -22,7 +22,7 @@
   import FeedbackPanel from "$lib/components/FeedbackPanel.svelte";
   import SettingsPanel from "$lib/components/SettingsPanel.svelte";
   import AuditStrip from "$lib/components/AuditStrip.svelte";
-  import LeadModal from "$lib/components/LeadModal.svelte";
+  import LeadPanel from "$lib/components/LeadPanel.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
 
   let personaId = $derived($page.data.personaId);
@@ -38,7 +38,7 @@
   let feedbackOpen = $state(false);
   let settingsOpen = $state(false);
   let rulesPanelOpen = $state(false);
-  let showLead = $state(false);
+  let leadOpen = $state(false);
   let showCommandPalette = $state(false);
 
   // Cockpit live readings — collapseIdx & fidelity from /api/fidelity,
@@ -500,7 +500,7 @@
       else if (feedbackOpen) { feedbackOpen = false; feedbackTarget = null; feedbackMessageId = null; }
       else if (settingsOpen) settingsOpen = false;
       else if (rulesPanelOpen) rulesPanelOpen = false;
-      else if (showLead) showLead = false;
+      else if (leadOpen) leadOpen = false;
       return;
     }
     if (mod && e.key === "k") {
@@ -576,6 +576,7 @@
         {rulesPanelOpen}
         {feedbackOpen}
         {settingsOpen}
+        {leadOpen}
         {sidebarOpen}
         onBack={handleBack}
         onToggleSidebar={() => sidebarOpen = !sidebarOpen}
@@ -585,6 +586,7 @@
           if (!feedbackOpen) { feedbackTarget = null; feedbackMessageId = null; }
         }}
         onToggleSettings={() => settingsOpen = !settingsOpen}
+        onToggleLead={() => leadOpen = !leadOpen}
       />
 
       <div class="chat-messages" bind:this={messagesEl}>
@@ -625,9 +627,11 @@
     onClose={() => settingsOpen = false}
   />
 
-  {#if showLead}
-    <LeadModal onclose={() => (showLead = false)} onanalyzed={handleLeadAnalyzed} />
-  {/if}
+  <LeadPanel
+    open={leadOpen}
+    onClose={() => leadOpen = false}
+    onAnalyzed={handleLeadAnalyzed}
+  />
 
   {#if showCommandPalette}
     <CommandPalette

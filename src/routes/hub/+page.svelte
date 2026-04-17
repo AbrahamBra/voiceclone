@@ -125,11 +125,24 @@
   }
 </script>
 
-<div class="hub">
-  <h1 class="hub-title">VoiceClone</h1>
+<div class="hub-page">
+  <header class="hub-head">
+    <div class="brand">
+      <span class="brand-mark">◎</span>
+      <span class="brand-name">VoiceClone</span>
+      <span class="brand-sub">/ hub</span>
+    </div>
+    <nav class="head-meta mono">
+      <span class="kv"><span class="k">clones</span><span class="v">{personaConfigs.length}</span></span>
+      {#if $isAdmin}
+        <span class="kv kv-admin"><span class="dot"></span><span class="v">admin</span></span>
+      {/if}
+    </nav>
+  </header>
 
+<div class="hub">
   {#if loadingHub}
-    <p class="hub-loading">Chargement...</p>
+    <p class="hub-loading mono">Chargement…</p>
   {:else}
     {#if personaConfigs.some(e => !e.persona._shared)}
       <section class="hub-section">
@@ -156,17 +169,15 @@
               </div>
               {#if fidelityScores[entry.persona.id]}
                 {@const fScore = fidelityScores[entry.persona.id]}
-                {@const g = gaugeArc(fScore.score_global)}
-                <div class="fidelity-gauge" title="Fidelite vocale: {fScore.score_global}%">
-                  <svg viewBox="0 0 36 20" width="36" height="20">
-                    <path d="M 4 18 A 14 14 0 0 1 32 18" fill="none"
-                      stroke="var(--border)" stroke-width="2.5" stroke-linecap="round" />
-                    <path d="M 4 18 A 14 14 0 0 1 32 18" fill="none"
-                      stroke={fScore.score_global >= 75 ? 'var(--success)' : fScore.score_global >= 50 ? 'var(--warning)' : 'var(--error)'}
-                      stroke-width="2.5" stroke-linecap="round"
-                      stroke-dasharray={g.circumference} stroke-dashoffset={g.offset} />
-                  </svg>
-                  <span class="fidelity-score">{fScore.score_global}</span>
+                <div
+                  class="fidelity-chip mono"
+                  title="Fidelity cosine: {typeof fScore.score_raw === 'number' ? fScore.score_raw.toFixed(3) : '—'} · composite: {fScore.score_global}"
+                  class:fidelity-ok={fScore.score_global >= 75}
+                  class:fidelity-warn={fScore.score_global >= 50 && fScore.score_global < 75}
+                  class:fidelity-bad={fScore.score_global < 50}
+                >
+                  <span class="chip-k">fid</span>
+                  <span class="chip-v">{typeof fScore.score_raw === 'number' ? fScore.score_raw.toFixed(2) : '—'}</span>
                 </div>
               {/if}
             </button>
@@ -209,17 +220,15 @@
               </div>
               {#if fidelityScores[entry.persona.id]}
                 {@const fScore = fidelityScores[entry.persona.id]}
-                {@const g = gaugeArc(fScore.score_global)}
-                <div class="fidelity-gauge" title="Fidelite vocale: {fScore.score_global}%">
-                  <svg viewBox="0 0 36 20" width="36" height="20">
-                    <path d="M 4 18 A 14 14 0 0 1 32 18" fill="none"
-                      stroke="var(--border)" stroke-width="2.5" stroke-linecap="round" />
-                    <path d="M 4 18 A 14 14 0 0 1 32 18" fill="none"
-                      stroke={fScore.score_global >= 75 ? 'var(--success)' : fScore.score_global >= 50 ? 'var(--warning)' : 'var(--error)'}
-                      stroke-width="2.5" stroke-linecap="round"
-                      stroke-dasharray={g.circumference} stroke-dashoffset={g.offset} />
-                  </svg>
-                  <span class="fidelity-score">{fScore.score_global}</span>
+                <div
+                  class="fidelity-chip mono"
+                  title="Fidelity cosine: {typeof fScore.score_raw === 'number' ? fScore.score_raw.toFixed(3) : '—'} · composite: {fScore.score_global}"
+                  class:fidelity-ok={fScore.score_global >= 75}
+                  class:fidelity-warn={fScore.score_global >= 50 && fScore.score_global < 75}
+                  class:fidelity-bad={fScore.score_global < 50}
+                >
+                  <span class="chip-k">fid</span>
+                  <span class="chip-v">{typeof fScore.score_raw === 'number' ? fScore.score_raw.toFixed(2) : '—'}</span>
                 </div>
               {/if}
             </button>
@@ -276,29 +285,67 @@
     </section>
   {/if}
 </div>
+</div>
 
 <style>
-  .hub {
-    max-width: 440px;
-    margin: 0 auto;
-    padding: 3rem 1.5rem 4rem;
+  .hub-page {
     min-height: 100dvh;
+    background:
+      linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 100% 24px,
+      var(--paper);
   }
 
-  .hub-title {
+  .hub-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--rule-strong);
     font-family: var(--font-mono);
-    font-size: 0.75rem;
-    font-weight: 500;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: var(--text-tertiary);
-    margin-bottom: 2rem;
+    font-size: var(--fs-tiny);
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .brand {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .brand-mark { color: var(--vermillon); font-size: 14px; }
+  .brand-name { font-weight: var(--fw-semi); color: var(--ink); }
+  .brand-sub { color: var(--ink-40); }
+  .head-meta {
+    display: inline-flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: baseline;
+  }
+  .kv { display: inline-flex; gap: 6px; align-items: baseline; }
+  .k { color: var(--ink-40); text-transform: uppercase; letter-spacing: 0.08em; font-size: var(--fs-nano); }
+  .v { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .kv-admin .dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    background: var(--vermillon);
+    transform: translateY(-1px);
+    animation: admin-pulse 1.8s linear infinite;
+  }
+  @keyframes admin-pulse {
+    0%, 60%, 100% { opacity: 1; }
+    80% { opacity: 0.25; }
+  }
+
+  .hub {
+    max-width: 620px;
+    margin: 0 auto;
+    padding: 36px 20px 56px;
   }
 
   .hub-loading {
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    color: var(--text-tertiary);
+    font-size: var(--fs-tiny);
+    color: var(--ink-40);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
 
   .hub-section { margin-bottom: 1.75rem; }
@@ -314,39 +361,41 @@
   }
 
   .clone-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 0;
+    background: var(--paper-subtle);
+    border: 1px solid var(--rule-strong);
+    border-left: 2px solid transparent;
     overflow: hidden;
-    margin-bottom: 0.375rem;
+    margin-bottom: 4px;
     position: relative;
+    transition: border-color var(--dur-fast) var(--ease);
   }
+  .clone-card:hover { border-left-color: var(--vermillon); }
 
   .clone-header {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 12px;
     width: 100%;
-    padding: 0.75rem 1rem;
+    padding: 10px 12px;
     background: transparent;
     border: none;
     cursor: pointer;
     text-align: left;
-    font-family: var(--font);
-    color: var(--text);
-    transition: background 0.08s linear;
+    font-family: var(--font-ui);
+    color: var(--ink);
+    transition: background var(--dur-fast) var(--ease);
   }
-
-  .clone-header:hover { background: var(--surface-hover); }
+  .clone-header:hover { background: var(--paper); }
 
   .clone-avatar {
-    width: 32px; height: 32px;
-    background: var(--border);
-    color: var(--text-secondary);
+    width: 34px; height: 34px;
+    background: var(--paper);
+    border: 1px solid var(--rule-strong);
+    color: var(--ink-70);
     display: flex; align-items: center; justify-content: center;
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    font-weight: 600;
+    font-size: var(--fs-tiny);
+    font-weight: var(--fw-semi);
     flex-shrink: 0;
   }
 
@@ -358,21 +407,25 @@
     margin-right: -4px;
   }
 
+  .clone-info { min-width: 0; flex: 1; }
   .clone-info strong {
     display: block;
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    color: var(--ink);
     letter-spacing: -0.01em;
   }
 
   .clone-title, .shared-badge {
     display: block;
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    color: var(--text-tertiary);
-    line-height: 1.3;
+    font-size: var(--fs-nano);
+    color: var(--ink-40);
+    line-height: var(--lh-snug);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
-  .shared-badge { color: var(--accent); }
+  .shared-badge { color: var(--vermillon); }
 
   .share-btn {
     position: absolute;
@@ -429,64 +482,81 @@
   .action-card {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 12px;
     width: 100%;
-    padding: 0.75rem 1rem;
-    background: var(--surface);
-    border: 1px dashed var(--border);
+    padding: 10px 12px;
+    background: transparent;
+    border: 1px dashed var(--rule-strong);
     cursor: pointer;
     text-align: left;
-    font-family: var(--font);
-    color: var(--text);
+    font-family: var(--font-ui);
+    color: var(--ink);
     text-decoration: none;
-    transition: border-color 0.08s linear, background 0.08s linear;
-    margin-bottom: 0.375rem;
+    transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+    margin-bottom: 4px;
   }
 
   .action-card:hover {
-    border-color: var(--text-tertiary);
-    background: var(--surface-hover);
+    border-color: var(--vermillon);
+    border-style: solid;
+    background: var(--paper-subtle);
   }
 
   .action-icon {
-    width: 32px; height: 32px;
-    border: 1px dashed var(--text-tertiary);
-    color: var(--text-tertiary);
+    width: 34px; height: 34px;
+    border: 1px dashed var(--ink-40);
+    color: var(--vermillon);
     display: flex; align-items: center; justify-content: center;
     font-family: var(--font-mono);
-    font-size: 0.8125rem;
-    font-weight: 600;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-semi);
     flex-shrink: 0;
   }
 
-  .action-info strong { display: block; font-size: 0.8125rem; font-weight: 500; }
+  .action-info strong {
+    display: block;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    color: var(--ink);
+  }
   .action-info span {
     display: block;
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    color: var(--text-tertiary);
-    line-height: 1.3;
+    font-size: var(--fs-nano);
+    color: var(--ink-40);
+    line-height: var(--lh-snug);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
 
-  .fidelity-gauge {
-    position: relative;
-    flex-shrink: 0;
+  .fidelity-chip {
     margin-left: auto;
-    width: 36px; height: 24px;
-    display: flex; align-items: flex-end; justify-content: center;
-  }
-  .fidelity-gauge svg { position: absolute; top: 0; left: 0; }
-  .fidelity-score {
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 700;
-    color: var(--text);
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 2px 7px;
+    border: 1px solid var(--rule-strong);
+    font-size: var(--fs-nano);
     font-variant-numeric: tabular-nums;
-    position: relative;
-    line-height: 1;
   }
+  .fidelity-chip .chip-k {
+    color: var(--ink-40);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .fidelity-chip .chip-v {
+    color: var(--ink);
+    font-weight: var(--fw-semi);
+  }
+  .fidelity-ok { border-color: var(--ink-40); }
+  .fidelity-warn { border-color: #b87300; }
+  .fidelity-warn .chip-v { color: #b87300; }
+  .fidelity-bad { border-color: var(--vermillon); }
+  .fidelity-bad .chip-v { color: var(--vermillon); }
 
   @media (max-width: 480px) {
-    .hub { padding: 2rem 1rem 3rem; }
+    .hub { padding: 24px 14px 40px; }
+    .hub-head { padding: 8px 14px; }
   }
 </style>

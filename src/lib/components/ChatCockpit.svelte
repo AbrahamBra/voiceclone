@@ -19,6 +19,7 @@
     rulesPanelOpen = false,
     feedbackOpen = false,
     settingsOpen = false,
+    leadOpen = false,
     sidebarOpen = false,
     // Callbacks
     onBack,
@@ -26,6 +27,7 @@
     onToggleRules,
     onToggleFeedback,
     onToggleSettings,
+    onToggleLead,
   } = $props();
 
   function fmt(n, d = 2) {
@@ -127,6 +129,12 @@
       onclick={() => onToggleRules?.()}
       aria-pressed={rulesPanelOpen}
     >rules</button>
+    <button
+      class="tab-btn mono"
+      class:active={leadOpen}
+      onclick={() => onToggleLead?.()}
+      aria-pressed={leadOpen}
+    >lead</button>
     <button
       class="tab-btn mono"
       class:active={feedbackOpen}

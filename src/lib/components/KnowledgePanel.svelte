@@ -335,231 +335,262 @@
 {/if}
 
 <style>
+  /* ─── Laboratoire Knowledge panel ─── */
   .kp-loading, .kp-error {
-    padding: 1rem;
-    color: var(--text-secondary);
-    font-size: 0.75rem;
+    padding: 14px;
+    font-family: var(--font-mono);
+    color: var(--ink-40);
+    font-size: var(--fs-tiny);
     text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
   .kp-retry {
     display: block;
-    margin: 0.5rem auto 0;
+    margin: 8px auto 0;
     background: transparent;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text-secondary);
-    padding: 0.25rem 0.5rem;
-    font-size: 0.6875rem;
+    border: 1px solid var(--rule-strong);
+    color: var(--ink-70);
+    padding: 4px 10px;
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
     cursor: pointer;
-    font-family: inherit;
+    transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
   }
-  .kp-retry:hover { color: var(--text); border-color: var(--text-tertiary); }
+  .kp-retry:hover { color: var(--ink); border-color: var(--ink-40); }
 
-  .kp-section { padding: 0.5rem; }
+  .kp-section { padding: 6px 10px; }
   .kp-section-title {
-    font-size: 0.6875rem;
-    font-weight: 600;
-    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    font-weight: var(--fw-semi);
+    color: var(--ink);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 0.5rem;
+    letter-spacing: 0.1em;
+    padding: 8px 2px 4px;
     margin: 0;
     display: flex;
     align-items: center;
-    gap: 0.375rem;
+    gap: 6px;
   }
   .kp-count {
-    font-size: 0.625rem;
-    color: var(--text-tertiary);
-    font-weight: 400;
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    color: var(--ink-40);
+    font-weight: var(--fw-regular);
+    font-variant-numeric: tabular-nums;
   }
   .kp-empty {
-    font-size: 0.6875rem;
-    color: var(--text-tertiary);
-    padding: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+    color: var(--ink-40);
+    padding: 8px 2px;
     margin: 0;
   }
 
   .kp-file {
     display: flex;
     align-items: center;
-    gap: 0.375rem;
-    padding: 0.4rem 0.5rem;
-    border-radius: var(--radius);
-    transition: background 0.1s;
+    gap: 6px;
+    padding: 6px 8px;
+    border-left: 2px solid transparent;
+    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
   }
-  .kp-file:hover { background: rgba(255, 255, 255, 0.03); }
-  .kp-file-info { flex: 1; overflow: hidden; }
+  .kp-file:hover { background: var(--paper); border-left-color: var(--vermillon); }
+  .kp-file-info { flex: 1; overflow: hidden; min-width: 0; }
   .kp-file-name {
     display: block;
-    font-size: 0.6875rem;
-    color: var(--text);
+    font-size: var(--fs-tiny);
+    color: var(--ink);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .kp-file-meta {
-    font-size: 0.5625rem;
-    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    color: var(--ink-40);
+    font-variant-numeric: tabular-nums;
   }
   .kp-delete {
     background: transparent;
-    border: none;
-    color: var(--text-tertiary);
+    border: 1px solid transparent;
+    color: var(--ink-40);
     cursor: pointer;
-    font-size: 0.75rem;
-    padding: 0 0.25rem;
+    font-family: var(--font-mono);
+    font-size: var(--fs-small);
+    padding: 2px 6px;
     flex-shrink: 0;
-    transition: color 0.15s;
-    font-family: inherit;
+    transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
   }
-  .kp-delete:hover { color: var(--error); }
+  .kp-delete:hover { color: var(--vermillon); border-color: var(--vermillon); }
   .kp-delete.confirming {
-    color: var(--error);
-    font-size: 0.625rem;
+    color: var(--vermillon);
+    border-color: var(--vermillon);
+    font-size: var(--fs-nano);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
 
   .kp-add {
-    border-top: 1px solid var(--border);
-    padding-top: 0.75rem;
+    border-top: 1px solid var(--rule-strong);
+    padding-top: 10px;
+    margin-top: 6px;
   }
   .kp-mode-toggle {
     display: flex;
-    gap: 0.25rem;
-    margin-bottom: 0.75rem;
-    padding: 0 0.5rem;
+    gap: 1px;
+    margin-bottom: 10px;
+    padding: 0 2px;
+    background: var(--rule-strong);
+    border: 1px solid var(--rule-strong);
   }
   .kp-mode-btn {
     flex: 1;
-    padding: 0.3rem;
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text-tertiary);
-    font-size: 0.6875rem;
+    padding: 6px 4px;
+    background: var(--paper-subtle);
+    border: none;
+    color: var(--ink-40);
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     cursor: pointer;
-    transition: color 0.15s, border-color 0.15s, background 0.15s;
-    font-family: inherit;
+    transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
   }
-  .kp-mode-btn:hover { color: var(--text-secondary); }
+  .kp-mode-btn:hover { color: var(--ink); }
   .kp-mode-btn.active {
-    background: var(--bg);
-    color: var(--text);
-    border-color: var(--text-tertiary);
+    background: var(--ink);
+    color: var(--paper);
   }
 
   .kp-dropzone {
-    margin: 0 0.5rem;
-    border: 1px dashed var(--border);
-    border-radius: var(--radius);
-    padding: 1.25rem 1rem;
+    margin: 0 2px;
+    border: 1px dashed var(--rule-strong);
+    padding: 18px 14px;
     text-align: center;
     cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
+    transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.5rem;
+    gap: 6px;
   }
   .kp-dropzone:hover, .kp-dropzone.dragging {
-    border-color: var(--accent);
-    background: rgba(255, 255, 255, 0.02);
+    border-color: var(--vermillon);
+    background: color-mix(in srgb, var(--vermillon) 4%, transparent);
   }
   .kp-dropzone.uploading { cursor: default; }
   .kp-dropzone-text {
-    font-size: 0.6875rem;
-    color: var(--text-tertiary);
-    line-height: 1.5;
+    font-family: var(--font-ui);
+    font-size: var(--fs-tiny);
+    color: var(--ink-70);
+    line-height: var(--lh-snug);
   }
-  .kp-dropzone-text small { font-size: 0.5625rem; }
+  .kp-dropzone-text small {
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    color: var(--ink-40);
+  }
   .kp-browse-btn {
-    padding: 0.3rem 0.75rem;
+    padding: 5px 12px;
     background: transparent;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text-secondary);
-    font-size: 0.6875rem;
+    border: 1px solid var(--rule-strong);
+    color: var(--ink-70);
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+    letter-spacing: 0.02em;
     cursor: pointer;
-    transition: border-color 0.15s, color 0.15s;
-    font-family: inherit;
+    transition: border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
   }
-  .kp-browse-btn:hover { border-color: var(--text-tertiary); color: var(--text); }
+  .kp-browse-btn:hover { border-color: var(--ink-40); color: var(--ink); }
+
   .kp-steps {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 3px;
     width: 100%;
-    padding: 0.25rem 0;
+    padding: 4px 0;
   }
   .kp-step-counter {
-    font-size: 0.5625rem;
-    color: var(--text-tertiary);
-    margin-bottom: 0.125rem;
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    color: var(--ink-40);
+    margin-bottom: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
   .kp-step {
     display: flex;
     align-items: center;
-    gap: 0.375rem;
-    opacity: 0.3;
-    transition: opacity 0.3s;
+    gap: 6px;
+    opacity: 0.35;
+    transition: opacity 0.3s linear;
   }
   .kp-step.active { opacity: 1; }
   .kp-step.done { opacity: 0.55; }
   .kp-step-dot {
-    font-size: 0.5rem;
-    color: var(--text-tertiary);
-    width: 0.875rem;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--ink-40);
+    width: 14px;
     text-align: center;
     flex-shrink: 0;
-    transition: color 0.3s;
+    transition: color 0.3s linear;
   }
-  .kp-step.active .kp-step-dot { color: var(--accent); }
-  .kp-step.done .kp-step-dot { color: var(--accent); font-size: 0.5625rem; }
-  .kp-step-dot.pulse {
-    animation: stepPulse 1.2s ease-in-out infinite;
-  }
+  .kp-step.active .kp-step-dot { color: var(--vermillon); }
+  .kp-step.done .kp-step-dot { color: var(--vermillon); }
+  .kp-step-dot.pulse { animation: stepPulse 1.2s linear infinite; }
   @keyframes stepPulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
+    0%, 60%, 100% { opacity: 1; }
+    80% { opacity: 0.3; }
   }
   .kp-step-label {
-    font-size: 0.6875rem;
-    color: var(--text-secondary);
+    font-family: var(--font-ui);
+    font-size: var(--fs-tiny);
+    color: var(--ink-70);
   }
-  .kp-step.active .kp-step-label { color: var(--text); font-weight: 500; }
+  .kp-step.active .kp-step-label { color: var(--ink); font-weight: var(--fw-medium); }
 
   .kp-text-form {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    padding: 0 0.5rem;
+    gap: 6px;
+    padding: 0 2px;
   }
   .kp-input, .kp-textarea {
     width: 100%;
-    padding: 0.4rem 0.5rem;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text);
-    font-size: 0.6875rem;
-    font-family: inherit;
+    padding: 7px 9px;
+    background: var(--paper-subtle);
+    border: 1px solid var(--rule-strong);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: var(--fs-small);
     outline: none;
     box-sizing: border-box;
+    transition: border-color var(--dur-fast) var(--ease);
   }
-  .kp-input:focus, .kp-textarea:focus { border-color: var(--text-tertiary); }
-  .kp-input::placeholder, .kp-textarea::placeholder { color: var(--text-tertiary); }
-  .kp-textarea { resize: vertical; }
+  .kp-input:focus, .kp-textarea:focus { border-color: var(--vermillon); }
+  .kp-input::placeholder, .kp-textarea::placeholder {
+    color: var(--ink-40);
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+  }
+  .kp-textarea { resize: vertical; font-family: var(--font); }
   .kp-submit-btn {
-    padding: 0.4rem;
-    background: var(--accent);
-    color: #fff;
-    border: none;
-    border-radius: var(--radius);
-    font-size: 0.6875rem;
+    padding: 8px 12px;
+    background: var(--ink);
+    color: var(--paper);
+    border: 1px solid var(--ink);
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+    letter-spacing: 0.02em;
     cursor: pointer;
-    transition: opacity 0.15s;
-    font-family: inherit;
+    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
   }
-  .kp-submit-btn:hover { opacity: 0.85; }
+  .kp-submit-btn:hover:not(:disabled) {
+    background: var(--vermillon);
+    border-color: var(--vermillon);
+  }
   .kp-submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
