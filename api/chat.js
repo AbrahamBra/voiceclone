@@ -255,21 +255,38 @@ export default async function handler(req, res) {
       apiKey,
       model: routing.model,
       personaId: persona.id,
+      conversationId: convId || null,
+      rhythmCtx: {
+        isFirstContact: !convId || (Array.isArray(messages) && messages.length <= 1),
+        personaOverrides: Array.isArray(persona.voice?.setter_overrides) ? persona.voice.setter_overrides : [],
+      },
     });
     // Persist messages + update conversation (await to avoid Vercel killing the function)
     if (convId && supabase) {
       const botText = result.text || "";
       try {
-        await Promise.all([
+        const [inserted] = await Promise.all([
           supabase.from("messages").insert([
             { conversation_id: convId, role: "user", content: message },
             { conversation_id: convId, role: "assistant", content: botText },
-          ]),
+          ]).select("id, role, created_at"),
           supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
           supabase.from("conversations")
             .update({ title: extractConvTitle(message, scenario) })
             .eq("id", convId).is("title", null),
         ]);
+        // Shadow: log prospect heat for the user/prospect message.
+        // Non-blocking. Noise from test-prompts filtered later via business_outcomes join.
+        const userMsg = inserted?.data?.find(m => m.role === "user");
+        if (userMsg) {
+          const { logProspectHeat } = await import("../lib/heat/prospectHeat.js");
+          logProspectHeat({
+            messageId: userMsg.id,
+            conversationId: convId,
+            content: message,
+            createdAt: userMsg.created_at,
+          }).catch(() => {});
+        }
       } catch (err) {
         console.log(JSON.stringify({
           event: "persist_error", ts: new Date().toISOString(),
