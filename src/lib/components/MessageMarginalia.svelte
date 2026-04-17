@@ -190,8 +190,8 @@
     font-variant-numeric: tabular-nums;
   }
   .marg-model {
-    color: var(--ink-20);
-    font-size: 9px;
+    color: var(--ink-30);
+    font-size: 10px;
     margin-left: auto;
   }
 
@@ -350,5 +350,52 @@
     border: 1px solid var(--vermillon);
     padding: 1px 5px;
     align-self: flex-start;
+  }
+
+  /* ── Mobile/narrow: passe la marginalia en rangée horizontale compacte.
+     Le produit reste visible (fidélité, règles, diff) mais sans prendre
+     la hauteur d'un second message. ──────────────────────────────────── */
+  @media (max-width: 1024px) {
+    .marg {
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 14px;
+      padding: 6px 10px;
+      border-left: none;
+      border-top: 1px dashed var(--rule);
+      margin-top: 4px;
+    }
+    .marg-head {
+      padding-bottom: 0;
+      border-bottom: none;
+      flex: 0 0 auto;
+    }
+    .marg-block {
+      flex-direction: row;
+      align-items: baseline;
+      gap: 4px;
+    }
+    .marg-label {
+      font-size: 8.5px;
+      letter-spacing: 0.1em;
+    }
+    .marg-big {
+      font-size: 13px;
+    }
+    /* style block: masque la grille détaillée, garde le fingerprint */
+    .marg-style .marg-grid { display: none; }
+    .marg-style-body { gap: 4px; }
+    .marg-fp { transform: scale(0.75); transform-origin: left center; }
+    /* règles : limite à 2 lignes scrollables pour ne pas exploser */
+    .marg-rules {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 3px 8px;
+      max-height: 40px;
+      overflow-y: auto;
+    }
+    .marg-rule { grid-template-columns: 8px auto; }
+    .marg-rule-detail { display: none; }
   }
 </style>

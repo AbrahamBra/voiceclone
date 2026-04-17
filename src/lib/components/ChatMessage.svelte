@@ -36,40 +36,8 @@
     return String(n).padStart(3, "0");
   }
 
-  // Per-message telemetry strip values (bot messages only) — used for the
-  // narrow-screen fallback where we can't show the marginalia on the right.
-  function fmtMs(ms) {
-    if (!ms && ms !== 0) return null;
-    if (ms < 1000) return `${ms}ms`;
-    return `${(ms / 1000).toFixed(2)}s`;
-  }
-  function fmtTokenPair(t) {
-    if (!t) return null;
-    return `${t.input ?? 0}→${t.output ?? 0}t`;
-  }
-  function fmtCacheRate(t) {
-    if (!t || !t.input) return null;
-    const rate = Math.round(((t.cache_read ?? 0) / t.input) * 100);
-    return `cache ${rate}%`;
-  }
-
   let stamp = $derived(fmtClock(message.timestamp));
   let seqStr = $derived(fmtSeq(seq));
-  let telemetry = $derived(() => {
-    if (message.role !== "bot" || !message.content || message.typing) return null;
-    const parts = [];
-    const ms = fmtMs(message.timing?.totalMs);
-    const tokens = fmtTokenPair(message.tokens);
-    const cache = fmtCacheRate(message.tokens);
-    const fid = typeof message.fidelity?.similarity === "number"
-      ? `fidelity ${message.fidelity.similarity.toFixed(3)}`
-      : null;
-    const ruleN = message.violations?.length
-      ? `${message.violations.length} rules`
-      : null;
-    for (const p of [ms, tokens, cache, fid, ruleN]) if (p) parts.push(p);
-    return parts.length ? parts : null;
-  });
 </script>
 
 <article
@@ -148,15 +116,6 @@
       </details>
     {/if}
 
-    <!-- Narrow-screen fallback: telemetry strip below bot message -->
-    {#if message.role === "bot" && telemetry()}
-      <footer class="msg-telemetry mono narrow-only" aria-label="Message telemetry">
-        {#each telemetry() as cell, i}
-          {#if i > 0}<span class="tel-sep">·</span>{/if}
-          <span class="tel-cell">{cell}</span>
-        {/each}
-      </footer>
-    {/if}
   </div>
 
   <!-- ── Margin column ── -->
@@ -209,9 +168,6 @@
     top: 8px;
   }
 
-  /* Narrow-only: used for stamp/telemetry when margin collapses */
-  .narrow-only { display: none; }
-
   /* Collapse to single column on narrow screens — margin drops below */
   @media (max-width: 1024px) {
     .msg-row {
@@ -219,7 +175,6 @@
     }
     .margin-col { position: static; }
     .msg-row-user .margin-col { display: none; }
-    .narrow-only { display: inline-flex; }
   }
 
   .msg-stamp {
@@ -242,8 +197,8 @@
     font-variant-numeric: tabular-nums;
   }
   .stamp-model {
-    color: var(--ink-20);
-    font-size: 9px;
+    color: var(--ink-30);
+    font-size: 10px;
   }
   .msg-row-user .stamp-tag { color: var(--vermillon); }
 
@@ -267,20 +222,6 @@
     color: var(--ink-40);
     font-variant-numeric: tabular-nums;
   }
-
-  .msg-telemetry {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-    padding: 4px 2px 0;
-    margin-top: 2px;
-    font-size: 9.5px;
-    color: var(--ink-40);
-    letter-spacing: 0.02em;
-    flex-wrap: wrap;
-  }
-  .tel-cell { font-variant-numeric: tabular-nums; }
-  .tel-sep { color: var(--ink-20); }
 
   .msg {
     padding: 10px 14px;
