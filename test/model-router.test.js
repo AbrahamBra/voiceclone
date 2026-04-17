@@ -86,8 +86,8 @@ describe("selectModel — scenario signal", () => {
     assert.ok(r.reason.includes("scenario:qualification"));
   });
 
-  it("post_creation scenario adds 2", () => {
-    const r = selectModel({ ...EMPTY, scenario: "post_creation" });
+  it("post scenario adds 2", () => {
+    const r = selectModel({ ...EMPTY, scenario: "post" });
     assert.equal(r.score, 2);
   });
 
