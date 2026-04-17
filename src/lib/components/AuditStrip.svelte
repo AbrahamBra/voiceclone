@@ -65,63 +65,110 @@
       : null
   );
   let anyActivity = $derived(totals.msgCount > 0 || !!sessionStart);
+
+  // Narrative footer: short human-readable sentence that updates live.
+  // Describes what the pipeline has done this session in plain French.
+  // Screenshot-friendly, onboarding-friendly.
+  let narrative = $derived(buildNarrative(totals, cacheRate));
+
+  function buildNarrative(t, cache) {
+    if (!t || t.msgCount === 0) {
+      return "session au repos — envoie un message pour démarrer.";
+    }
+
+    const plural = (n, s, p) => `${n} ${n > 1 ? p : s}`;
+    const parts = [];
+
+    // Primary sentence: activity
+    parts.push(plural(t.msgCount, "message", "messages"));
+
+    // Rewrites + drifts narrative
+    if (t.rewriteCount === 0 && t.driftCount === 0) {
+      parts.push("aucune dérive, fidélité préservée");
+    } else if (t.rewriteCount > 0 && t.driftCount === 0) {
+      parts.push(`${plural(t.rewriteCount, "réécriture", "réécritures")} — voix récupérée à chaque fois`);
+    } else if (t.driftCount > 0 && t.rewriteCount >= t.driftCount) {
+      parts.push(`${plural(t.driftCount, "dérive", "dérives")} détectée${t.driftCount > 1 ? "s" : ""}, rattrapée${t.driftCount > 1 ? "s" : ""} par réécriture`);
+    } else if (t.driftCount > 0) {
+      parts.push(`${plural(t.driftCount, "dérive non résolue", "dérives non résolues")} — calibration à affiner`);
+    }
+
+    // Cache efficiency
+    if (cache !== null && cache >= 80) {
+      const saved = Math.round(t.cacheReadTokens / 1000);
+      if (saved > 0) {
+        parts.push(`cache ${cache}% — ${saved}k tokens économisés`);
+      }
+    }
+
+    return parts.join(" · ") + ".";
+  }
 </script>
 
-<div class="audit-strip mono" class:idle={!anyActivity} role="status" aria-label="Totaux de session">
-  <span class="cell cell-primary">
-    <span class="k">session</span>
-    <span class="v">{fmtDuration(elapsed)}</span>
-  </span>
-  <span class="sep">·</span>
+<section class="audit-wrap" class:idle={!anyActivity} aria-label="Totaux de session">
+  <div class="audit-strip mono" role="status">
+    <span class="cell cell-primary">
+      <span class="k">session</span>
+      <span class="v">{fmtDuration(elapsed)}</span>
+    </span>
+    <span class="sep">·</span>
 
-  <span class="cell">
-    <span class="k">msg</span>
-    <span class="v">{totals.msgCount}</span>
-  </span>
-  <span class="sep">·</span>
+    <span class="cell">
+      <span class="k">msg</span>
+      <span class="v">{totals.msgCount}</span>
+    </span>
+    <span class="sep">·</span>
 
-  <span class="cell" class:hot={totals.rewriteCount > 0}>
-    <span class="k">réécritures</span>
-    <span class="v">{totals.rewriteCount}</span>
-  </span>
-  <span class="sep">·</span>
+    <span class="cell" class:hot={totals.rewriteCount > 0}>
+      <span class="k">réécritures</span>
+      <span class="v">{totals.rewriteCount}</span>
+    </span>
+    <span class="sep">·</span>
 
-  <span class="cell" class:hot={totals.driftCount > 0}>
-    <span class="k">dérives</span>
-    <span class="v">{totals.driftCount}</span>
-  </span>
-  <span class="sep">·</span>
+    <span class="cell" class:hot={totals.driftCount > 0}>
+      <span class="k">dérives</span>
+      <span class="v">{totals.driftCount}</span>
+    </span>
+    <span class="sep">·</span>
 
-  <span class="cell">
-    <span class="k">règles</span>
-    <span class="v">{totals.ruleFireCount}</span>
-  </span>
-  <span class="sep">·</span>
+    <span class="cell">
+      <span class="k">règles</span>
+      <span class="v">{totals.ruleFireCount}</span>
+    </span>
+    <span class="sep">·</span>
 
-  <span class="cell">
-    <span class="k">tokens</span>
-    <span class="v">{fmtTokens(totalTokens)}</span>
-  </span>
-  <span class="sep">·</span>
+    <span class="cell">
+      <span class="k">tokens</span>
+      <span class="v">{fmtTokens(totalTokens)}</span>
+    </span>
+    <span class="sep">·</span>
 
-  <span class="cell">
-    <span class="k">cache</span>
-    <span class="v">{cacheRate === null ? "—" : `${cacheRate}%`}</span>
-  </span>
+    <span class="cell">
+      <span class="k">cache</span>
+      <span class="v">{cacheRate === null ? "—" : `${cacheRate}%`}</span>
+    </span>
 
-  {#if anyActivity}
-    <span class="pulse" aria-hidden="true"></span>
-  {/if}
-</div>
+    {#if anyActivity}
+      <span class="pulse" aria-hidden="true"></span>
+    {/if}
+  </div>
+
+  <p class="audit-narrative" aria-live="polite">{narrative}</p>
+</section>
 
 <style>
+  .audit-wrap {
+    background: var(--paper-subtle);
+    border-top: 1px solid var(--rule-strong);
+    display: flex;
+    flex-direction: column;
+  }
+
   .audit-strip {
     display: flex;
     align-items: baseline;
     gap: 8px;
     padding: 6px 16px;
-    background: var(--paper-subtle);
-    border-top: 1px solid var(--rule-strong);
     font-family: var(--font-mono);
     font-size: 10.5px;
     color: var(--ink-40);
@@ -132,7 +179,23 @@
   }
   .audit-strip::-webkit-scrollbar { display: none; }
 
-  .audit-strip.idle .v { color: var(--ink-20); }
+  .audit-wrap.idle .v { color: var(--ink-20); }
+
+  /* Narrative footer — human sentence below the mono strip.
+     Screenshot-friendly summary of what the pipeline has done. */
+  .audit-narrative {
+    margin: 0;
+    padding: 4px 16px 8px;
+    font-family: var(--font);
+    font-size: 12.5px;
+    line-height: var(--lh-snug);
+    color: var(--ink-70);
+    font-style: italic;
+    border-top: 1px dashed var(--rule);
+  }
+  .audit-wrap.idle .audit-narrative {
+    color: var(--ink-40);
+  }
 
   .cell {
     display: inline-flex;
