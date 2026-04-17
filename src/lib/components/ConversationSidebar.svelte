@@ -270,48 +270,51 @@
 </aside>
 
 <style>
+  /* ─── Laboratoire sidebar ─── */
   .conv-sidebar {
-    width: 280px;
-    min-width: 280px;
-    background: var(--surface);
-    border-right: 1px solid var(--border);
+    width: 260px;
+    min-width: 260px;
+    background: var(--paper-subtle);
+    border-right: 1px solid var(--rule-strong);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    font-family: var(--font-ui);
   }
 
   .sidebar-tabs {
     display: flex;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--rule-strong);
+    background: var(--paper);
   }
   .sidebar-tab {
     flex: 1;
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
-    color: var(--text-tertiary);
-    font-size: 0.6875rem;
-    font-weight: 500;
-    padding: 0.5rem 0;
+    color: var(--ink-40);
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: var(--fw-semi);
+    padding: 10px 0;
     cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
-    font-family: inherit;
+    transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
   }
-  .sidebar-tab:hover { color: var(--text-secondary); }
+  .sidebar-tab:hover { color: var(--ink); }
   .sidebar-tab.active {
-    color: var(--text);
-    border-bottom-color: var(--accent);
+    color: var(--ink);
+    border-bottom-color: var(--vermillon);
   }
   .tab-dot {
     display: inline-block;
     width: 4px;
     height: 4px;
-    border-radius: 50%;
-    background: var(--accent);
+    background: var(--vermillon);
     margin-left: 4px;
     vertical-align: middle;
-    opacity: 0.7;
-    animation: tab-pulse 1.5s ease-in-out infinite;
+    animation: tab-pulse 1.5s linear infinite;
   }
   @keyframes tab-pulse {
     0%, 100% { opacity: 0.4; }
@@ -323,194 +326,187 @@
   }
 
   .conv-sidebar-header {
-    padding: 1rem;
-    border-bottom: 1px solid var(--border);
+    padding: 12px;
+    border-bottom: 1px solid var(--rule-strong);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
 
   .conv-switch-btn {
     width: 100%;
-    padding: 0.4rem 0.5rem;
+    padding: 6px 8px;
     background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    color: var(--text-tertiary);
-    font-size: 0.75rem;
+    border: 1px solid var(--rule-strong);
+    color: var(--ink-40);
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
     cursor: pointer;
-    margin-bottom: 0.5rem;
-    transition: color 0.15s, border-color 0.15s;
+    transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
     text-align: left;
-    font-family: var(--font);
   }
-
   .conv-switch-btn:hover {
-    color: var(--text-secondary);
-    border-color: var(--text-tertiary);
+    color: var(--ink);
+    border-color: var(--ink-40);
   }
 
   .conv-new-btn {
     width: 100%;
-    padding: 0.5rem;
-    background: var(--accent);
-    color: #fff;
-    border: none;
-    border-radius: 8px;
+    padding: 8px 10px;
+    background: var(--ink);
+    color: var(--paper);
+    border: 1px solid var(--ink);
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+    letter-spacing: 0.02em;
     cursor: pointer;
-    font-size: 0.85rem;
-    margin-bottom: 0.5rem;
-    transition: opacity 0.15s;
-    font-family: var(--font);
+    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+    text-align: left;
   }
-
-  .conv-new-btn:hover { opacity: 0.9; }
+  .conv-new-btn:hover {
+    background: var(--vermillon);
+    border-color: var(--vermillon);
+  }
 
   .conv-search {
     width: 100%;
-    padding: 0.5rem;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    color: var(--text);
-    font-size: 0.8rem;
-    font-family: inherit;
+    padding: 7px 9px;
+    background: var(--paper);
+    border: 1px solid var(--rule-strong);
+    color: var(--ink);
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
     outline: none;
+    transition: border-color var(--dur-fast) var(--ease);
   }
-
-  .conv-search::placeholder { color: var(--text-tertiary); }
-  .conv-search:focus { border-color: var(--text-tertiary); }
+  .conv-search::placeholder { color: var(--ink-20); }
+  .conv-search:focus { border-color: var(--vermillon); }
 
   .conv-list {
     flex: 1;
     overflow-y: auto;
-    padding: 0.5rem;
+    padding: 6px 0;
   }
 
   .conv-group-label {
-    font-size: 0.6875rem;
-    color: var(--text-tertiary);
-    font-weight: 600;
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    color: var(--ink-40);
+    font-weight: var(--fw-semi);
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 0.5rem 0.75rem 0.25rem;
+    letter-spacing: 0.1em;
+    padding: 10px 12px 4px;
   }
 
   .conv-item {
-    padding: 0.75rem;
-    border-radius: 8px;
+    padding: 8px 12px;
     cursor: pointer;
-    margin-bottom: 2px;
-    transition: background 0.15s;
+    border-left: 2px solid transparent;
+    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
   }
 
-  .conv-item:hover { background: var(--bg); }
-  .conv-item.active { background: var(--bg); border-left: 2px solid var(--accent); }
+  .conv-item:hover { background: var(--paper); }
+  .conv-item.active {
+    background: var(--paper);
+    border-left-color: var(--vermillon);
+  }
 
   .conv-item-title {
-    font-size: 0.85rem;
-    color: var(--text);
+    font-size: var(--fs-small);
+    color: var(--ink);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .conv-item-meta {
-    font-size: 0.7rem;
-    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    color: var(--ink-40);
     margin-top: 2px;
   }
 
   .conv-item-row {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: 4px;
   }
-
-  .conv-item-row .conv-item-title {
-    flex: 1;
-    min-width: 0;
-  }
+  .conv-item-row .conv-item-title { flex: 1; min-width: 0; }
 
   .conv-item-actions {
     display: flex;
     gap: 2px;
     opacity: 0;
-    transition: opacity 0.15s;
+    transition: opacity var(--dur-fast) var(--ease);
     flex-shrink: 0;
   }
-
-  .conv-item:hover .conv-item-actions {
-    opacity: 1;
-  }
+  .conv-item:hover .conv-item-actions { opacity: 1; }
 
   .conv-action-btn {
     width: 22px;
     height: 22px;
     background: transparent;
     border: 1px solid transparent;
-    border-radius: 4px;
-    color: var(--text-tertiary);
-    font-size: 0.8rem;
+    color: var(--ink-40);
+    font-size: var(--fs-small);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 0;
-    transition: color 0.15s, background 0.15s;
+    transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
   }
-
   .conv-action-btn:hover {
-    color: var(--text-secondary);
-    background: var(--border);
+    color: var(--ink);
+    border-color: var(--rule-strong);
   }
-
   .conv-action-delete:hover {
-    color: var(--error, #ef4444);
-    background: rgba(239, 68, 68, 0.1);
+    color: var(--vermillon);
+    border-color: var(--vermillon);
   }
 
   .conv-delete-confirm {
     display: flex;
     align-items: center;
-    gap: 0.375rem;
+    gap: 6px;
     margin-top: 4px;
-    font-size: 0.7rem;
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
   }
-
   .conv-delete-confirm span {
-    color: var(--error, #ef4444);
+    color: var(--vermillon);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
-
   .conv-confirm-yes,
   .conv-confirm-no {
-    padding: 0.125rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.675rem;
+    padding: 3px 8px;
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
     cursor: pointer;
-    border: 1px solid var(--border);
+    border: 1px solid var(--rule-strong);
     background: transparent;
-    color: var(--text-secondary);
-    font-family: inherit;
-    transition: background 0.15s;
+    color: var(--ink-70);
+    transition: all var(--dur-fast) var(--ease);
   }
-
   .conv-confirm-yes:hover {
-    background: rgba(239, 68, 68, 0.15);
-    color: var(--error, #ef4444);
-    border-color: var(--error, #ef4444);
+    background: var(--vermillon);
+    color: var(--paper);
+    border-color: var(--vermillon);
   }
-
   .conv-confirm-no:hover {
-    background: var(--border);
+    background: var(--paper-subtle);
+    color: var(--ink);
   }
 
   .conv-title-edit {
     width: 100%;
-    padding: 0.125rem 0.25rem;
-    background: var(--bg);
-    border: 1px solid var(--accent);
-    border-radius: 4px;
-    color: var(--text);
-    font-size: 0.85rem;
-    font-family: inherit;
+    padding: 3px 6px;
+    background: var(--paper);
+    border: 1px solid var(--vermillon);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: var(--fs-small);
     outline: none;
   }
 

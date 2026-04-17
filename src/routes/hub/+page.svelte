@@ -30,13 +30,8 @@
     return { r, circumference, offset };
   }
 
-  function applyTheme(theme) {
-    const root = document.documentElement;
-    if (theme.accent) root.style.setProperty("--accent", theme.accent);
-    if (theme.background) root.style.setProperty("--bg", theme.background);
-    if (theme.surface) root.style.setProperty("--surface", theme.surface);
-    if (theme.text) root.style.setProperty("--text", theme.text);
-  }
+  // Per-persona theme overrides disabled — laboratoire owns the surface.
+  function applyTheme(_theme) { /* no-op */ }
 
   onMount(async () => {
     if (!$accessCode && !$sessionToken) {

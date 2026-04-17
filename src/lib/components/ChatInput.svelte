@@ -53,58 +53,57 @@
 <style>
   .chat-input-bar {
     display: flex;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    border-top: 1px solid var(--border);
-    background: var(--bg);
+    gap: 8px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--rule-strong);
+    background: var(--paper);
   }
 
   .chat-input {
     flex: 1;
-    padding: 0.5rem 0.75rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text);
-    font-size: 0.8125rem;
+    padding: 10px 12px;
+    background: var(--paper-subtle);
+    border: 1px solid var(--rule-strong);
+    color: var(--ink);
     font-family: var(--font);
+    font-size: var(--fs-body);
     resize: none;
     outline: none;
     max-height: 120px;
-    line-height: 1.5;
-    transition: border-color 0.15s;
+    line-height: var(--lh-normal);
+    transition: border-color var(--dur-fast) var(--ease);
   }
-
-  .chat-input:focus { border-color: var(--text-tertiary); }
-  .chat-input::placeholder { color: var(--text-tertiary); }
+  .chat-input:focus { border-color: var(--vermillon); }
+  .chat-input::placeholder { color: var(--ink-40); font-family: var(--font-ui); }
 
   .chat-send {
-    padding: 0.5rem 0.875rem;
-    background: var(--text);
-    color: var(--bg);
-    border: none;
-    border-radius: var(--radius);
-    font-size: 0.8125rem;
-    font-weight: 500;
-    font-family: var(--font);
+    padding: 10px 16px;
+    background: var(--ink);
+    color: var(--paper);
+    border: 1px solid var(--ink);
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+    letter-spacing: 0.04em;
+    min-height: var(--touch-min);
     cursor: pointer;
-    transition: opacity 0.15s;
+    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
     white-space: nowrap;
   }
-
-  .chat-send:hover { opacity: 0.85; }
+  .chat-send:hover:not(:disabled) {
+    background: var(--vermillon);
+    border-color: var(--vermillon);
+  }
   .chat-send:disabled { opacity: 0.4; cursor: not-allowed; }
 
   @media (max-width: 768px) {
     .chat-input-bar {
       position: sticky;
       bottom: 0;
-      padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+      padding-bottom: max(10px, env(safe-area-inset-bottom));
     }
   }
-
   @media (max-width: 480px) {
-    .chat-input-bar { padding: 0.5rem; }
-    .chat-send { padding: 0.5rem 0.625rem; font-size: 0.75rem; }
+    .chat-input-bar { padding: 8px; }
+    .chat-send { padding: 10px; font-size: var(--fs-nano); }
   }
 </style>

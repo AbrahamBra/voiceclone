@@ -139,13 +139,11 @@
     }
   }
 
-  function applyTheme(theme) {
-    const root = document.documentElement;
-    if (theme.accent) root.style.setProperty("--accent", theme.accent);
-    if (theme.background) root.style.setProperty("--bg", theme.background);
-    if (theme.surface) root.style.setProperty("--surface", theme.surface);
-    if (theme.text) root.style.setProperty("--text", theme.text);
-  }
+  // NOTE: per-persona theme override disabled. The laboratoire design system
+  // owns the surface colors globally — we no longer override bg/surface/text/
+  // accent per persona. If persona-level accenting comes back, it should be
+  // scoped to a single signal (e.g. a persona badge), not the whole chrome.
+  function applyTheme(_theme) { /* no-op */ }
 
   function showWelcome() {
     const config = $personaConfig;

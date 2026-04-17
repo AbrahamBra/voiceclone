@@ -15,12 +15,14 @@
     bottom: 4.5rem;
     left: 50%;
     transform: translateX(-50%);
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    padding: 0.5rem 1rem;
-    border-radius: var(--radius);
-    font-size: 0.75rem;
-    z-index: 100;
+    background: var(--ink);
+    border: 1px solid var(--ink);
+    color: var(--paper);
+    padding: 8px 14px;
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+    letter-spacing: 0.02em;
+    z-index: var(--z-toast, 50);
+    box-shadow: 0 4px 14px rgba(20, 20, 26, 0.18);
   }
 </style>

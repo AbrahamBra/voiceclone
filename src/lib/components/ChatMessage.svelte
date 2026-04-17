@@ -96,94 +96,99 @@
 
 <style>
   .msg {
-    max-width: 85%;
-    padding: 0.5rem 0.75rem;
-    border-radius: var(--radius);
-    font-size: 0.8125rem;
-    line-height: 1.55;
+    max-width: 68ch;
+    padding: 10px 14px;
+    font-size: var(--fs-standout);
+    line-height: var(--lh-normal);
+    position: relative;
   }
 
+  /* User message: ink-on-paper, right-aligned, mono for compact feel */
   .msg-user {
     align-self: flex-end;
-    background: var(--text);
-    color: var(--bg);
-    border-radius: var(--radius) var(--radius) 2px var(--radius);
+    background: var(--ink);
+    color: var(--paper);
+    font-family: var(--font-ui);
+    font-size: var(--fs-body);
+    border-left: 2px solid var(--vermillon);
   }
 
+  /* Bot message: serif prose on paper-subtle, lab-notebook feel */
   .msg-bot {
     align-self: flex-start;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius) var(--radius) var(--radius) 2px;
-    color: var(--text);
+    background: var(--paper-subtle);
+    border: 1px solid var(--rule-strong);
+    border-left: 2px solid var(--ink);
+    color: var(--ink);
+    font-family: var(--font);
   }
 
-  .msg-bot :global(strong) { font-weight: 600; }
-  .msg-bot :global(em) { font-style: italic; color: var(--text-secondary); }
-  .msg-bot :global(hr) { border: none; border-top: 1px solid var(--border); margin: 0.5rem 0; }
-  .msg-bot :global(ul) { list-style: none; padding: 0; margin: 0.25rem 0; }
+  .msg-bot :global(strong) { font-weight: var(--fw-semi); }
+  .msg-bot :global(em) { font-style: italic; color: var(--ink-70); }
+  .msg-bot :global(hr) { border: none; border-top: 1px dashed var(--rule); margin: 10px 0; }
+  .msg-bot :global(ul) { list-style: none; padding: 0; margin: 6px 0; }
   .msg-bot :global(li) {
-    padding-left: 0.875rem;
+    padding-left: 16px;
     position: relative;
-    margin: 0.125rem 0;
-    color: var(--text-secondary);
+    margin: 3px 0;
+    color: var(--ink-70);
   }
   .msg-bot :global(li)::before {
-    content: "\2192";
+    content: "→";
     position: absolute;
     left: 0;
-    color: var(--text-tertiary);
-    font-size: 0.75rem;
+    top: 0;
+    color: var(--vermillon);
+    font-family: var(--font-mono);
+    font-size: var(--fs-small);
   }
 
   .msg-actions {
     display: flex;
-    gap: 0.25rem;
-    margin-top: 0.5rem;
+    gap: 4px;
+    margin-top: 8px;
     opacity: 0;
-    transition: opacity 0.15s;
+    transition: opacity var(--dur-fast, 80ms) linear;
   }
+  .msg:hover .msg-actions,
+  .msg:focus-within .msg-actions { opacity: 1; }
 
-  .msg:hover .msg-actions { opacity: 1; }
-
-  .user-actions {
-    justify-content: flex-end;
-  }
-
+  .user-actions { justify-content: flex-end; }
   .user-actions .action-btn {
-    color: var(--bg);
-    border-color: rgba(255, 255, 255, 0.3);
+    color: var(--paper);
+    border-color: rgba(245, 242, 236, 0.3);
+    background: transparent;
   }
-
   .user-actions .action-btn:hover {
-    color: var(--bg);
-    border-color: rgba(255, 255, 255, 0.6);
+    color: var(--paper);
+    border-color: var(--vermillon);
   }
-
-  .user-actions .action-validated {
-    color: rgba(255, 255, 255, 0.8);
-  }
+  .user-actions .action-validated { color: rgba(245, 242, 236, 0.7); }
 
   .action-btn {
-    padding: 0.25rem 0.5rem;
+    padding: 3px 8px;
     background: transparent;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text-tertiary);
-    font-size: 0.6875rem;
+    border: 1px solid var(--rule-strong);
+    color: var(--ink-40);
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
     cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
+    transition: color var(--dur-fast, 80ms) linear, border-color var(--dur-fast, 80ms) linear;
   }
-
   .action-btn:hover {
-    color: var(--text-secondary);
-    border-color: var(--text-tertiary);
+    color: var(--ink);
+    border-color: var(--ink-40);
   }
 
   .action-validated {
-    font-size: 0.6875rem;
-    color: var(--success);
-    padding: 0.25rem 0.5rem;
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #2d7a3e;
+    padding: 3px 8px;
   }
 
   .copyable-block {
@@ -203,27 +208,25 @@
     height: 22px;
     background: transparent;
     border: 1px solid transparent;
-    border-radius: 4px;
-    color: var(--text-tertiary);
-    font-size: 0.75rem;
+    color: var(--ink-40);
+    font-size: var(--fs-small);
     cursor: pointer;
     opacity: 0;
-    transition: opacity 0.15s, border-color 0.15s;
+    transition: opacity var(--dur-fast, 80ms) linear, border-color var(--dur-fast, 80ms) linear;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 0;
     user-select: none;
   }
-
   .copyable-block:hover .block-copy-btn {
     opacity: 0.7;
-    border-color: var(--border);
+    border-color: var(--rule-strong);
   }
-
   .block-copy-btn:hover {
     opacity: 1 !important;
-    color: var(--text-secondary);
+    color: var(--vermillon);
+    border-color: var(--vermillon);
   }
 
   .rewrite-line {
@@ -302,30 +305,29 @@
   }
 
   .status {
-    font-size: 0.6875rem;
-    color: var(--text-tertiary);
-    margin-top: 0.375rem;
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    color: var(--ink-40);
+    margin-top: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
 
   .typing-indicator {
     display: flex;
-    gap: 3px;
-    padding: 0.375rem 0;
+    gap: 4px;
+    padding: 6px 0;
   }
-
   .typing-indicator span {
-    width: 4px;
-    height: 4px;
-    background: var(--text-tertiary);
-    border-radius: 50%;
-    animation: pulse 1s infinite;
+    width: 5px;
+    height: 5px;
+    background: var(--ink-40);
+    animation: typing-pulse 1s linear infinite;
   }
-
   .typing-indicator span:nth-child(2) { animation-delay: 0.15s; }
   .typing-indicator span:nth-child(3) { animation-delay: 0.3s; }
-
-  @keyframes pulse {
-    0%, 60%, 100% { opacity: 0.25; }
-    30% { opacity: 0.8; }
+  @keyframes typing-pulse {
+    0%, 60%, 100% { background: var(--ink-40); }
+    30% { background: var(--vermillon); }
   }
 </style>
