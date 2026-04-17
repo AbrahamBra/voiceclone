@@ -282,16 +282,16 @@ async function extractGraphKnowledgeFromFile(intellId, content, client) {
     ]);
 
     const raw = result.content[0].text.trim();
-    console.log(JSON.stringify({ event: "graph_extraction_raw", persona: intellId, raw: raw.slice(0, 500), stop_reason: result.stop_reason }));
+    console.log(JSON.stringify({ event: "graph_extraction_raw", persona: intellId, raw_length: raw.length, stop_reason: result.stop_reason }));
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { count: 0, debug: `no_json_in_response: ${raw.slice(0, 200)}` };
+    if (!jsonMatch) return { count: 0, debug: "no_json_in_response" };
 
     let graphData;
     try {
       graphData = JSON.parse(jsonMatch[0]);
     } catch (parseErr) {
-      console.log(JSON.stringify({ event: "graph_extraction_json_error", persona: intellId, error: parseErr.message, json_snippet: jsonMatch[0].slice(0, 300) }));
-      return { count: 0, debug: `json_parse_error: ${parseErr.message}` };
+      console.log(JSON.stringify({ event: "graph_extraction_json_error", persona: intellId, error: parseErr.message }));
+      return { count: 0, debug: "json_parse_error" };
     }
 
     if (!graphData.has_graph_update) return { count: 0, debug: `has_graph_update=false` };

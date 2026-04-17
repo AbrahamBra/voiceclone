@@ -1,7 +1,10 @@
+export const maxDuration = 90;
+
 import Anthropic from "@anthropic-ai/sdk";
 import { authenticateRequest, supabase, getApiKey, logUsage, checkBudget, setCors } from "../lib/supabase.js";
 import { isEmbeddingAvailable, chunkText, embedAndStore } from "../lib/embeddings.js";
 import { extractEntitiesFromContent } from "../lib/graph-extraction.js";
+import { rateLimit, getClientIp } from "./_rateLimit.js";
 
 const CLONE_SYSTEM_PROMPT = `Tu es un expert en personal branding et analyse de style d'ecriture LinkedIn.
 On te donne le profil LinkedIn d'une personne, ses posts, et optionnellement de la documentation.
@@ -90,6 +93,11 @@ export default async function handler(req, res) {
   setCors(res, "POST, OPTIONS");
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
   if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
+
+  // Rate limiting (clone creation is expensive — LLM + scraping)
+  const ip = getClientIp(req);
+  const rl = await rateLimit(ip);
+  if (!rl.allowed) { res.status(429).json({ error: "Too many requests", retryAfter: rl.retryAfter }); return; }
 
   let client;
   try {
@@ -212,7 +220,7 @@ export default async function handler(req, res) {
     try {
       personaConfig = JSON.parse(jsonMatch[0]);
     } catch (parseErr) {
-      console.log(JSON.stringify({ event: "config_parse_error", raw: configRaw.slice(0, 300) }));
+      console.log(JSON.stringify({ event: "config_parse_error", raw_length: configRaw.length, preview: configRaw.slice(0, 80).replace(/\s+/g, " ") }));
       throw new Error("Invalid persona config JSON from Claude");
     }
 

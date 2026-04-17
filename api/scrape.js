@@ -107,6 +107,7 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.log(JSON.stringify({ event: "scrape_error", username, error: err.message }));
-    res.status(500).json({ error: "Erreur de scraping: " + err.message });
+    // Don't leak internal error details to the client; log them and return a generic message.
+    res.status(500).json({ error: "Erreur de scraping" });
   }
 }

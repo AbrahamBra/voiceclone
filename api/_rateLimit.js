@@ -1,6 +1,7 @@
 // ============================================================
-// RATE LIMITER — Hybrid: in-memory fast path + Supabase persistent
-// In-memory serves as first check (fast), Supabase as source of truth
+// RATE LIMITER — Supabase source of truth + in-memory cache
+// Atomic check+increment via rate_limit_check() RPC (migration 017)
+// Survives cold starts, shared across all Vercel instances
 // ============================================================
 
 import { supabase } from "../lib/supabase.js";
@@ -8,43 +9,83 @@ import { supabase } from "../lib/supabase.js";
 const WINDOW_MS = 60_000; // 1 minute
 const MAX_REQUESTS = 20;
 
-// In-memory cache (fast path, resets on cold start but catches most abuse)
-const store = new Map();
+// In-memory short-circuit cache: if we JUST saw this IP and it was blocked,
+// reject immediately without a DB roundtrip. TTL = 2 seconds.
+const recentBlocks = new Map();
 
-// Cleanup old entries every 5 minutes
-setInterval(() => {
+function extractIp(rawIp) {
+  if (!rawIp) return "unknown";
+  // x-forwarded-for can be "client, proxy1, proxy2" — take first, trim
+  const first = String(rawIp).split(",")[0].trim();
+  // Reject malformed values (basic sanity, prevents very long attacker-chosen keys)
+  if (first.length > 45 || first.length < 3) return "unknown";
+  return first;
+}
+
+/**
+ * Extract the real client IP from a Vercel/Node request object, safely.
+ *
+ * Vercel sets `x-real-ip` and `x-vercel-forwarded-for` — both are set by the
+ * Vercel edge, NOT by the client. We prefer those over `x-forwarded-for`,
+ * which a client can trivially spoof (e.g. "x-forwarded-for: 1.2.3.4").
+ *
+ * Fallback order: x-real-ip → x-vercel-forwarded-for → socket remoteAddress
+ * → first entry of x-forwarded-for (last resort, spoofable).
+ */
+export function getClientIp(req) {
+  const h = req.headers || {};
+  const candidate =
+    h["x-real-ip"] ||
+    h["x-vercel-forwarded-for"] ||
+    req.socket?.remoteAddress ||
+    h["x-forwarded-for"];
+  return extractIp(candidate);
+}
+
+export async function rateLimit(rawIp) {
+  const ip = extractIp(rawIp);
   const now = Date.now();
-  for (const [ip, record] of store) {
-    if (now - record.windowStart > WINDOW_MS * 2) {
-      store.delete(ip);
-    }
+
+  // Fast path: if we blocked this IP in the last 2s, reject without DB call
+  const recent = recentBlocks.get(ip);
+  if (recent && now < recent.until) {
+    return { allowed: false, retryAfter: Math.ceil((recent.until - now) / 1000) };
   }
-}, 300_000);
 
-export function rateLimit(ip) {
-  const now = Date.now();
-  const record = store.get(ip);
-
-  if (!record || now - record.windowStart > WINDOW_MS) {
-    store.set(ip, { windowStart: now, count: 1 });
+  // If Supabase is down/unavailable, fail open (allow) rather than breaking site
+  if (!supabase) {
     return { allowed: true };
   }
 
-  record.count++;
-  if (record.count > MAX_REQUESTS) {
-    // Log to Supabase for cross-instance visibility (fire-and-forget)
-    if (supabase) {
-      supabase.from("usage_log").insert({
-        client_id: null,
-        persona_id: null,
-        input_tokens: 0,
-        output_tokens: 0,
-        cost_cents: 0,
-        metadata: { event: "rate_limited", ip: ip.slice(0, 20), count: record.count },
-      }).catch(() => {});
-    }
-    return { allowed: false, retryAfter: Math.ceil((record.windowStart + WINDOW_MS - now) / 1000) };
-  }
+  try {
+    const { data, error } = await supabase.rpc("rate_limit_check", {
+      p_ip: ip,
+      p_window_ms: WINDOW_MS,
+      p_max: MAX_REQUESTS,
+    });
 
-  return { allowed: true };
+    if (error) {
+      console.error(JSON.stringify({ event: "rate_limit_rpc_error", error: error.message }));
+      return { allowed: true }; // fail open on DB error
+    }
+
+    if (data && data.allowed === false) {
+      // Cache the block briefly to protect the DB from hot-loop abuse
+      recentBlocks.set(ip, { until: now + 2000 });
+      return { allowed: false, retryAfter: data.retry_after || 60 };
+    }
+
+    return { allowed: true };
+  } catch (err) {
+    console.error(JSON.stringify({ event: "rate_limit_exception", error: err.message }));
+    return { allowed: true }; // fail open
+  }
 }
+
+// Periodic cleanup of in-memory recentBlocks (defensive)
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of recentBlocks) {
+    if (now >= entry.until) recentBlocks.delete(ip);
+  }
+}, 60_000);
