@@ -56,12 +56,25 @@
   async function refreshFidelity() {
     if (!personaId) return;
     try {
-      const data = await api(`/api/fidelity?personas=${personaId}`);
-      const s = data.scores?.[personaId];
+      // Singular endpoint returns the full latest row (including collapse_index
+      // and draft_style breakdown). The batch ?personas= variant only projects
+      // score_global so we can't use it here.
+      const data = await api(`/api/fidelity?persona=${personaId}`);
+      const s = data?.current;
       if (s) {
-        fidelity = typeof s.score_global === "number" ? s.score_global / 100 : null;
+        // score_raw is the raw cosine similarity [0..1], same scale as
+        // pipeline.js inlineFidelityCheck threshold (0.72). score_global is a
+        // 0-100 composite — don't mix the two.
+        fidelity = typeof s.score_raw === "number" ? s.score_raw : null;
         collapseIdx = typeof s.collapse_index === "number" ? s.collapse_index : null;
-        breakdown = s.metrics || s.breakdown || null;
+        // draft_style carries ttr / kurtosis / avgSentenceLen / questionRatio
+        // / signaturePresence / forbiddenHits — exactly what the hover tooltip
+        // wants to show.
+        breakdown = s.draft_style || null;
+      } else {
+        fidelity = null;
+        collapseIdx = null;
+        breakdown = null;
       }
     } catch {
       // fidelity is best-effort
@@ -284,8 +297,15 @@
             }
             ruleStats = next;
           }
-          // Refresh the cockpit gauges from the server's aggregate
-          refreshFidelity();
+          // Live per-message readings from the pipeline. These override the
+          // persisted (cron-computed) aggregate for this turn — the cockpit
+          // should feel live, not stuck on yesterday's score.
+          if (evt?.fidelity && typeof evt.fidelity.similarity === "number") {
+            fidelity = evt.fidelity.similarity;
+          }
+          if (evt?.live_style) {
+            breakdown = evt.live_style;
+          }
         },
         onConversation(id) {
           if (id && !$currentConversationId) {
