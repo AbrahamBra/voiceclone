@@ -30,16 +30,17 @@
     size = 56,
     strokeWidth = 1.25,
     showLabels = false,
+    tooltip = false,
     label = "",
   } = $props();
 
   const AXES = [
-    { key: "ttr",           short: "ttr" },
-    { key: "q",             short: "q" },
-    { key: "sig",           short: "sig" },
-    { key: "clean",         short: "cln" },
-    { key: "len",           short: "len" },
-    { key: "kurt",          short: "krt" },
+    { key: "ttr",   short: "ttr", label: "lexical diversity (ttr)" },
+    { key: "q",     short: "q",   label: "question ratio" },
+    { key: "sig",   short: "sig", label: "signature presence" },
+    { key: "clean", short: "cln", label: "clean (inv. forbidden)" },
+    { key: "len",   short: "len", label: "avg sentence length" },
+    { key: "kurt",  short: "krt", label: "kurtosis (tail)" },
   ];
 
   function clamp01(v) {
@@ -98,6 +99,7 @@
   let rings = $derived([radius * 0.33, radius * 0.66, radius]);
 </script>
 
+<span class="fp-host" class:fp-has-tip={tooltip} tabindex={tooltip ? 0 : -1}>
 <svg
   class="fingerprint"
   width={size}
@@ -151,6 +153,25 @@
   {/if}
 </svg>
 
+{#if tooltip && draftNorm}
+  <span class="fp-tip" role="tooltip">
+    <span class="fp-tip-head mono">style fingerprint</span>
+    {#each AXES as axis}
+      <span class="fp-tip-row">
+        <span class="fp-tip-label">{axis.label}</span>
+        <span class="fp-tip-val mono">{(draftNorm[axis.key] * 100).toFixed(0)}%</span>
+        {#if sourceNorm}
+          <span class="fp-tip-src mono">/{(sourceNorm[axis.key] * 100).toFixed(0)}</span>
+        {/if}
+      </span>
+    {/each}
+    {#if sourceNorm}
+      <span class="fp-tip-foot mono">draft / source</span>
+    {/if}
+  </span>
+{/if}
+</span>
+
 <style>
   .fingerprint {
     display: block;
@@ -197,5 +218,86 @@
 
   .empty-dot {
     fill: var(--ink-20);
+  }
+
+  /* ── Hover tooltip ── */
+  .fp-host {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .fp-host.fp-has-tip {
+    cursor: help;
+    outline: none;
+  }
+
+  .fp-tip {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%) translateY(-4px);
+    min-width: 200px;
+    background: var(--ink);
+    color: var(--paper);
+    padding: 8px 10px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 40;
+    transition: opacity 0.1s linear, transform 0.1s linear;
+    box-shadow: 0 2px 8px rgba(20, 20, 26, 0.15);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .fp-tip::before {
+    content: "";
+    position: absolute;
+    top: -5px;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-bottom-color: var(--ink);
+    border-top: 0;
+  }
+  .fp-host:hover .fp-tip,
+  .fp-host:focus-visible .fp-tip {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+  }
+
+  .fp-tip-head {
+    color: var(--paper);
+    font-weight: 600;
+    margin-bottom: 4px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(245, 242, 236, 0.12);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 9px;
+  }
+  .fp-tip-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 8px;
+    align-items: baseline;
+    font-size: 10px;
+    padding: 1px 0;
+    color: rgba(245, 242, 236, 0.72);
+  }
+  .fp-tip-label { color: rgba(245, 242, 236, 0.7); }
+  .fp-tip-val { color: var(--paper); font-variant-numeric: tabular-nums; }
+  .fp-tip-src { color: rgba(245, 242, 236, 0.4); font-variant-numeric: tabular-nums; }
+  .fp-tip-foot {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(245, 242, 236, 0.12);
+    font-size: 8.5px;
+    color: rgba(245, 242, 236, 0.5);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
   }
 </style>

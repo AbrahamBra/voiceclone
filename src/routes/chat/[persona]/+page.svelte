@@ -608,6 +608,7 @@
             {message}
             seq={seqForMessage(message, $messages)}
             prevFidelity={prevFidelityFor(message, $messages)}
+            {sourceStyle}
             onCorrect={handleCorrect}
             onValidate={handleValidate}
             onSaveRule={handleSaveRule}

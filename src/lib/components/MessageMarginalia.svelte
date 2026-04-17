@@ -3,11 +3,14 @@
   // Shows the pipeline's annotations next to the text instead of under it.
   // Renders blocks: stamp, timing, fidelity, rules active, style, diff toggle.
 
+  import StyleFingerprint from "./StyleFingerprint.svelte";
+
   let {
     message,
     stamp = "",         // "14:42:17"
     seq = null,
     prevFidelity = null, // cosine from previous bot message, for Δ
+    sourceStyle = null,  // source_style baseline for the ghost overlay
     showDiff = $bindable(false),
   } = $props();
 
@@ -111,15 +114,25 @@
   {/if}
 
   {#if hasStyle}
-    <section class="marg-block">
+    <section class="marg-block marg-style">
       <div class="marg-label mono">style</div>
-      <div class="marg-grid mono">
-        <span class="marg-k">ttr</span><span class="marg-v">{fmtNum(message.live_style.ttr, 2)}</span>
-        <span class="marg-k">kurt</span><span class="marg-v">{fmtNum(message.live_style.kurtosis, 2)}</span>
-        <span class="marg-k">q</span><span class="marg-v">{fmtNum(message.live_style.questionRatio, 2)}</span>
-        <span class="marg-k">sig</span><span class="marg-v">{fmtNum(message.live_style.signaturePresence, 2)}</span>
-        <span class="marg-k">fbd</span><span class="marg-v">{message.live_style.forbiddenHits ?? 0}</span>
-        <span class="marg-k">len</span><span class="marg-v">{fmtNum(message.live_style.avgSentenceLen, 0)}</span>
+      <div class="marg-style-body">
+        <div class="marg-grid mono">
+          <span class="marg-k">ttr</span><span class="marg-v">{fmtNum(message.live_style.ttr, 2)}</span>
+          <span class="marg-k">kurt</span><span class="marg-v">{fmtNum(message.live_style.kurtosis, 2)}</span>
+          <span class="marg-k">q</span><span class="marg-v">{fmtNum(message.live_style.questionRatio, 2)}</span>
+          <span class="marg-k">sig</span><span class="marg-v">{fmtNum(message.live_style.signaturePresence, 2)}</span>
+          <span class="marg-k">fbd</span><span class="marg-v">{message.live_style.forbiddenHits ?? 0}</span>
+          <span class="marg-k">len</span><span class="marg-v">{fmtNum(message.live_style.avgSentenceLen, 0)}</span>
+        </div>
+        <div class="marg-fp" title="Ce message vs. signature source">
+          <StyleFingerprint
+            draft={message.live_style}
+            source={sourceStyle}
+            size={54}
+            strokeWidth={1}
+          />
+        </div>
       </div>
     </section>
   {/if}
@@ -261,7 +274,21 @@
     grid-column: 2 / -1;
   }
 
-  /* ── Style grid ── */
+  /* ── Style block: numbers grid + mini fingerprint ── */
+  .marg-style-body {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: center;
+  }
+  .marg-fp {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    flex-shrink: 0;
+  }
+
   .marg-grid {
     display: grid;
     grid-template-columns: auto 1fr auto 1fr;

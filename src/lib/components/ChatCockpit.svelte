@@ -56,8 +56,8 @@
     <button class="icon-btn back" onclick={() => onBack?.()} aria-label="Retour">←</button>
     <div class="id">
       <span class="avatar">{personaAvatar}</span>
-      <div class="fp-slot" title="Style fingerprint (draft vs. source)">
-        <StyleFingerprint draft={breakdown} source={sourceStyle} size={32} strokeWidth={1} />
+      <div class="fp-slot">
+        <StyleFingerprint draft={breakdown} source={sourceStyle} size={32} strokeWidth={1} tooltip />
       </div>
       <div class="id-text">
         <span class="pname">{personaName}</span>

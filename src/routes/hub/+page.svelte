@@ -158,6 +158,7 @@
                     source={fidelityScores[entry.persona.id].source_style}
                     size={34}
                     strokeWidth={1}
+                    tooltip
                   />
                 </div>
               {/if}
@@ -211,6 +212,7 @@
                     source={fidelityScores[entry.persona.id].source_style}
                     size={34}
                     strokeWidth={1}
+                    tooltip
                   />
                 </div>
               {/if}

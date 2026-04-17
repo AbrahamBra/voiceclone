@@ -3,7 +3,7 @@
   import { renderMarkdown } from "$lib/utils.js";
   import MessageMarginalia from "./MessageMarginalia.svelte";
 
-  let { message, seq = null, prevFidelity = null, onCorrect, onValidate, onSaveRule, onCopyBlock } = $props();
+  let { message, seq = null, prevFidelity = null, sourceStyle = null, onCorrect, onValidate, onSaveRule, onCopyBlock } = $props();
 
   let ruleSaved = $state(false);
   let showDiff = $state(false);
@@ -167,6 +167,7 @@
         {stamp}
         {seq}
         {prevFidelity}
+        {sourceStyle}
         bind:showDiff
       />
     {:else if message.role === "user" && seqStr}
