@@ -1,6 +1,4 @@
-export const maxDuration = 60;
-
-import { rateLimit, getClientIp } from "./_rateLimit.js";
+import { rateLimit } from "./_rateLimit.js";
 import { buildSystemPrompt } from "../lib/prompt.js";
 import { runPipeline } from "../lib/pipeline.js";
 import { initSSE } from "../lib/sse.js";
@@ -34,9 +32,9 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
   if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
 
-  // Rate limiting (IP extraction resistant to x-forwarded-for spoofing)
-  const ip = getClientIp(req);
-  const rl = await rateLimit(ip);
+  // Rate limiting
+  const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress || "unknown";
+  const rl = rateLimit(ip);
   if (!rl.allowed) { res.status(429).json({ error: "Too many requests", retryAfter: rl.retryAfter }); return; }
 
   let client, isAdmin;
@@ -125,24 +123,13 @@ export default async function handler(req, res) {
   const scenarioContent = await loadScenarioFromDb(personaId, scenarioSlug);
 
   // Entities + corrections in parallel (corrections don't depend on ontology)
-  // Use allSettled so a failure in one doesn't crash the whole request.
-  const [ontologyRes, correctionsRes] = await Promise.allSettled([
+  const [ontology, corrections] = await Promise.all([
     findRelevantEntities(personaId, messages),
     getCorrectionsFromDb(personaId),
   ]);
-  const ontology = ontologyRes.status === "fulfilled" && ontologyRes.value
-    ? ontologyRes.value
-    : { boostTerms: [], entities: [], relations: [] };
-  const corrections = correctionsRes.status === "fulfilled" ? correctionsRes.value : [];
-  if (ontologyRes.status === "rejected") {
-    console.log(JSON.stringify({ event: "ontology_load_error", ts: new Date().toISOString(), error: ontologyRes.reason?.message }));
-  }
-  if (correctionsRes.status === "rejected") {
-    console.log(JSON.stringify({ event: "corrections_load_error", ts: new Date().toISOString(), error: correctionsRes.reason?.message }));
-  }
 
-  // Knowledge uses boost terms from graph — safe even if ontology fell back to []
-  const knowledgeMatches = await findRelevantKnowledgeFromDb(personaId, messages, ontology.boostTerms || []);
+  // Knowledge uses boost terms from graph — must wait for ontology
+  const knowledgeMatches = await findRelevantKnowledgeFromDb(personaId, messages, ontology.boostTerms);
 
   // Enrich ontology with entity names for prompt display
   if (ontology.relations) {
@@ -169,7 +156,7 @@ export default async function handler(req, res) {
   // Unified classifier: regex fast-path + Haiku fallback for ambiguous messages
   const lastBotMsg = [...messages].reverse().find(m => m.role === "assistant")?.content;
   const msgIntent = await classifyMessage(message, lastBotMsg, client);
-  console.log(JSON.stringify({ event: "msg_classified", ts: new Date().toISOString(), intent: msgIntent, msg_len: message.length }));
+  console.log(JSON.stringify({ event: "msg_classified", ts: new Date().toISOString(), intent: msgIntent, msg: message.slice(0, 50) }));
 
   // Short-circuit: negative feedback — user wants to undo/weaken a rule
   if (msgIntent === "NEGATIVE") {
@@ -307,17 +294,17 @@ export default async function handler(req, res) {
       }
       const postResults = await Promise.all(postTasks);
 
-      // Observability: log when corrections were saved via post-response detectors
+      // Auto-consolidation: check if new corrections were saved, trigger every 10th
       const totalSaved = postResults.reduce((sum, r) => sum + (typeof r === "number" && r > 0 ? r : 0), 0);
-      if (totalSaved > 0) {
+      const feedbackSaved = totalSaved > 0;
+      if (feedbackSaved) {
         logLearningEvent(personaId, "correction_saved", {
           source: msgIntent === "CORRECTION" ? "coaching" : (msgIntent === "VALIDATION" ? "validation" : "chat"),
           count: totalSaved,
           text: message.slice(0, 200),
         });
-
-        // DEMO_MODE: keep inline fire-and-forget consolidation so live demos see rules
-        // promoted immediately. Otherwise rely on /api/cron-consolidate (every 10 min).
+        // Inline consolidation is ONLY for DEMO_MODE (live "wow moment" during demos).
+        // In production, /api/cron-consolidate runs every 10 min sequentially — safer, no races.
         if (process.env.DEMO_MODE === "true") {
           try {
             const { count } = await supabase.from("corrections")

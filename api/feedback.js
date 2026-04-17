@@ -1,10 +1,7 @@
-export const maxDuration = 60;
-
 import Anthropic from "@anthropic-ai/sdk";
 import { authenticateRequest, supabase, getApiKey, hasPersonaAccess, setCors } from "../lib/supabase.js";
 import { clearIntelligenceCache, loadPersonaData, getIntelligenceId } from "../lib/knowledge-db.js";
 import { extractGraphKnowledge } from "../lib/graph-extraction.js";
-import { rateLimit, getClientIp } from "./_rateLimit.js";
 import { sanitizeUserText } from "../lib/sanitize.js";
 
 export default async function handler(req, res) {
@@ -12,13 +9,6 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
   if (!["GET", "POST", "DELETE"].includes(req.method)) {
     res.status(405).json({ error: "Method not allowed" }); return;
-  }
-
-  // Rate limiting on writes only (POST/DELETE). GET is light, skip.
-  if (req.method !== "GET") {
-    const ip = getClientIp(req);
-    const rl = await rateLimit(ip);
-    if (!rl.allowed) { res.status(429).json({ error: "Too many requests", retryAfter: rl.retryAfter }); return; }
   }
 
   let client, isAdmin;
@@ -335,12 +325,7 @@ export default async function handler(req, res) {
         contributed_by: client?.id || null,
       });
 
-      // Graph extraction is non-critical — never block the response on it
-      try {
-        await extractGraphKnowledge(intellId, rule, null, userMessage, client);
-      } catch (err) {
-        console.log(JSON.stringify({ event: "save_rule_graph_error", persona: intellId, error: err.message }));
-      }
+      await extractGraphKnowledge(intellId, rule, null, userMessage, client);
       clearIntelligenceCache(intellId);
 
       res.json({ ok: true, message: "Règle sauvegardée", rule });
@@ -396,16 +381,8 @@ export default async function handler(req, res) {
     return;
   }
 
-  // 2. Extract graph knowledge — non-critical, don't let it block the response
-  let entityCount = 0;
-  let contradictions = [];
-  try {
-    const result = await extractGraphKnowledge(intellId, finalCorrection, botMessage || original, userMessage, client);
-    entityCount = result?.entityCount || 0;
-    contradictions = result?.contradictions || [];
-  } catch (err) {
-    console.log(JSON.stringify({ event: "correction_graph_error", persona: intellId, error: err.message }));
-  }
+  // 2. Extract graph knowledge — await before response (Vercel kills fire-and-forget)
+  const { entityCount, contradictions } = await extractGraphKnowledge(intellId, finalCorrection, botMessage || original, userMessage, client);
 
   clearIntelligenceCache(intellId);
 

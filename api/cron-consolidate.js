@@ -11,8 +11,8 @@ export const maxDuration = 300;
 import { supabase } from "../lib/supabase.js";
 import { consolidateCorrections } from "../lib/correction-consolidation.js";
 
-// Minimum active corrections to trigger a consolidation (match old threshold)
-const MIN_ACTIVE_CORRECTIONS = 10;
+// Minimum active corrections to trigger a consolidation
+const MIN_ACTIVE_CORRECTIONS = 3;
 
 // Hard cap: never consolidate more than N personas per run (stay within maxDuration)
 const MAX_PERSONAS_PER_RUN = 20;
@@ -35,9 +35,7 @@ export default async function handler(req, res) {
   const results = [];
 
   try {
-    // Find personas with enough active corrections that are candidates.
-    // We use the intelligence_source_id if the persona shares intelligence,
-    // otherwise the persona's own id.
+    // Find personas with enough active corrections, oldest consolidation first
     const { data: personas, error } = await supabase
       .from("personas")
       .select("id, slug, client_id, intelligence_source_id, last_consolidation_at")
@@ -79,7 +77,7 @@ export default async function handler(req, res) {
         const result = await consolidateCorrections(c.personaId);
         results.push({ personaId: c.personaId, ok: true, ...result });
 
-        // Stamp last run time (ignore error: column might not exist yet)
+        // Stamp last run time
         await supabase.from("personas")
           .update({ last_consolidation_at: new Date().toISOString() })
           .eq("id", c.personaId)
