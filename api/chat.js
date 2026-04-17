@@ -70,8 +70,8 @@ export default async function handler(req, res) {
   if (!persona) { res.status(404).json({ error: "Persona not found" }); return; }
   const intellId = getIntelligenceId(persona);
 
-  // Persona access check (owner or shared)
-  if (client && persona.client_id !== client.id) {
+  // Persona access check (owner or shared) — admins bypass
+  if (client && !isAdmin && persona.client_id !== client.id) {
     const hasAccess = await hasPersonaAccess(client.id, personaId);
     if (!hasAccess) { res.status(403).json({ error: "Access denied" }); return; }
   }
@@ -88,8 +88,8 @@ export default async function handler(req, res) {
 
     if (convErr || !conv) { res.status(404).json({ error: "Conversation not found" }); return; }
 
-    // Ownership check
-    if (client && conv.client_id !== client.id) {
+    // Ownership check — admins bypass
+    if (client && !isAdmin && conv.client_id !== client.id) {
       res.status(403).json({ error: "Access denied" });
       return;
     }
