@@ -179,7 +179,7 @@
   }
   .audit-strip::-webkit-scrollbar { display: none; }
 
-  .audit-wrap.idle .v { color: var(--ink-20); }
+  .audit-wrap.idle .v { color: var(--ink-30); }
 
   /* Narrative footer — human sentence below the mono strip.
      Screenshot-friendly summary of what the pipeline has done. */

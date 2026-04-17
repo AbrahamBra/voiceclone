@@ -12,9 +12,10 @@
   --ink:           #14141a;
   --ink-90:        #1c1c23;
   --ink-70:        #35353f;
-  --ink-40:        #6f6f7a;
-  --ink-20:        #a8a8b1;
-  --ink-10:        #cdcdd3;
+  --ink-40:        #5a5a65;   /* 5.6:1 sur --paper — usage texte ≥ 12px OK */
+  --ink-30:        #7b7b85;   /* 4.55:1 sur --paper — texte large ou UI ≥ 15px seulement */
+  --ink-20:        #a8a8b1;   /* non-text only : bordures, ticks décoratifs */
+  --ink-10:        #cdcdd3;   /* non-text only : séparateurs, dividers */
 
   /* ── Single signal ────────────────────────────── */
   --vermillon:     #d64933;
@@ -106,6 +107,14 @@
   --z-toast:     50;
 
   --max-width: 1200px;
+
+  /* ── Breakpoints (source unique — utiliser @media (max-width: var(--bp-X)) si supporté,
+     sinon valeurs numériques identiques ci-dessous) ─────────────────────────────── */
+  --bp-mobile:   480px;   /* téléphone portrait */
+  --bp-phablet:  640px;   /* grands téléphones */
+  --bp-tablet:   768px;   /* tablette portrait */
+  --bp-desktop:  1024px;  /* seuil marginalia 2-col */
+  --bp-wide:     1200px;  /* pleine largeur lab */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -115,9 +124,10 @@
     --ink:           #f5f2ec;
     --ink-90:        #ecebe4;
     --ink-70:        #cdcdd3;
-    --ink-40:        #8a8a93;
-    --ink-20:        #4a4a54;
-    --ink-10:        #2e2e37;
+    --ink-40:        #9a9aa3;   /* 5.3:1 sur --paper sombre */
+    --ink-30:        #7b7b85;   /* texte large seulement */
+    --ink-20:        #4a4a54;   /* non-text only */
+    --ink-10:        #2e2e37;   /* non-text only */
 
     --rule:          rgba(245, 242, 236, 0.08);
     --rule-strong:   rgba(245, 242, 236, 0.18);

@@ -47,6 +47,23 @@
     collapseIdx >= 70 ? "ok" :
     collapseIdx >= 50 ? "warn" : "bad"
   );
+
+  // Glossaire — visible au clic sur le bouton "?". Persisté en localStorage
+  // pour que l'overlay s'ouvre automatiquement à la première visite seulement.
+  let glossaryOpen = $state(false);
+  let hintPulse = $state(false);
+  if (typeof window !== "undefined") {
+    try {
+      if (!localStorage.getItem("cockpit_glossary_seen")) {
+        hintPulse = true;
+      }
+    } catch {}
+  }
+  function toggleGlossary() {
+    glossaryOpen = !glossaryOpen;
+    hintPulse = false;
+    try { localStorage.setItem("cockpit_glossary_seen", "1"); } catch {}
+  }
 </script>
 
 <header class="cockpit">
@@ -119,7 +136,49 @@
       <span class="g-key">règles</span>
       <span class="g-val mono">{rulesActiveCount}</span>
     </div>
+
+    <button
+      class="gauge-help"
+      class:pulse={hintPulse}
+      onclick={toggleGlossary}
+      aria-label="Qu'est-ce que ces lectures ?"
+      aria-expanded={glossaryOpen}
+    >?</button>
   </div>
+
+  {#if glossaryOpen}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="glossary-backdrop" onclick={toggleGlossary}></div>
+    <aside class="glossary" role="dialog" aria-label="Glossaire laboratoire">
+      <header class="gl-head">
+        <span class="gl-title mono">glossaire · lectures en direct</span>
+        <button class="gl-close" onclick={toggleGlossary} aria-label="Fermer">×</button>
+      </header>
+      <dl class="gl-body">
+        <dt class="mono">collapse</dt>
+        <dd>Indice 0–100 mesurant la préservation du style du persona. <strong>≥ 70</strong> sain, <strong>50–70</strong> alerte, <strong>&lt; 50</strong> style effondré — le clone parle comme un LLM générique.</dd>
+
+        <dt class="mono">fidélité</dt>
+        <dd>Similarité cosinus entre la sortie et votre corpus de référence. <strong>1.000</strong> = identique, seuil minimum <strong>0.720</strong>. En dessous, la passe de réécriture se déclenche.</dd>
+
+        <dt class="mono">règles</dt>
+        <dd>Nombre de règles de style actuellement actives (anti-patterns détectés). Chaque règle bloque ou corrige une signature indésirable.</dd>
+
+        <dt class="mono">ttr</dt>
+        <dd>Type-Token Ratio — diversité du vocabulaire. Plus haut = lexique plus riche.</dd>
+
+        <dt class="mono">kurtosis</dt>
+        <dd>Concentration des phrases courtes/longues. Signature rythmique du persona.</dd>
+
+        <dt class="mono">signature</dt>
+        <dd>Présence de tournures idiomatiques propres au persona (expressions, tics, formules).</dd>
+      </dl>
+      <footer class="gl-foot mono">
+        survolez n'importe quelle jauge pour le détail en direct
+      </footer>
+    </aside>
+  {/if}
 
   <!-- Right cluster — actions -->
   <div class="right">
@@ -330,6 +389,120 @@
   .gauge-rules[data-state="fired"] .g-val {
     color: var(--vermillon);
     font-weight: 700;
+  }
+
+  /* ── Help button & glossary ── */
+  .gauge-help {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    padding: 0 6px;
+    margin-left: -1px;
+    background: var(--paper-subtle);
+    border: 1px solid var(--rule-strong);
+    border-left: 0;
+    color: var(--ink-40);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.08s linear, background 0.08s linear;
+  }
+  .gauge-help:hover {
+    color: var(--ink);
+    background: var(--paper);
+  }
+  .gauge-help.pulse {
+    color: var(--vermillon);
+    border-color: var(--vermillon);
+    animation: help-pulse 1.8s linear infinite;
+  }
+  @keyframes help-pulse {
+    0%, 100% { background: var(--paper-subtle); }
+    50% { background: color-mix(in srgb, var(--vermillon) 10%, transparent); }
+  }
+
+  .glossary-backdrop {
+    position: fixed;
+    inset: 0;
+    background: color-mix(in srgb, var(--ink) 18%, transparent);
+    z-index: 39;
+  }
+  .glossary {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(520px, calc(100vw - 24px));
+    max-height: 70vh;
+    overflow-y: auto;
+    background: var(--paper);
+    border: 1px solid var(--rule-strong);
+    box-shadow: 0 8px 24px rgba(20, 20, 26, 0.12);
+    z-index: 40;
+    font-family: var(--font);
+  }
+  .gl-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--rule-strong);
+    background: var(--paper-subtle);
+  }
+  .gl-title {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink);
+  }
+  .gl-close {
+    background: transparent;
+    border: 1px solid var(--rule-strong);
+    color: var(--ink-40);
+    font-size: 14px;
+    width: 24px; height: 24px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .gl-close:hover { color: var(--ink); border-color: var(--ink-40); }
+
+  .gl-body {
+    margin: 0;
+    padding: 12px 16px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 14px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .gl-body dt {
+    color: var(--vermillon);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding-top: 2px;
+    align-self: baseline;
+  }
+  .gl-body dd {
+    color: var(--ink-70);
+    margin: 0;
+  }
+  .gl-body dd strong {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .gl-foot {
+    padding: 8px 14px 10px;
+    border-top: 1px dashed var(--rule);
+    font-size: 10px;
+    color: var(--ink-40);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    text-align: center;
   }
 
   @media (max-width: 768px) {

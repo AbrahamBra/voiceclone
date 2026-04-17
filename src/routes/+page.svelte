@@ -350,7 +350,10 @@
           <span class="p-meta">cosinus vs. corpus source</span>
         </header>
         <div class="fidelity">
-          <div class="fid-big mono">{fmtNum(liveFidelity, 3)}</div>
+          <p class="fid-legend">
+            écart de style entre la sortie du clone et votre corpus de référence. <strong>1.000</strong> = identique, <strong>0.720</strong> = seuil minimum avant dérive.
+          </p>
+          <div class="fid-big mono" aria-label="score de fidélité">{fmtNum(liveFidelity, 3)}</div>
           <div class="fid-delta" class:negative={liveFidelity < current.fidelity_before}>
             Δ {fmtNum(liveFidelity - current.fidelity_before, 3)}
           </div>
@@ -713,6 +716,20 @@
   .panel-fidelity { background: var(--paper-subtle); }
   .panel-fidelity .p-head { border-bottom-color: var(--rule-strong); }
   .fidelity { padding: 8px 12px 14px 0; }
+  .fid-legend {
+    font-family: var(--font);
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--ink-70);
+    margin: 0 0 10px 0;
+    max-width: 42ch;
+  }
+  .fid-legend strong {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
   .fid-big {
     font-size: 34px;
     font-weight: 500;
