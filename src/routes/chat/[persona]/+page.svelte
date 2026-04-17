@@ -89,6 +89,19 @@
     return null;
   }
 
+  // Previous bot message's fidelity — enables Δ display on each marginalia.
+  function prevFidelityFor(msg, allMessages) {
+    if (msg.role !== "bot") return null;
+    let last = null;
+    for (const m of allMessages) {
+      if (m.id === msg.id) return last;
+      if (m.role === "bot" && typeof m.fidelity?.similarity === "number") {
+        last = m.fidelity.similarity;
+      }
+    }
+    return last;
+  }
+
   async function refreshFidelity() {
     if (!personaId) return;
     try {
@@ -594,6 +607,7 @@
           <ChatMessage
             {message}
             seq={seqForMessage(message, $messages)}
+            prevFidelity={prevFidelityFor(message, $messages)}
             onCorrect={handleCorrect}
             onValidate={handleValidate}
             onSaveRule={handleSaveRule}

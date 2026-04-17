@@ -1,8 +1,9 @@
 <script>
   import { fly } from "svelte/transition";
   import { renderMarkdown } from "$lib/utils.js";
+  import MessageMarginalia from "./MessageMarginalia.svelte";
 
-  let { message, seq = null, onCorrect, onValidate, onSaveRule, onCopyBlock } = $props();
+  let { message, seq = null, prevFidelity = null, onCorrect, onValidate, onSaveRule, onCopyBlock } = $props();
 
   let ruleSaved = $state(false);
   let showDiff = $state(false);
@@ -35,7 +36,8 @@
     return String(n).padStart(3, "0");
   }
 
-  // Per-message telemetry strip values (bot messages only)
+  // Per-message telemetry strip values (bot messages only) — used for the
+  // narrow-screen fallback where we can't show the marginalia on the right.
   function fmtMs(ms) {
     if (!ms && ms !== 0) return null;
     if (ms < 1000) return `${ms}ms`;
@@ -71,118 +73,152 @@
 </script>
 
 <article
-  class="msg-wrap"
-  class:msg-wrap-user={message.role === "user"}
-  class:msg-wrap-bot={message.role === "bot"}
+  class="msg-row"
+  class:msg-row-user={message.role === "user"}
+  class:msg-row-bot={message.role === "bot"}
   transition:fly={{ y: 4, duration: 120 }}
 >
-  {#if seqStr && message.role === "bot"}
-    <header class="msg-stamp mono">
-      <span class="stamp-tag">bot:{seqStr}</span>
-      {#if stamp}<span class="stamp-time">{stamp}</span>{/if}
-      {#if message.model}<span class="stamp-model">{message.model.replace(/^claude-/, "").replace(/-\d{8}$/, "")}</span>{/if}
-    </header>
-  {:else if seqStr && message.role === "user"}
-    <header class="msg-stamp mono stamp-user">
-      <span class="stamp-tag">usr:{seqStr}</span>
-      {#if stamp}<span class="stamp-time">{stamp}</span>{/if}
-    </header>
-  {/if}
+  <!-- ── Message column ── -->
+  <div class="msg-col">
+    {#if seqStr && message.role === "bot"}
+      <header class="msg-stamp mono narrow-only">
+        <span class="stamp-tag">bot:{seqStr}</span>
+        {#if stamp}<span class="stamp-time">{stamp}</span>{/if}
+        {#if message.model}<span class="stamp-model">{message.model.replace(/^claude-/, "").replace(/-\d{8}$/, "")}</span>{/if}
+      </header>
+    {:else if seqStr && message.role === "user"}
+      <header class="msg-stamp mono stamp-user narrow-only">
+        <span class="stamp-tag">usr:{seqStr}</span>
+        {#if stamp}<span class="stamp-time">{stamp}</span>{/if}
+      </header>
+    {/if}
 
-<div
-  class="msg"
-  class:msg-user={message.role === "user"}
-  class:msg-bot={message.role === "bot"}
->
-  {#if message.role === "user"}
-    {message.content}
-    <div class="msg-actions user-actions">
-      {#if ruleSaved}
-        <span class="action-validated">Sauvegardé ✓</span>
+    <div
+      class="msg"
+      class:msg-user={message.role === "user"}
+      class:msg-bot={message.role === "bot"}
+    >
+      {#if message.role === "user"}
+        {message.content}
+        <div class="msg-actions user-actions">
+          {#if ruleSaved}
+            <span class="action-validated">Sauvegardé ✓</span>
+          {:else}
+            <button class="action-btn" onclick={() => { ruleSaved = true; onSaveRule?.(message); }}>Sauver comme règle</button>
+          {/if}
+        </div>
+      {:else if message.typing}
+        <div class="typing-indicator">
+          <span></span><span></span><span></span>
+        </div>
+      {:else if isMultiBlock}
+        {#each blocks as block}
+          <div class="copyable-block">
+            {@html renderMarkdown(block)}
+            <button
+              class="block-copy-btn"
+              title="Copier ce bloc"
+              onclick={(e) => { e.stopPropagation(); copyBlock(block, e.currentTarget); }}
+            >&#10697;</button>
+          </div>
+        {/each}
       {:else}
-        <button class="action-btn" onclick={() => { ruleSaved = true; onSaveRule?.(message); }}>Sauver comme règle</button>
+        {@html renderMarkdown(message.content || "")}
+      {/if}
+
+      {#if message.role === "bot" && !message.typing && message.content}
+        <div class="msg-actions">
+          <button class="action-btn" onclick={copyFull}>Copier</button>
+          <button class="action-btn" onclick={() => onCorrect?.(message)}>Corriger</button>
+        </div>
+      {/if}
+
+      {#if message.status}
+        <div class="status">{message.status}</div>
       {/if}
     </div>
-  {:else if message.typing}
-    <div class="typing-indicator">
-      <span></span><span></span><span></span>
-    </div>
-  {:else if isMultiBlock}
-    {#each blocks as block}
-      <div class="copyable-block">
-        {@html renderMarkdown(block)}
-        <button
-          class="block-copy-btn"
-          title="Copier ce bloc"
-          onclick={(e) => { e.stopPropagation(); copyBlock(block, e.currentTarget); }}
-        >&#10697;</button>
-      </div>
-    {/each}
-  {:else}
-    {@html renderMarkdown(message.content || "")}
-  {/if}
 
-  {#if message.role === "bot" && !message.typing && message.content}
-    <div class="msg-actions">
-      <button class="action-btn" onclick={copyFull}>Copier</button>
-      <button class="action-btn" onclick={() => onCorrect?.(message)}>Corriger</button>
-    </div>
-  {/if}
-
-  {#if message.rewritten}
-    <div class="rewrite-line">
-      {#if message.original}
-        <button
-          class="rewrite-toggle"
-          class:open={showDiff}
-          onclick={() => showDiff = !showDiff}
-          aria-expanded={showDiff}
-        >
-          <span class="rt-badge">rewritten</span>
-          <span class="rt-action">{showDiff ? "cacher l'original" : "voir l'original"}</span>
-        </button>
-      {:else}
-        <span class="rewrite-badge mono">rewritten</span>
-      {/if}
-    </div>
+    <!-- Inline diff stays in the message column so the strike-through is
+         right below the rewritten output (natural reading order). The
+         toggle button lives in the marginalia. -->
     {#if showDiff && message.original}
       <details class="diff-inline" open>
         <summary class="diff-inline-head mono">pass 1 · original (overridden)</summary>
         <div class="diff-inline-body">{message.original}</div>
       </details>
     {/if}
-  {/if}
 
-  {#if message.status}
-    <div class="status">{message.status}</div>
-  {/if}
-</div>
+    <!-- Narrow-screen fallback: telemetry strip below bot message -->
+    {#if message.role === "bot" && telemetry()}
+      <footer class="msg-telemetry mono narrow-only" aria-label="Message telemetry">
+        {#each telemetry() as cell, i}
+          {#if i > 0}<span class="tel-sep">·</span>{/if}
+          <span class="tel-cell">{cell}</span>
+        {/each}
+      </footer>
+    {/if}
+  </div>
 
-  {#if message.role === "bot" && telemetry() }
-    <footer class="msg-telemetry mono" aria-label="Message telemetry">
-      {#each telemetry() as cell, i}
-        {#if i > 0}<span class="tel-sep">·</span>{/if}
-        <span class="tel-cell">{cell}</span>
-      {/each}
-    </footer>
-  {/if}
+  <!-- ── Margin column ── -->
+  <div class="margin-col">
+    {#if message.role === "bot" && !message.typing && message.content}
+      <MessageMarginalia
+        {message}
+        {stamp}
+        {seq}
+        {prevFidelity}
+        bind:showDiff
+      />
+    {:else if message.role === "user" && seqStr}
+      <div class="margin-user-stamp mono" aria-label="User message stamp">
+        <span class="stamp-tag">usr:{seqStr}</span>
+        {#if stamp}<span class="stamp-time">{stamp}</span>{/if}
+      </div>
+    {/if}
+  </div>
 </article>
 
 <style>
-  /* Outer article groups stamp + message + telemetry into one "observation" */
-  .msg-wrap {
+  /* ── 2-col row: message | margin ── */
+  .msg-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: 16px;
+    align-items: start;
+    width: 100%;
+  }
+
+  .msg-col {
     display: flex;
     flex-direction: column;
-    max-width: 68ch;
-    width: fit-content;
+    max-width: 64ch;
+    width: 100%;
   }
-  .msg-wrap-user {
-    align-self: flex-end;
+  .msg-row-user .msg-col {
     align-items: flex-end;
+    justify-self: end;
   }
-  .msg-wrap-bot {
-    align-self: flex-start;
+  .msg-row-bot .msg-col {
     align-items: flex-start;
+  }
+
+  .margin-col {
+    align-self: start;
+    position: sticky;
+    top: 8px;
+  }
+
+  /* Narrow-only: used for stamp/telemetry when margin collapses */
+  .narrow-only { display: none; }
+
+  /* Collapse to single column on narrow screens — margin drops below */
+  @media (max-width: 1024px) {
+    .msg-row {
+      grid-template-columns: 1fr;
+    }
+    .margin-col { position: static; }
+    .msg-row-user .margin-col { display: none; }
+    .narrow-only { display: inline-flex; }
   }
 
   .msg-stamp {
@@ -208,7 +244,28 @@
     color: var(--ink-20);
     font-size: 9px;
   }
-  .msg-wrap-user .stamp-tag { color: var(--vermillon); }
+  .msg-row-user .stamp-tag { color: var(--vermillon); }
+
+  /* User-stamp block in the right margin (wide screens only) */
+  .margin-user-stamp {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 8px 10px 0 14px;
+    border-left: 1px solid var(--rule-strong);
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-40);
+  }
+  .margin-user-stamp .stamp-tag {
+    color: var(--vermillon);
+    font-weight: 600;
+  }
+  .margin-user-stamp .stamp-time {
+    color: var(--ink-40);
+    font-variant-numeric: tabular-nums;
+  }
 
   .msg-telemetry {
     display: flex;
@@ -219,6 +276,7 @@
     font-size: 9.5px;
     color: var(--ink-40);
     letter-spacing: 0.02em;
+    flex-wrap: wrap;
   }
   .tel-cell { font-variant-numeric: tabular-nums; }
   .tel-sep { color: var(--ink-20); }
@@ -228,6 +286,7 @@
     font-size: var(--fs-standout);
     line-height: var(--lh-normal);
     position: relative;
+    max-width: 100%;
   }
 
   /* User message: ink-on-paper, mono for compact feel */
@@ -354,54 +413,8 @@
     border-color: var(--vermillon);
   }
 
-  .rewrite-line {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 0.375rem;
-  }
-  .rewrite-badge {
-    display: inline-block;
-    padding: 1px 6px;
-    background: color-mix(in srgb, var(--vermillon, #d64933) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--vermillon, #d64933) 35%, transparent);
-    font-family: var(--font-mono);
-    font-size: 9.5px;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--vermillon, #d64933);
-  }
-  .rewrite-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    font-family: var(--font-mono);
-    color: var(--ink-40);
-  }
-  .rewrite-toggle .rt-badge {
-    padding: 1px 6px;
-    background: color-mix(in srgb, var(--vermillon, #d64933) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--vermillon, #d64933) 35%, transparent);
-    font-size: 9.5px;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--vermillon, #d64933);
-  }
-  .rewrite-toggle .rt-action {
-    font-size: 10.5px;
-    color: var(--ink-40);
-    border-bottom: 1px dashed var(--ink-40);
-    transition: color 0.08s linear, border-color 0.08s linear;
-  }
-  .rewrite-toggle:hover .rt-action,
-  .rewrite-toggle.open .rt-action {
-    color: var(--vermillon, #d64933);
-    border-color: var(--vermillon, #d64933);
-  }
+  /* Rewrite badges moved into MessageMarginalia — only the inline diff block
+     remains here, still rendered in the message column under the bubble. */
 
   .diff-inline {
     margin-top: 6px;
