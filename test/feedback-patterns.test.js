@@ -64,17 +64,14 @@ describe("looksLikeDirectInstruction", () => {
     assert.equal(looksLikeDirectInstruction("ne jamais commencer par un emoji"), true);
   });
 
-  // NOTE — known regex quirk (BUG #1 in feedback-detect.js INSTRUCTION_PATTERN):
-  // The alternative `toujours\s+\w\b` requires a SINGLE-char word after "toujours"
-  // because `\w` is followed by `\b`. So "toujours tutoyer" does NOT match but
-  // "toujours a" does. Likely intent was `\w+\b`. See flagged regression below.
-  it("matches 'toujours a ...' (current behaviour — regex expects single-char word)", () => {
+  // Fixed previously — BUG #1 (regex required single-char word after "toujours").
+  // Now matches multi-char words as intended.
+  it("matches 'toujours a ...'", () => {
     assert.equal(looksLikeDirectInstruction("toujours a faire ça"), true);
   });
 
-  it("does NOT match 'toujours tutoyer' (BUG: should match, does not)", () => {
-    // Documents the current bug. When the regex is fixed to `\w+\b`, flip this to true.
-    assert.equal(looksLikeDirectInstruction("toujours tutoyer par défaut"), false);
+  it("matches 'toujours tutoyer par défaut'", () => {
+    assert.equal(looksLikeDirectInstruction("toujours tutoyer par défaut"), true);
   });
 
   it("matches 'ajoute une regle : ...'", () => {
@@ -89,17 +86,14 @@ describe("looksLikeDirectInstruction", () => {
     assert.equal(looksLikeDirectInstruction("retiens ça: pas d'emoji en fin de phrase"), true);
   });
 
-  // NOTE — known regex quirk (BUG #2 in INSTRUCTION_PATTERN):
-  // `\b[àa]\s+partir...` — \b (ASCII) doesn't match between a non-word char and "à"
-  // because "à" is not a word character in JS's default (non-Unicode) regex engine.
-  // So "à partir de maintenant" doesn't match, but "a partir de maintenant" (no accent) does.
-  // Likely intent: use a Unicode flag, or match literally without leading word boundary.
-  it("matches 'a partir de maintenant' (without accent — current behaviour)", () => {
+  // Fixed previously — BUG #2 (\b in ASCII mode blocked the accented form).
+  // Regex now uses (?<!\w)...(?!\w) which works for both "a" and "à".
+  it("matches 'a partir de maintenant' (without accent)", () => {
     assert.equal(looksLikeDirectInstruction("a partir de maintenant tutoie toujours"), true);
   });
 
-  it("does NOT match 'à partir de maintenant' (BUG: accent blocks word boundary)", () => {
-    assert.equal(looksLikeDirectInstruction("à partir de maintenant tutoie"), false);
+  it("matches 'à partir de maintenant' (with accent)", () => {
+    assert.equal(looksLikeDirectInstruction("à partir de maintenant tutoie"), true);
   });
 
   it("does NOT match a coaching correction", () => {
@@ -141,9 +135,9 @@ describe("pattern exclusivity", () => {
     assert.equal(looksLikeDirectInstruction("oublie cette règle"), false);
   });
 
-  it("'a partir de maintenant x' is instruction-only, not negative", () => {
-    assert.equal(looksLikeDirectInstruction("a partir de maintenant tutoie"), true);
-    assert.equal(looksLikeNegativeFeedback("a partir de maintenant tutoie"), false);
+  it("'toujours tutoyer' is instruction-only, not negative", () => {
+    assert.equal(looksLikeDirectInstruction("toujours tutoyer"), true);
+    assert.equal(looksLikeNegativeFeedback("toujours tutoyer"), false);
   });
 
   it("'trop long' is neither (it is a coaching correction)", () => {
