@@ -9,6 +9,7 @@ import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, 
 import { selectModel } from "../lib/model-router.js";
 import { consolidateCorrections } from "../lib/correction-consolidation.js";
 import { logLearningEvent } from "../lib/learning-events.js";
+import { isScenarioId } from "../src/lib/scenarios.js";
 
 /** Extract a smart conversation title from the first message */
 function extractConvTitle(message, scenario) {
@@ -60,8 +61,14 @@ export default async function handler(req, res) {
   const validationError = validateInput(req.body);
   if (validationError) { res.status(400).json({ error: validationError }); return; }
 
-  const { message, history: bodyHistory, scenario, persona: personaId, conversation_id } = req.body;
+  const { message, history: bodyHistory, scenario, scenario_type: rawScenarioType, persona: personaId, conversation_id } = req.body;
   if (!personaId) { res.status(400).json({ error: "persona is required" }); return; }
+
+  // Sprint 0.b dual-write : only accept a well-formed canonical id. Unknown
+  // strings are dropped silently (legacy `scenario` text still wins for
+  // compatibility). The DB column is a Postgres enum, so a bad value would
+  // fail the insert otherwise.
+  const scenarioType = isScenarioId(rawScenarioType) ? rawScenarioType : null;
 
   // Load persona data from DB
   const persona = await getPersonaFromDb(personaId);
@@ -109,6 +116,9 @@ export default async function handler(req, res) {
     if (supabase) {
       const insertData = { persona_id: personaId, scenario: scenario || "default" };
       if (clientId) insertData.client_id = clientId;
+      // Sprint 0.b : persist canonical scenario_type alongside the legacy
+      // scenario text. Nullable — omitted when no valid canonical was sent.
+      if (scenarioType) insertData.scenario_type = scenarioType;
       const { data: newConv } = await supabase
         .from("conversations").insert(insertData).select("id").single();
       convId = newConv?.id || null;

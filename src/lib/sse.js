@@ -4,7 +4,7 @@ const MAX_RETRIES = 5;
 const MAX_BACKOFF = 15000;
 
 export async function streamChat(params, callbacks, retryCount = 0) {
-  const { message, scenario, personaId, conversationId } = params;
+  const { message, scenario, scenarioType, personaId, conversationId } = params;
   const { onDelta, onThinking, onRewriting, onClear, onDone, onConversation, onError, onHeat } = callbacks;
 
   let resp;
@@ -15,6 +15,9 @@ export async function streamChat(params, callbacks, retryCount = 0) {
       body: JSON.stringify({
         message,
         scenario,
+        // Sprint 0.b dual-write : canonical enum value (may be undefined).
+        // Backend writes it to conversations.scenario_type on new-conv create.
+        scenario_type: scenarioType || undefined,
         persona: personaId,
         conversation_id: conversationId || undefined,
       }),

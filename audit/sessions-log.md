@@ -148,3 +148,54 @@ _(à compléter session par session)_
 - `personas.scenarios` jsonb reste un héritage : la restructuration sera un jour nécessaire (probablement Sprint 2-3 quand on introduit des configs per-intent).
 
 **Prochaine session suggérée** : continuation Split A (appliquer 025 + coder Étape 2 frontend). 1 session moyenne (3-4h).
+
+---
+
+### Session 3 — 2026-04-18 · Sprint 0 Split A — finalisation
+
+**Scope réel** : application migration 025 en prod + Étape 2 frontend (scenario switcher) + backend dual-write.
+
+**Livrables produits** :
+- **Migration 025 appliquée en prod Supabase** : 4 blocs idempotents OK. Vérifs :
+  - `organizations` créée, RLS OK, 1 org synthétique par client (backfill solo)
+  - `persona_shares.role` = 'claim' (4 rows)
+  - Enum `scenario_canonical` + colonne `conversations.scenario_type` créés
+  - Soft backfill : 14 conversations `scenario='qualification'` → `DM_1st`, 0 NULL restant
+  - 1 persona orpheline (Thierry, `client_id=NULL` legacy pré-RLS) attachée à Brahim → 0 orphan partout
+- **Frontend Étape 2** :
+  - `src/lib/components/ScenarioSwitcher.svelte` — dropdown compact, clavier accessible (↑↓ Home End Enter Esc), filtre `supportedCanonicalScenarios(persona)`, design system tokens
+  - `src/lib/stores/chat.js` — nouveau store `currentScenarioType` (null par défaut, canonical id quand pick)
+  - `src/routes/chat/[persona]/+page.js` — parse `scenario_type` depuis query URL, valide via `isScenarioId`
+  - `src/routes/chat/[persona]/+page.svelte` — `handleScenarioChange` : MAJ stores + URL (goto replaceState) + reset conv + `showWelcome`. Switcher rendu dans `.composer-toolbar` au-dessus de `ChatInput`
+  - `src/lib/sse.js` — `scenarioType` ajouté au body POST `/api/chat`
+- **Backend dual-write** :
+  - `api/chat.js` — accepte `scenario_type` request body, validé via `isScenarioId` (BE importe `../src/lib/scenarios.js`), persisté sur `conversations.scenario_type` à la création d'une conv. Legacy `scenario` text continue d'être écrit (dual-write préservé).
+- Tests : 238/238 pass (helpers scenarios couvrent la validation BE/FE).
+
+**Décisions tranchées pendant la session** :
+1. `qualification` legacy scenario → `DM_1st` canonique (le fichier `personas/*/scenarios/qualification.md` + `api/clone.js:30` confirment "premier DM orienté qualification prospect").
+2. Thierry persona orpheline attachée à Brahim (pas supprimée — utilisée).
+3. ScenarioSwitcher placé en toolbar au-dessus du ChatInput (vs "inline gauche textarea" strict roadmap). Rationale : non-invasif (ChatInput intact), UX fonctionnellement équivalente. Raffinement visuel potentiel Sprint 1.
+4. Backend `api/chat.js` importe `../src/lib/scenarios.js` pour partager la validation canonique. Pas de duplication de constantes.
+5. Switch scenario mid-conv = nouvelle conversation (reset + showWelcome). Une conv reste pinned à un seul `scenario_type` pour l'intégrité learning/analytics.
+
+**État à la fin de la session** :
+- ✓ Migration 025 appliquée, DB 100% clean (0 orphans, 0 NULL scenario_type après backfill).
+- ✓ Sprint 0 Split A = **TERMINÉ**.
+- ✓ Tests passés : 238/238.
+- ✓ Build local non testé (EPERM Windows connu), CI Linux le validera à la PR.
+
+**Reste à faire — Split B** (session ultérieure) :
+- 0.a Ménage 9 items (~12h)
+- 0.d Tracking Plausible ou Posthog (~4h + décision vendor)
+
+**Reste à faire — raffinements non-bloquants** :
+- UX refinement : dropdown switcher vraiment inline à gauche du textarea (modifier ChatInput, Sprint 1 possible)
+- Tests composant Svelte (jsdom setup, scope creep, pas prioritaire)
+- Hub `/hub` scenarios enumeration pourrait proposer la liste canonique (Sprint 2)
+
+**Blocages / risques résolus** :
+- BEGIN/COMMIT + Supabase pooler : fixé en Session 2
+- Thierry orpheline : fixé en Session 3 (attaché Brahim)
+
+**Prochaine session suggérée** : Split B (ménage 0.a + tracking 0.d). Décision vendor tracking à pré-trancher (Plausible simple vs Posthog funnels riches).

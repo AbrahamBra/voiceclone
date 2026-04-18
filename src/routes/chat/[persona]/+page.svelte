@@ -9,13 +9,16 @@
     currentConversationId,
     conversations,
     currentScenario,
+    currentScenarioType,
     sending,
   } from "$lib/stores/chat.js";
   import { showToast } from "$lib/stores/ui.js";
   import { api, authHeaders } from "$lib/api.js";
   import { streamChat } from "$lib/sse.js";
+  import { legacyKeyFor, isScenarioId } from "$lib/scenarios.js";
   import ChatMessage from "$lib/components/ChatMessage.svelte";
   import ChatInput from "$lib/components/ChatInput.svelte";
+  import ScenarioSwitcher from "$lib/components/ScenarioSwitcher.svelte";
   import ConversationSidebar from "$lib/components/ConversationSidebar.svelte";
   import ChatCockpit from "$lib/components/ChatCockpit.svelte";
   import RulesPanel from "$lib/components/RulesPanel.svelte";
@@ -28,6 +31,7 @@
 
   let personaId = $derived($page.data.personaId);
   let scenario = $derived($page.data.scenario);
+  let scenarioTypeFromUrl = $derived($page.data.scenarioType);
 
   let loading = $state(true);
   let sidebarOpen = $state(false);
@@ -160,14 +164,15 @@
   // Initialize on mount / persona change
   $effect(() => {
     if (personaId) {
-      init(personaId, scenario);
+      init(personaId, scenario, scenarioTypeFromUrl);
     }
   });
 
-  async function init(pid, scn) {
+  async function init(pid, scn, scnType) {
     loading = true;
     currentPersonaId.set(pid);
     currentScenario.set(scn);
+    currentScenarioType.set(scnType || null);
 
     try {
       // Load config if not already loaded
@@ -268,6 +273,36 @@
     }
   }
 
+  async function handleScenarioChange(scenarioType) {
+    if (!scenarioType || !isScenarioId(scenarioType)) return;
+    if (scenarioType === $currentScenarioType) return;
+
+    // Sprint 0.b dual-write : both stores stay in sync. The legacy store keeps
+    // driving persona.scenarios jsonb lookups (welcome, scenario file path)
+    // since persona jsonb wasn't restructured. currentScenarioType is what we
+    // persist to conversations.scenario_type on the next insert.
+    const legacy = legacyKeyFor(scenarioType);
+    currentScenarioType.set(scenarioType);
+    currentScenario.set(legacy);
+
+    // Update URL so refresh / share preserves the choice. Replace state to
+    // avoid polluting browser history with every scenario flip.
+    const url = new URL(window.location.href);
+    url.searchParams.set("scenario_type", scenarioType);
+    url.searchParams.set("scenario", legacy);
+    await goto(url.pathname + "?" + url.searchParams.toString(), {
+      replaceState: true,
+      noScroll: true,
+      keepFocus: true,
+    });
+
+    // Switching scenario starts a fresh conversation — a conv is pinned to
+    // one scenario_type for learning/analytics integrity.
+    localStorage.removeItem("conv_" + personaId);
+    currentConversationId.set(null);
+    showWelcome();
+  }
+
   async function handleSend(text) {
     if ($sending) return;
     sending.set(true);
@@ -292,6 +327,7 @@
       {
         message: text,
         scenario: $currentScenario,
+        scenarioType: $currentScenarioType || undefined,
         personaId,
         conversationId: $currentConversationId || undefined,
       },
@@ -626,6 +662,14 @@
             <div bind:this={scrollAnchor}></div>
           </div>
 
+          <div class="composer-toolbar">
+            <ScenarioSwitcher
+              persona={$personaConfig}
+              value={$currentScenarioType}
+              onchange={handleScenarioChange}
+              disabled={$sending}
+            />
+          </div>
           <ChatInput onsend={handleSend} disabled={$sending} />
           <AuditStrip totals={sessionTotals} {sessionStart} />
         </div>
@@ -709,6 +753,20 @@
     display: flex;
     flex-direction: column;
     gap: 0.625rem;
+  }
+
+  /* Composer toolbar — sits above the chat input. Hosts the scenario
+     switcher (Sprint 0.b) and will host future controls (scenario-level
+     contextual help, char counter) alongside it. */
+  .composer-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px 0;
+    background: var(--paper);
+  }
+  @media (max-width: 480px) {
+    .composer-toolbar { padding: 4px 8px 0; }
   }
 
   .loading-screen {
