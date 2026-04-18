@@ -234,12 +234,12 @@
     <h1 class="headline">
       <span class="h-lead">Un clone d'écriture</span>
       <span class="h-accent">observable en direct</span>
-      <span class="h-tail">— pas un chatbot de plus.</span>
+      <span class="h-tail">. Pas un chatbot de plus.</span>
     </h1>
     <p class="sub">
       Generate <span class="arrow">→</span> check <span class="arrow">→</span>
-      rewrite <span class="arrow">→</span> fidelity. Chaque étape lisible, chaque
-      règle compte son activation, chaque drift déclenche une réécriture.
+      rewrite <span class="arrow">→</span> fidelity. Tu vois le pipeline tourner.
+      Règle qui fire, fidélité qui dérive : rien n'est caché.
     </p>
   </section>
 
@@ -351,7 +351,7 @@
         </header>
         <div class="fidelity">
           <p class="fid-legend">
-            écart de style entre la sortie du clone et votre corpus de référence. <strong>1.000</strong> = identique, <strong>0.720</strong> = seuil minimum avant dérive.
+            écart de style entre la sortie du clone et ton corpus de référence. 1.000 = identique, 0.720 = seuil minimum avant dérive.
           </p>
           <div class="fid-big mono" aria-label="score de fidélité">{fmtNum(liveFidelity, 3)}</div>
           <div class="fid-delta" class:negative={liveFidelity < current.fidelity_before}>

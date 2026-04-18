@@ -25,10 +25,10 @@ export const SCENARIOS = [
   {
     id: "pass",
     label: "CAS 01 / PASSE PROPRE",
-    prompt_context: "entrant LinkedIn — CTO fintech, 40 personnes, série B",
+    prompt_context: "entrant LinkedIn · CTO fintech, 40 personnes, série B",
     prompt_text: "Ecris un premier message de prise de contact.",
     pass1_text:
-      "Salut Marc, j'ai vu ta levée la semaine dernière — félicitations. Une question honnête : sur 40 personnes, combien sont effectivement sur la route pour vendre vs. dans le produit ? Je creuse ça parce qu'on voit souvent des séries B où la montée en charge commerciale est le vrai goulot, pas la tech. Pas d'agenda caché, juste curieux.",
+      "Salut Marc, vu ta levée la semaine dernière, bravo. Question directe : sur tes 40 personnes, combien font du commercial terrain vs. du produit ? Je demande parce qu'en série B le goulot est souvent commercial, pas technique. Pas d'agenda, juste curieux.",
     rules: [
       { rule: "forbidden_word", severity: "hard", detail: "—", fires_at_ms: 0 },
       { rule: "self_reveal", severity: "hard", detail: "—", fires_at_ms: 0 },
@@ -51,7 +51,7 @@ export const SCENARIOS = [
   {
     id: "rewrite",
     label: "CAS 02 / RÉÉCRITURE DURE",
-    prompt_context: "relance après 7 jours — prospect chaud, stack e-commerce",
+    prompt_context: "relance après 7 jours · prospect chaud, stack e-commerce",
     prompt_text: "Relance-le. Pas trop commercial.",
     pass1_text:
       "**Bonjour Sophie**, il est crucial que nous reprenions contact. En conclusion de nos échanges précédents, je pense qu'il est important de noter que notre solution permet de résoudre fondamentalement vos enjeux. La vraie question c'est : n'hésitez pas à revenir vers moi.",
@@ -72,13 +72,13 @@ export const SCENARIOS = [
     fidelity_before: 0.612,
     fidelity_after: 0.801,
     pass2_text:
-      "Sophie, pas de nouvelles depuis 7 jours — j'ai deux hypothèses : soit le sujet est redescendu dans ta pile, soit quelque chose coince que j'ai raté. Les deux sont légitimes, j'aimerais juste savoir laquelle c'est pour ne pas te relancer dans le vide. 2 lignes suffisent.",
+      "Sophie, 7 jours sans nouvelles, donc deux hypothèses : soit le sujet est redescendu dans ta pile, soit quelque chose coince que j'ai raté. Dis-moi laquelle, je saurai quoi faire. 2 lignes suffisent.",
     outcome: "rewrite",
   },
   {
     id: "drift",
     label: "CAS 03 / DÉRIVE DE FIDÉLITÉ",
-    prompt_context: "appel découverte — note rapide post-réunion",
+    prompt_context: "appel découverte · note rapide post-réunion",
     prompt_text: "Rédige mon compte-rendu en 3 bullets.",
     pass1_text:
       "Voici le compte-rendu structuré de l'appel. Premièrement, les besoins identifiés sont multiples. Deuxièmement, le budget semble aligné. Troisièmement, les prochaines étapes sont claires et permettent de faire avancer le projet efficacement.",
