@@ -7,6 +7,7 @@
 
   let ruleSaved = $state(false);
   let showDiff = $state(false);
+  let margOpen = $state(false);
 
   let blocks = $derived(
     message.role === "bot" && message.content
@@ -116,35 +117,39 @@
       </details>
     {/if}
 
-  </div>
-
-  <!-- ── Margin column ── -->
-  <div class="margin-col">
     {#if message.role === "bot" && !message.typing && message.content}
-      <MessageMarginalia
-        {message}
-        {stamp}
-        {seq}
-        {prevFidelity}
-        {sourceStyle}
-        bind:showDiff
-      />
-    {:else if message.role === "user" && seqStr}
-      <div class="margin-user-stamp mono" aria-label="User message stamp">
-        <span class="stamp-tag">usr:{seqStr}</span>
-        {#if stamp}<span class="stamp-time">{stamp}</span>{/if}
-      </div>
+      <button
+        class="marg-toggle mono"
+        aria-expanded={margOpen}
+        aria-controls="marg-{message.id}"
+        onclick={() => margOpen = !margOpen}
+        title="Annotations labo"
+      >
+        {margOpen ? "×" : "⋯"}
+      </button>
+      {#if margOpen}
+        <section id="marg-{message.id}" class="marg-inline">
+          <MessageMarginalia
+            {message}
+            {stamp}
+            {seq}
+            {prevFidelity}
+            {sourceStyle}
+            bind:showDiff
+          />
+        </section>
+      {/if}
     {/if}
+
   </div>
 </article>
 
 <style>
-  /* ── 2-col row: message | margin ── */
+  /* ── Single-column row: message + inline marginalia toggle ── */
   .msg-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 280px;
-    gap: 16px;
-    align-items: start;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     width: 100%;
   }
 
@@ -156,25 +161,29 @@
   }
   .msg-row-user .msg-col {
     align-items: flex-end;
-    justify-self: end;
+    align-self: flex-end;
   }
   .msg-row-bot .msg-col {
     align-items: flex-start;
   }
 
-  .margin-col {
-    align-self: start;
-    position: sticky;
-    top: 8px;
+  .marg-toggle {
+    align-self: flex-end;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--ink-30);
+    font-size: 12px;
+    padding: 2px 6px;
+    transition: color 0.2s ease;
   }
+  .marg-toggle:hover { color: var(--vermillon); }
+  .marg-toggle:focus-visible { outline: 1px solid var(--vermillon); outline-offset: 2px; }
 
-  /* Collapse to single column on narrow screens — margin drops below */
-  @media (max-width: 1024px) {
-    .msg-row {
-      grid-template-columns: 1fr;
-    }
-    .margin-col { position: static; }
-    .msg-row-user .margin-col { display: none; }
+  .marg-inline {
+    border-top: 1px dashed var(--rule);
+    margin-top: 4px;
+    padding-top: 6px;
   }
 
   .msg-stamp {
@@ -201,27 +210,6 @@
     font-size: 10px;
   }
   .msg-row-user .stamp-tag { color: var(--vermillon); }
-
-  /* User-stamp block in the right margin (wide screens only) */
-  .margin-user-stamp {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    padding: 8px 10px 0 14px;
-    border-left: 1px solid var(--rule-strong);
-    font-size: 9.5px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--ink-40);
-  }
-  .margin-user-stamp .stamp-tag {
-    color: var(--vermillon);
-    font-weight: 600;
-  }
-  .margin-user-stamp .stamp-time {
-    color: var(--ink-40);
-    font-variant-numeric: tabular-nums;
-  }
 
   .msg {
     padding: 10px 14px;
