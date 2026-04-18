@@ -102,3 +102,16 @@ describe("extract — call-related signals", () => {
     assertContainsKinds(signals, fx.expected.includes_kinds);
   });
 });
+
+describe("extract — engagement signals", () => {
+  it("nathalie-maveilleia: business_context + books_slot + gives_email", () => {
+    const fx = loadFixture("nathalie-maveilleia");
+    const { signals } = extract({ messages: fx.messages, heatRows: fx.heatRows, now: new Date(fx.now) });
+    assertContainsKinds(signals, fx.expected.includes_kinds);
+  });
+  it("hassan-immostates: question_back + accept_call", () => {
+    const fx = loadFixture("hassan-immostates");
+    const { signals } = extract({ messages: fx.messages, heatRows: fx.heatRows, now: new Date(fx.now) });
+    assertContainsKinds(signals, fx.expected.includes_kinds);
+  });
+});
