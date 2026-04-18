@@ -16,9 +16,22 @@
 
 - **Verification for Svelte UI changes** = `npm run build` (type/syntax check) + manual smoke via `npm run dev` on the touched route. No Svelte component tests exist in the project and we don't introduce a framework here.
 - **Verification for JS helpers and API endpoints** = node test runner (`npm run test`). New tests go in `test/`.
+- **⚠️ `vite dev` does NOT serve `api/`** — the backend runs as Vercel serverless functions. For any task touching `api/*` or firing POSTs to `/api/*`, verification via `npm run dev` alone is insufficient (Split A incident 2026-04-17: missing `await` in `/api/chat` stayed invisible for 24h). Use **`vercel dev`** (or a Vercel preview deploy) on Tasks 4 and 7.
 - **Commit at the end of each task** — each task = one commit matching the spec's commit list.
 - **Do not touch adjacent code.** If you spot unrelated dead code, mention it; don't delete.
 - **No new abstractions.** If it's 10 lines of inline code, keep them inline.
+
+### Task 0 (prereq): ensure `vercel dev` works
+
+Before starting Task 4 (earliest task touching `api/`), run:
+
+```bash
+npx vercel dev
+```
+
+Expected: dev server boots on port 3000, serves both `src/routes/` and `api/*.js`. Open `http://localhost:3000/api/personas` with a valid session header → 200 JSON response.
+
+If `vercel dev` is not available or misconfigured, stop and surface to the user. Do not claim Task 4 or Task 7 complete from `vite dev` alone.
 
 ---
 
@@ -488,9 +501,11 @@ Expected: 1 pass.
 Run: `npm run build`
 Expected: build succeeds.
 
-- [ ] **Step 4.9: Smoke test (requires two accounts)**
+- [ ] **Step 4.9: Smoke test via `vercel dev` (requires two accounts)**
 
-Run: `npm run dev`
+⚠️ **Use `npx vercel dev`, NOT `npm run dev`** — this task touches `api/share.js` and `vite dev` does not serve it. Skipping this will hide backend regressions (lesson from Split A).
+
+Run: `npx vercel dev`
 - As user A: go to `/hub`, click `Partager` on a clone, copy link.
 - Logout, login as user B.
 - Open share link.
@@ -499,7 +514,9 @@ Run: `npm run dev`
 - Expected: claimed state, button `Ouvrir chat direct` visible.
 - Click button → lands on `/chat/<persona_id>`.
 
-If you have only one test account: verify at minimum the `/api/share?token=...` JSON response includes `shared_by_name` (via DevTools Network tab).
+Verify in DevTools Network that the `GET /api/share?token=...` response JSON includes `shared_by_name` with a non-null string value. If `shared_by_name` is `null` when you know the sharer exists, the Supabase `creator:clients!...` join syntax is wrong — revisit step 4.2 and test alternative FK-name variants until the join resolves.
+
+If you have only one test account: trigger the GET directly via curl with the access code header and inspect the JSON.
 
 - [ ] **Step 4.10: Commit**
 
@@ -949,21 +966,23 @@ Expected: build succeeds, no import errors.
 Run: `npm run test`
 Expected: all tests pass. New tracking tests (4) pass.
 
-- [ ] **Step 7.15: Smoke test events**
+- [ ] **Step 7.15: Smoke test events via `vercel dev`**
 
-Set `VITE_PLAUSIBLE_DOMAIN` to your dashboard's domain and run: `npm run dev`
+⚠️ **Use `npx vercel dev`, NOT `npm run dev`** — 4 of the 6 events fire inside flows that POST to `api/*` (create, message, correction, share). Testing on `vite dev` would let API-side regressions slip through.
+
+Set `VITE_PLAUSIBLE_DOMAIN` to your dashboard's domain and run: `npx vercel dev`
 
 Open DevTools → Network tab, filter on `plausible.io/api/event`.
 
 Trigger each event in order and confirm a POST request fires:
-1. `/create` → complete a clone creation → `clone_created` POST visible.
-2. `/chat/<persona>` → send a message → `message_sent` POST visible.
-3. `/calibrate/<persona>` → submit → `correction_submitted` POST with `source: "calibrate"`.
-4. `/hub` → click Partager → `share_created` POST.
-5. Open the share link (different browser) → claim → `share_claimed` POST.
+1. `/create` → complete a clone creation → `clone_created` POST visible + clone actually persisted (check `/hub` reflects the new clone, not just the event).
+2. `/chat/<persona>` → send a message → `message_sent` POST visible + bot response arrives (i.e. `/api/chat` actually ran).
+3. `/calibrate/<persona>` → submit → `correction_submitted` POST with `source: "calibrate"` + backend confirms via toast.
+4. `/hub` → click Partager → `share_created` POST + token URL copied to clipboard.
+5. Open the share link (different browser) → claim → `share_claimed` POST + clone appears in claimant's hub.
 6. Switch scenario in chat → `scenario_switched` POST.
 
-If Plausible domain is not configured, the POSTs will not fire — this is expected. In that case, manually invoke `window.plausible('clone_created', { props: { type: 'posts' } })` in the console to verify the script loaded.
+If Plausible domain is not configured, the plausible.io POSTs will not fire — this is expected. In that case, manually invoke `window.plausible('clone_created', { props: { type: 'posts' } })` in the console to verify the script loaded. The API-side flows (create persona, send message, etc.) must still succeed regardless of Plausible configuration.
 
 - [ ] **Step 7.16: Commit**
 
