@@ -1,0 +1,19 @@
+{
+  "name": "empty",
+  "description": "New conversation, only welcome bot message",
+  "now": "2026-04-18T10:00:00Z",
+  "messages": [
+    {
+      "id": "m1",
+      "role": "bot",
+      "content": "Salut ! Sur quoi tu veux bosser ?",
+      "created_at": "2026-04-18T10:00:00Z"
+    }
+  ],
+  "heatRows": [],
+  "expected": {
+    "total": 0,
+    "signals": [],
+    "current": { "heat": null, "delta": null, "state": null, "direction": null }
+  }
+}
