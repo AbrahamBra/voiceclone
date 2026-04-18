@@ -111,6 +111,52 @@ describe("buildSystemPrompt", () => {
     assert.deepEqual(detectedPages, ["topics/style.md", "topics/gtm.md"]);
   });
 
+  it("returns injectedEntities with names of entities that made it into the prompt", () => {
+    const ontology = {
+      entities: [
+        { id: "1", name: "Content Marketing", description: "x", confidence: 0.9 },
+        { id: "2", name: "LinkedIn Algorithm", description: "y", confidence: 0.8 },
+      ],
+      relations: [],
+    };
+    const { injectedEntities } = buildSystemPrompt({ persona: PERSONA, ontology });
+    assert.deepEqual(injectedEntities, ["Content Marketing", "LinkedIn Algorithm"]);
+  });
+
+  it("returns empty injectedEntities when no ontology", () => {
+    const { injectedEntities } = buildSystemPrompt({ persona: PERSONA });
+    assert.deepEqual(injectedEntities, []);
+  });
+
+  it("injectedEntities only contains entities that survived the token budget", () => {
+    const entities = Array.from({ length: 100 }, (_, i) => ({
+      id: String(i),
+      name: `Entity${i}`,
+      description: "padding ".repeat(50),
+      confidence: 1 - i / 100,
+    }));
+    const { injectedEntities } = buildSystemPrompt({ persona: PERSONA, ontology: { entities, relations: [] } });
+    assert.ok(injectedEntities.length > 0 && injectedEntities.length < entities.length,
+      `expected truncation, got ${injectedEntities.length} of ${entities.length}`);
+    assert.strictEqual(injectedEntities[0], "Entity0");
+  });
+
+  it("returns injectedCorrectionsCount reflecting lines actually kept", () => {
+    const lines = [
+      "- **2026-04-10** — Toujours tutoyer",
+      "- **2026-04-11** — Jamais de vouvoiement",
+      "- **2026-04-12** — Garder les phrases courtes",
+    ];
+    const corrections = "# Corrections apprises\n\n" + lines.join("\n");
+    const { injectedCorrectionsCount } = buildSystemPrompt({ persona: PERSONA, corrections });
+    assert.strictEqual(injectedCorrectionsCount, 3);
+  });
+
+  it("returns injectedCorrectionsCount = 0 when no corrections", () => {
+    const { injectedCorrectionsCount } = buildSystemPrompt({ persona: PERSONA });
+    assert.strictEqual(injectedCorrectionsCount, 0);
+  });
+
   it("handles all empty optional params", () => {
     const { prompt } = buildSystemPrompt({ persona: PERSONA });
     assert.ok(prompt.includes("Tu es Thomas"));

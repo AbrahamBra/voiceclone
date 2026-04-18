@@ -38,6 +38,22 @@
   let hasRules = $derived(Array.isArray(message?.violations) && message.violations.length > 0);
   let hasStyle = $derived(!!message?.live_style);
   let hasDiff = $derived(!!(message?.rewritten && message?.original));
+  // Audit trail: what shaped this response (knowledge pages, entities, corrections)
+  let sourcesKnowledge = $derived(
+    Array.isArray(message?.sources?.knowledgePages) ? message.sources.knowledgePages : []
+  );
+  let sourcesEntities = $derived(
+    Array.isArray(message?.sources?.entities) ? message.sources.entities : []
+  );
+  let sourcesCorrections = $derived(
+    Number(message?.sources?.correctionsCount) || 0
+  );
+  let hasSources = $derived(
+    sourcesKnowledge.length > 0 || sourcesEntities.length > 0 || sourcesCorrections > 0
+  );
+  function shortPage(p) {
+    return String(p).replace(/^topics\//, "").replace(/\.md$/, "");
+  }
 
   let fidelityDelta = $derived(
     hasFidelity && typeof prevFidelity === "number"
@@ -94,6 +110,35 @@
       {#if typeof message.fidelity.threshold === "number"}
         <div class="marg-sub mono">seuil {message.fidelity.threshold.toFixed(3)}</div>
       {/if}
+    </section>
+  {/if}
+
+  {#if hasSources}
+    <section class="marg-block">
+      <div class="marg-label mono">sources</div>
+      <ul class="marg-sources">
+        {#each sourcesKnowledge as page}
+          <li class="marg-src marg-src-kn" title={page}>
+            <span class="marg-src-kind mono">kn</span>
+            <span class="marg-src-name">{shortPage(page)}</span>
+          </li>
+        {/each}
+        {#each sourcesEntities.slice(0, 6) as entity}
+          <li class="marg-src marg-src-ent" title={entity}>
+            <span class="marg-src-kind mono">ent</span>
+            <span class="marg-src-name">{entity}</span>
+          </li>
+        {/each}
+        {#if sourcesEntities.length > 6}
+          <li class="marg-src marg-src-more mono">+{sourcesEntities.length - 6}</li>
+        {/if}
+        {#if sourcesCorrections > 0}
+          <li class="marg-src marg-src-corr">
+            <span class="marg-src-kind mono">corr</span>
+            <span class="marg-src-name">{sourcesCorrections} règle{sourcesCorrections > 1 ? "s" : ""} active{sourcesCorrections > 1 ? "s" : ""}</span>
+          </li>
+        {/if}
+      </ul>
     </section>
   {/if}
 
@@ -273,6 +318,44 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     grid-column: 2 / -1;
+  }
+
+  /* ── Sources list (what shaped this response) ── */
+  .marg-sources {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .marg-src {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 6px;
+    align-items: baseline;
+    font-size: 10.5px;
+    color: var(--ink-70);
+  }
+  .marg-src-kind {
+    font-size: 9px;
+    color: var(--ink-40);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .marg-src-name {
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .marg-src-ent .marg-src-name { color: var(--ink-70); }
+  .marg-src-corr .marg-src-name { color: var(--vermillon); }
+  .marg-src-more {
+    color: var(--ink-40);
+    font-size: 9.5px;
+    grid-template-columns: 1fr;
+    padding-left: 34px;
   }
 
   /* ── Style block: numbers grid + mini fingerprint ── */
