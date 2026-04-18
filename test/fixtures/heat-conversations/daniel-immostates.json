@@ -1,0 +1,23 @@
+{
+  "name": "daniel-immostates",
+  "description": "Thierry × Daniel — 87 days, 6 relances, ghost then revival, finally books",
+  "now": "2026-02-11T10:00:00Z",
+  "messages": [
+    { "id": "m1", "role": "bot", "content": "hey Daniel, l'immo fractionné ça te parle ?", "created_at": "2025-12-17T12:38:00Z" },
+    { "id": "m2", "role": "bot", "content": "hey Daniel, c'est bien toi ?", "created_at": "2025-12-18T17:43:00Z" },
+    { "id": "m3", "role": "bot", "content": "What's up Daniel, l'immo fractionné ça te parle ?", "created_at": "2026-01-27T13:22:00Z" },
+    { "id": "m4", "role": "bot", "content": "Hey, je me permets de te relancer pour savoir si tu avais vu mon message ?", "created_at": "2026-01-30T20:26:00Z" },
+    { "id": "m5", "role": "user", "content": "Bonjour Thierry, désolé pour le temps de réponse. Effectivement je suis intéressé par de l'investissement. J'aimerai me diversifier.", "created_at": "2026-02-02T22:36:00Z" },
+    { "id": "m6", "role": "bot", "content": "Bonjour Daniel, tu as déjà une stratégie d'investissement ou c'est un premier pas vers la diversification ? On propose de l'immo locatif aux US dès 1 000€.", "created_at": "2026-02-05T17:43:00Z" },
+    { "id": "m7", "role": "bot", "content": "Mon message s'est perdu dans votre inbox ?", "created_at": "2026-02-09T11:23:00Z" },
+    { "id": "m8", "role": "user", "content": "J'ai exploré crypto, Forex, actions. J'ai deux appartements en location en France et je suis sur l'acquisition d'un troisième bien. L'investissement à l'étranger peut m'intéresser, d'où l'ajout sur LinkedIn.", "created_at": "2026-02-11T07:34:00Z" }
+  ],
+  "heatRows": [
+    { "message_id": "m5", "heat": 0.45, "delta": null, "signals": {}, "created_at": "2026-02-02T22:36:00Z" },
+    { "message_id": "m8", "heat": 0.70, "delta": 0.25, "signals": {}, "created_at": "2026-02-11T07:34:00Z" }
+  ],
+  "expected": {
+    "includes_kinds": ["relance_unanswered", "business_context"],
+    "current": { "state": "chaud", "direction": "montant" }
+  }
+}

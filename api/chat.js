@@ -294,13 +294,52 @@ export default async function handler(req, res) {
         // Non-blocking. Noise from test-prompts filtered later via business_outcomes join.
         const userMsg = inserted?.data?.find(m => m.role === "user");
         if (userMsg) {
-          const { logProspectHeat } = await import("../lib/heat/prospectHeat.js");
-          logProspectHeat({
-            messageId: userMsg.id,
-            conversationId: convId,
-            content: message,
-            createdAt: userMsg.created_at,
-          }).catch(() => {});
+          try {
+            const { logProspectHeat } = await import("../lib/heat/prospectHeat.js");
+            const heatResult = await logProspectHeat({
+              messageId: userMsg.id,
+              conversationId: convId,
+              content: message,
+              createdAt: userMsg.created_at,
+            });
+            if (heatResult) {
+              const { extract, deriveState } = await import("../lib/heat/narrativeSignals.js");
+              const { data: allHeat } = await supabase
+                .from("prospect_heat")
+                .select("message_id, heat, delta, signals, created_at")
+                .eq("conversation_id", convId)
+                .order("created_at", { ascending: true });
+              const { data: allMsgs } = await supabase
+                .from("messages")
+                .select("id, role, content, created_at")
+                .eq("conversation_id", convId)
+                .order("created_at", { ascending: true })
+                .limit(200);
+              const normalized = (allMsgs || []).map(m => ({
+                ...m,
+                role: m.role === "assistant" ? "bot" : m.role,
+              }));
+              const { signals, total } = extract({
+                messages: normalized,
+                heatRows: allHeat || [],
+                now: new Date(),
+              });
+              const newSignal = signals.find(s => s.message_id === userMsg.id) || null;
+              const { state, direction } = deriveState(heatResult.heat, heatResult.delta);
+              sse("heat", {
+                current: { heat: heatResult.heat, delta: heatResult.delta, state, direction },
+                new_signal: newSignal,
+                total_signals: total,
+              });
+            }
+          } catch (err) {
+            console.log(JSON.stringify({
+              event: "heat_emit_error",
+              ts: new Date().toISOString(),
+              conversation_id: convId,
+              error: err?.message || "Unknown",
+            }));
+          }
         }
       } catch (err) {
         console.log(JSON.stringify({

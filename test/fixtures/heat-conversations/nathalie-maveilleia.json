@@ -1,0 +1,19 @@
+{
+  "name": "nathalie-maveilleia",
+  "description": "Adrien × Nathalie — prospect details tool stack + books Monday slot",
+  "now": "2026-03-14T15:00:00Z",
+  "messages": [
+    { "id": "m1", "role": "bot", "content": "Salut Nathalie, tu réfléchis sûrement à comment tes clients apparaissent sur les nouveaux moteurs de recherche IA. Le GEO est un sujet sur lequel tu te penches ?", "created_at": "2026-03-14T12:22:00Z" },
+    { "id": "m2", "role": "user", "content": "Hello, effectivement, je commence à avoir des presta GEO avec les causantes. Je bosse avec Getmint pour le moment. Je teste le content studio en ayant relié la Search Console dessus, les premiers contenus produits sont pas mals. Lundi ou mardi prochain, j'ai pas de dispo avant.", "created_at": "2026-03-14T12:58:00Z" },
+    { "id": "m3", "role": "bot", "content": "Ok top ! je connais bien GetMint. Vous avez 30 minutes cette semaine pour que je vous montre la différence en live ?", "created_at": "2026-03-14T13:32:00Z" },
+    { "id": "m4", "role": "user", "content": "Lundi 11h30 me paraît bien. Voici mon email : nathalie.delmas@lescausantes.com", "created_at": "2026-03-14T13:58:00Z" }
+  ],
+  "heatRows": [
+    { "message_id": "m2", "heat": 0.75, "delta": null, "signals": {}, "created_at": "2026-03-14T12:58:00Z" },
+    { "message_id": "m4", "heat": 0.92, "delta": 0.17, "signals": {}, "created_at": "2026-03-14T13:58:00Z" }
+  ],
+  "expected": {
+    "includes_kinds": ["business_context", "books_slot", "gives_email"],
+    "current": { "state": "brûlant", "direction": "montant" }
+  }
+}

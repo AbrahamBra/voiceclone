@@ -24,6 +24,7 @@
   import AuditStrip from "$lib/components/AuditStrip.svelte";
   import LeadPanel from "$lib/components/LeadPanel.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
+  import HeatThermometer from "$lib/components/HeatThermometer.svelte";
 
   let personaId = $derived($page.data.personaId);
   let scenario = $derived($page.data.scenario);
@@ -32,6 +33,7 @@
   let sidebarOpen = $state(false);
   let messagesEl = $state(undefined);
   let scrollAnchor = $state(undefined);
+  let thermRef = $state(null);
 
   // Panel state (demodalized)
   let feedbackTarget = $state(null);      // bot message to correct
@@ -391,6 +393,9 @@
             ruleFireCount: sessionTotals.ruleFireCount + ruleFireDelta,
           };
         },
+        onHeat(evt) {
+          thermRef?.applyHeatEvent(evt);
+        },
         onConversation(id) {
           if (id && !$currentConversationId) {
             currentConversationId.set(id);
@@ -603,24 +608,30 @@
         onToggleLead={() => leadOpen = !leadOpen}
       />
 
-      <div class="chat-messages" bind:this={messagesEl}>
-        {#each $messages as message (message.id)}
-          <ChatMessage
-            {message}
-            seq={seqForMessage(message, $messages)}
-            prevFidelity={prevFidelityFor(message, $messages)}
-            {sourceStyle}
-            onCorrect={handleCorrect}
-            onValidate={handleValidate}
-            onSaveRule={handleSaveRule}
-            onCopyBlock={() => {}}
-          />
-        {/each}
-        <div bind:this={scrollAnchor}></div>
-      </div>
+      <div class="chat-body">
+        <div class="chat-messages-col">
+          <div class="chat-messages" bind:this={messagesEl}>
+            {#each $messages as message (message.id)}
+              <ChatMessage
+                {message}
+                seq={seqForMessage(message, $messages)}
+                prevFidelity={prevFidelityFor(message, $messages)}
+                {sourceStyle}
+                onCorrect={handleCorrect}
+                onValidate={handleValidate}
+                onSaveRule={handleSaveRule}
+                onCopyBlock={() => {}}
+              />
+            {/each}
+            <div bind:this={scrollAnchor}></div>
+          </div>
 
-      <ChatInput onsend={handleSend} disabled={$sending} />
-      <AuditStrip totals={sessionTotals} {sessionStart} />
+          <ChatInput onsend={handleSend} disabled={$sending} />
+          <AuditStrip totals={sessionTotals} {sessionStart} />
+        </div>
+
+        <HeatThermometer bind:this={thermRef} conversationId={$currentConversationId} />
+      </div>
     </div>
   </div>
 
@@ -671,6 +682,24 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
+  }
+
+  .chat-body {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    min-height: 0;
+  }
+
+  .chat-messages-col {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  @media (max-width: 1024px) {
+    .chat-body { grid-template-columns: 1fr; }
+    /* HeatThermometer's own mobile media query renders it as a compact bar below .chat-messages-col */
   }
 
   .chat-messages {

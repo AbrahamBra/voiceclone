@@ -1,0 +1,18 @@
+{
+  "name": "edwige-maveilleia",
+  "description": "Adrien × Edwige — quick yes, prospect proposes visio at msg 2",
+  "now": "2026-03-17T13:00:00Z",
+  "messages": [
+    { "id": "m1", "role": "bot", "content": "Salut Edwige, tu accompagnes des entrepreneurs sur leur positionnement de marque, la question de comment ils apparaissent sur ChatGPT ou Perplexity, c'est quelque chose que tes clients te posent déjà ?", "created_at": "2026-03-17T11:12:00Z" },
+    { "id": "m2", "role": "bot", "content": "Je lance un SaaS qui mesure ça, je fais des démos gratuites et je cherche du feedback. Ça pourrait valoir un petit échange ?", "created_at": "2026-03-17T11:12:30Z" },
+    { "id": "m3", "role": "user", "content": "Bonjour Adrien, En effet c'est un sujet qui fait partie des préoccupations de mes clients. Intéressée par un échange avec toi et une démo. Comment tu vois les choses? On bloque une visio dans les agendas ?", "created_at": "2026-03-17T12:13:00Z" },
+    { "id": "m4", "role": "bot", "content": "Oui top ! Je t'envoie mon agenda : https://cal.com/team/maveilleia/demo-maveilleia", "created_at": "2026-03-17T12:18:00Z" }
+  ],
+  "heatRows": [
+    { "message_id": "m3", "heat": 0.88, "delta": null, "signals": {}, "created_at": "2026-03-17T12:13:00Z" }
+  ],
+  "expected": {
+    "includes_kinds": ["propose_call"],
+    "current": { "state": "brûlant", "direction": "stable" }
+  }
+}

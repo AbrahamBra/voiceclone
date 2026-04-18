@@ -1,0 +1,22 @@
+{
+  "name": "olga-maveilleia",
+  "description": "Adrien × Olga — Adrien proposes, Olga accepts + gives date + email",
+  "now": "2026-03-10T14:00:00Z",
+  "messages": [
+    { "id": "m1", "role": "bot", "content": "Salut Olga, j'échange avec des indé qui développent l'image de marque. Tu aimerais ajouter le GEO comme compétence ?", "created_at": "2026-03-08T09:48:00Z" },
+    { "id": "m2", "role": "user", "content": "Bonjour Adrien ! Ça m'intéresse. Au plaisir d'échanger", "created_at": "2026-03-08T10:33:00Z" },
+    { "id": "m3", "role": "bot", "content": "Ok top ! Ca te dit une visio ?", "created_at": "2026-03-08T10:47:00Z" },
+    { "id": "m4", "role": "user", "content": "Oui, je suis disponible le mercredi 15 si c'est faisable pour toi", "created_at": "2026-03-08T11:52:00Z" },
+    { "id": "m5", "role": "bot", "content": "Oui, c'est nickel pour le 15. Tu as un email à me partager stp ?", "created_at": "2026-03-08T12:06:00Z" },
+    { "id": "m6", "role": "user", "content": "avenuejolia@gmail.com", "created_at": "2026-03-08T12:06:30Z" }
+  ],
+  "heatRows": [
+    { "message_id": "m2", "heat": 0.70, "delta": null, "signals": {}, "created_at": "2026-03-08T10:33:00Z" },
+    { "message_id": "m4", "heat": 0.85, "delta": 0.15, "signals": {}, "created_at": "2026-03-08T11:52:00Z" },
+    { "message_id": "m6", "heat": 0.90, "delta": 0.05, "signals": {}, "created_at": "2026-03-08T12:06:30Z" }
+  ],
+  "expected": {
+    "includes_kinds": ["accept_call", "books_slot", "gives_email"],
+    "current": { "state": "brûlant", "direction": "stable" }
+  }
+}

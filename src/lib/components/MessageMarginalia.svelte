@@ -208,10 +208,11 @@
 <style>
   .marg {
     display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 8px 10px 8px 14px;
-    border-left: 1px solid var(--rule-strong);
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
+    padding: 6px 10px;
     font-family: var(--font-mono);
     font-size: 10.5px;
     color: var(--ink-40);
@@ -222,8 +223,9 @@
     display: flex;
     align-items: baseline;
     gap: 6px;
-    padding-bottom: 6px;
-    border-bottom: 1px dashed var(--rule);
+    padding-bottom: 0;
+    border-bottom: none;
+    flex: 0 0 auto;
   }
   .marg-tag {
     color: var(--ink);
@@ -243,14 +245,15 @@
 
   .marg-block {
     display: flex;
-    flex-direction: column;
-    gap: 2px;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 4px;
   }
   .marg-label {
-    font-size: 9px;
+    font-size: 8.5px;
     color: var(--ink-40);
     text-transform: uppercase;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.1em;
   }
   .marg-row {
     display: flex;
@@ -261,7 +264,7 @@
   }
   .marg-row-big { align-items: baseline; }
   .marg-big {
-    font-size: 18px;
+    font-size: 13px;
     font-weight: var(--fw-medium);
     color: var(--ink);
     letter-spacing: -0.01em;
@@ -436,50 +439,19 @@
     align-self: flex-start;
   }
 
-  /* ── Mobile/narrow: passe la marginalia en rangée horizontale compacte.
-     Le produit reste visible (fidélité, règles, diff) mais sans prendre
-     la hauteur d'un second message. ──────────────────────────────────── */
-  @media (max-width: 1024px) {
-    .marg {
-      flex-direction: row;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 6px 14px;
-      padding: 6px 10px;
-      border-left: none;
-      border-top: 1px dashed var(--rule);
-      margin-top: 4px;
-    }
-    .marg-head {
-      padding-bottom: 0;
-      border-bottom: none;
-      flex: 0 0 auto;
-    }
-    .marg-block {
-      flex-direction: row;
-      align-items: baseline;
-      gap: 4px;
-    }
-    .marg-label {
-      font-size: 8.5px;
-      letter-spacing: 0.1em;
-    }
-    .marg-big {
-      font-size: 13px;
-    }
-    /* style block: masque la grille détaillée, garde le fingerprint */
-    .marg-style .marg-grid { display: none; }
-    .marg-style-body { gap: 4px; }
-    .marg-fp { transform: scale(0.75); transform-origin: left center; }
-    /* règles : limite à 2 lignes scrollables pour ne pas exploser */
-    .marg-rules {
-      flex-direction: row;
-      flex-wrap: wrap;
-      gap: 3px 8px;
-      max-height: 40px;
-      overflow-y: auto;
-    }
-    .marg-rule { grid-template-columns: 8px auto; }
-    .marg-rule-detail { display: none; }
+  /* Style block: masque la grille détaillée, garde le fingerprint */
+  .marg-style .marg-grid { display: none; }
+  .marg-style-body { gap: 4px; }
+  .marg-fp { transform: scale(0.75); transform-origin: left center; }
+
+  /* Règles : rangée horizontale scrollable */
+  .marg-rules {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 3px 8px;
+    max-height: 40px;
+    overflow-y: auto;
   }
+  .marg-rule { grid-template-columns: 8px auto; }
+  .marg-rule-detail { display: none; }
 </style>
