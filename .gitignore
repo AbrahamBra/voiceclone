@@ -8,4 +8,5 @@ node_modules/
 eval/results/
 data/rhythm-gold-candidates.json
 .claude/settings.local.json
+.claude/worktrees/
 .svelte-kit
