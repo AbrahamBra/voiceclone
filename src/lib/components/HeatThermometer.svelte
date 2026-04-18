@@ -14,6 +14,10 @@
   let loading = $state(false);
   let error = $state(null);
 
+  let sheetOpen = $state(false);
+  function toggleSheet() { sheetOpen = !sheetOpen; }
+  function closeSheet() { sheetOpen = false; }
+
   // Fetch on mount / on conversationId change
   $effect(() => {
     const id = conversationId;
@@ -85,33 +89,45 @@
   }
 </script>
 
-<aside class="therm" aria-label="Thermomètre conversation">
-  <header class="therm-head">
-    <span class="therm-title mono">Thermomètre</span>
-    <span class="therm-count mono">{totalSignals} signaux</span>
-  </header>
+<svelte:window onkeydown={(e) => { if (sheetOpen && e.key === "Escape") closeSheet(); }} />
 
-  <div class="rail-wrap">
-    <div class="rail" aria-hidden="true">
-      <div class="rail-fill" style:height="{fillHeight}%"></div>
-      <div class="rail-ticks mono">
-        <span>1.0</span><span>.75</span><span>.50</span><span>.25</span><span>0</span>
+<aside class="therm" aria-label="Thermomètre conversation">
+  <div
+    class="therm-compact"
+    role="button"
+    tabindex="0"
+    onclick={toggleSheet}
+    onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleSheet(); } }}
+    aria-expanded={sheetOpen}
+    aria-controls="heat-sheet"
+  >
+    <header class="therm-head">
+      <span class="therm-title mono">Thermomètre</span>
+      <span class="therm-count mono">{totalSignals} signaux</span>
+    </header>
+
+    <div class="rail-wrap">
+      <div class="rail" aria-hidden="true">
+        <div class="rail-fill" style:height="{fillHeight}%"></div>
+        <div class="rail-ticks mono">
+          <span>1.0</span><span>.75</span><span>.50</span><span>.25</span><span>0</span>
+        </div>
       </div>
-    </div>
-    <div class="rail-data">
-      <div class="rail-score mono">
-        {#if current?.heat != null}
-          {current.heat.toFixed(2)}<span class="unit">/1</span>
-        {:else}
-          —<span class="unit">/1</span>
+      <div class="rail-data">
+        <div class="rail-score mono">
+          {#if current?.heat != null}
+            {current.heat.toFixed(2)}<span class="unit">/1</span>
+          {:else}
+            —<span class="unit">/1</span>
+          {/if}
+        </div>
+        <div class="rail-state {stateClass}">{stateLabel}</div>
+        {#if current?.delta != null}
+          <div class="rail-delta mono {deltaClass}">
+            {deltaSign}{Math.abs(current.delta).toFixed(2)} ce msg
+          </div>
         {/if}
       </div>
-      <div class="rail-state {stateClass}">{stateLabel}</div>
-      {#if current?.delta != null}
-        <div class="rail-delta mono {deltaClass}">
-          {deltaSign}{Math.abs(current.delta).toFixed(2)} ce msg
-        </div>
-      {/if}
     </div>
   </div>
 
@@ -136,6 +152,33 @@
       </div>
     {/each}
   </section>
+
+  {#if sheetOpen}
+    <div id="heat-sheet" class="sheet" role="dialog" aria-label="Journal des signaux">
+      <button class="sheet-close mono" onclick={closeSheet}>fermer</button>
+      <section class="signals-block signals-block--sheet">
+        <div class="signals-title mono">
+          {#if signals.length === 0}
+            aucun signal pour l'instant
+          {:else}
+            journal · {Math.min(signals.length, 8)} derniers
+          {/if}
+        </div>
+        {#each signals as s (s.kind + s.when + (s.message_id || ""))}
+          <div class="sig {s.polarity}">
+            <div class="text">
+              <strong>{s.label}</strong>
+              <div class="quote">{s.quote}</div>
+            </div>
+            <div class="meta">
+              <div class="when mono">{formatRelative(s.when)}</div>
+              <div class="delta mono">{s.polarity === "pos" ? "+" : "−"}{s.delta.toFixed(2)}</div>
+            </div>
+          </div>
+        {/each}
+      </section>
+    </div>
+  {/if}
 
   {#if error}
     <p class="err mono">Erreur : {error}</p>
@@ -209,10 +252,11 @@
 
   .err { color: var(--vermillon); font-size: 10px; margin-top: auto; }
 
-  /* Mobile: compact horizontal row; signals open in a bottom sheet (added in Task 14) */
+  /* Mobile: compact horizontal row; signals open in a bottom sheet */
   @media (max-width: 768px) {
     .therm { padding: 8px 12px; gap: 6px; flex-direction: row; align-items: center; border-top: 1px solid var(--rule); }
     .therm-head { padding-bottom: 0; border-bottom: none; flex: 0 0 auto; }
+    .therm-compact { cursor: pointer; display: contents; }
     .rail-wrap { display: contents; }
     .rail { display: none; }
     .rail-data { flex-direction: row; align-items: baseline; gap: 10px; padding: 0; }
@@ -220,5 +264,26 @@
     .rail-state { font-size: 13px; margin-top: 0; }
     .rail-delta { font-size: 10px; margin-top: 0; }
     .signals-block { display: none; }
+    .sheet {
+      position: fixed; inset: auto 0 0 0;
+      background: var(--paper);
+      border-top: 1px solid var(--rule-strong);
+      padding: 14px 16px 24px;
+      max-height: 70vh; overflow-y: auto;
+      z-index: 40;
+      box-shadow: 0 -8px 24px rgba(0,0,0,0.08);
+    }
+    .sheet-close {
+      background: transparent; border: none; cursor: pointer;
+      font-size: 10px; text-transform: uppercase; color: var(--ink-40);
+      margin-bottom: 8px;
+      letter-spacing: 0.12em;
+    }
+    .sheet .signals-block--sheet { display: flex; flex-direction: column; }
+  }
+
+  @media (min-width: 769px) {
+    .sheet { display: none; } /* never shown on desktop */
+    .signals-block--sheet { display: none; } /* desktop uses the main signals-block */
   }
 </style>
