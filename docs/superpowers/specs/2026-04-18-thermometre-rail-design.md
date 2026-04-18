@@ -72,7 +72,39 @@ On each new clone message:
 
 ### Narrative signal extraction
 
-`lib/heat/narrativeSignals.js` — pure function, no IO. Input: ordered array of messages (role, content, created_at) + array of prospect_heat rows. Output: array of narrative signal objects.
+`lib/heat/narrativeSignals.js` — pure function, no IO.
+
+**Signature:**
+
+```js
+/**
+ * @param {object} input
+ * @param {Array<{id: string, role: "bot"|"user", content: string, created_at: string|Date}>} input.messages
+ *   Ordered by created_at ASC. Includes both bot (outbound) and user (prospect) rows.
+ * @param {Array<{message_id: string, heat: number, delta: number|null, signals: object, created_at: string|Date}>} input.heatRows
+ *   All prospect_heat rows for this conversation, ordered by created_at ASC.
+ * @param {Date} [input.now=new Date()]
+ *   Reference "now" used by outbound-only detectors (ghost, relance).
+ * @param {number} [input.limit=8]
+ *   Max signals returned (newest-first, after capture of all candidates).
+ *
+ * @returns {{
+ *   signals: Array<NarrativeSignal>,
+ *   total: number
+ * }}
+ *
+ * @typedef NarrativeSignal
+ * @property {string} kind                     // one of the rule keys below
+ * @property {string} label                    // short FR string, shown in strong
+ * @property {string} quote                    // citation snippet, max 120 chars
+ * @property {"pos"|"neg"} polarity
+ * @property {number} delta                    // absolute value used in display
+ * @property {string} when                     // ISO timestamp of the triggering message
+ * @property {string|null} message_id          // triggering message (null for ghost/relance spans)
+ */
+```
+
+`total` is the full count of signals extracted from the whole conversation (not the limited `signals` array) — used by the header "{total} signaux" display.
 
 **Pattern-based rules, v1 (rules-only, no LLM):**
 
@@ -82,7 +114,7 @@ On each new clone message:
 | `propose_call` | prospect message initiates call (`on peut en discuter de vive voix`, `on bloque une visio`, `booker un call`, `je suis disponible`) | "Propose le call elle-même" | prospect msg snippet |
 | `gives_email` | prospect message matches email regex | "Donne son email" | matched email (masked) |
 | `books_slot` | prospect message confirms slot (`j'ai booké`, `c'est fait`, date + heure pattern) | "Confirme un créneau" | prospect msg snippet |
-| `business_context` | prospect message ≥80 words AND contains business terms (`client`, `équipe`, `biz`, `marché`, `portfolio`, roles) | "Détaille son contexte" | first 80 chars |
+| `business_context` | prospect message word count ≥ 80 (same measure as `normLength` in `prospectHeat.js` — `(content.match(/\S+/g) \|\| []).length`) AND contains business terms (`client`, `équipe`, `biz`, `marché`, `portfolio`, role titles) | "Détaille son contexte" | first sentence up to 120 chars |
 | `positive_interest` | prospect lexical_score ≥ 0.75 AND no other rule triggered | "Verbalise intérêt" | matched positive word's sentence |
 | `question_back` | prospect message ends with "?" AND contains curiosity markers (`comment`, `pourquoi`, `tu peux m'en dire plus`) | "Pose une question en retour" | the question |
 | `ghost_2days` | last outbound from clone, no inbound for ≥48h | "2+ jours de silence" | nombre de jours |
@@ -91,7 +123,23 @@ On each new clone message:
 
 Each signal carries a polarity (`pos` / `neg`), a delta magnitude derived from the heat row's `delta` field (or from our own heuristic for outbound-only signals like ghost), and a `when` timestamp.
 
-**Signal heat contribution:** signals don't compute heat; they *explain* heat. Heat comes from `prospect_heat.heat`. The signal generator reads existing rows and annotates them. For outbound-only signals (ghost, relance), the signal generator assigns a small synthetic delta (−0.05 to −0.15) that is **displayed only** (not persisted) — it represents "the vendor's attention cost" not a backend-scored change.
+**Quote truncation rule:** max 120 characters. If the natural source (first sentence, matched phrase, etc.) exceeds 120, truncate at the last word boundary before 120 and append `…`.
+
+**Conflict resolution (multiple rules matching one prospect message):** detect all matches — do not dedupe. For display ordering inside a single triggering message, sort by priority (higher first):
+
+```
+books_slot > accept_call > propose_call > gives_email >
+positive_interest > question_back > business_context >
+cold_lexical > relance_unanswered > ghost_2days
+```
+
+This affects display order inside the 8-signal window only; detection keeps all matches.
+
+**Outbound-only signals (`ghost_2days`, `relance_unanswered`):** computed on-demand each time `/api/heat` is called, using `now` vs. the timestamp of the last outbound message. No cron, no periodic job. Consequence: a ghosted conversation's thermometer shows the ghost signal the next time the vendor opens the chat page for that conversation — which is the moment it matters. Deltas for these signals are synthetic (`−0.08` for 48h ghost, `−0.05` per additional unanswered relance, capped at `−0.15`), displayed only, never written to `prospect_heat`.
+
+**Signal heat contribution:** signals don't compute heat; they *explain* heat. Heat comes from `prospect_heat.heat`. The signal generator reads existing rows and annotates them.
+
+**Historical conversations:** on first `/api/heat` call for an existing conversation, signals are extracted from whatever `prospect_heat` rows + `messages` rows already exist. No backfill job is needed — the extraction is stateless and runs per request.
 
 **Future (v2):** one LLM call per new prospect message to generate a qualitative label for subtle signals the rules miss. Not in v1 scope.
 
@@ -119,10 +167,14 @@ else → "stable"
 
 Label displayed: `{zone}, {direction}` — e.g. "tiède, montant".
 
-Color of label:
-- `glacé` / `froid` → `var(--cold)`
-- `tiède` → `var(--warm)`
+Color of label (uses existing design-system tokens only, no new CSS vars):
+- `glacé` / `froid` → `var(--ink-40)` (subdued grey — reads "dormant")
+- `tiède` → `var(--warning)` (existing `#b87300` ochre)
 - `chaud` / `brûlant` → `var(--vermillon)`
+
+Delta color:
+- positive → `var(--success)`
+- negative → `var(--vermillon)`
 
 If no `prospect_heat` rows yet (new conv, no prospect msg): display neutral state (score `—`, label "en attente", no color, rail empty).
 
@@ -152,21 +204,44 @@ Response:
       "when": "2026-02-11T09:10:00Z",
       "message_id": "uuid…"
     },
-    ...up to 8 recent signals...
+    ...up to 8 most-recent signals...
   ],
   "total_signals": 24
 }
 ```
 
-Cache: none (fresh every call — heat changes rarely enough that caching isn't critical, and staleness hurts the "live" feel).
+`signals` is limited to the 8 newest. `total_signals` is the full count of signals extracted from the whole conversation (= `narrativeSignals.extract(...).total`). The header displays "{total} signaux" and the body shows the 8 newest.
 
-Errors: 404 if conversation not found / user has no access. 200 with empty `current` + `signals:[]` if conv exists but has no prospect messages yet.
+Cache: none (stateless per-call regeneration). Chat-page traffic is low (a single user at a time) so the cost is acceptable. Revisit if `/api/heat` load becomes a concern.
+
+Errors:
+- `404` if conversation not found / user has no access.
+- `200` with `current: { heat: null, delta: null, state: null, direction: null }` and `signals: []`, `total_signals: 0` if conv exists but has no prospect messages yet.
+- Existing conversation with prospect messages but no `prospect_heat` rows (shouldn't happen — `logProspectHeat` writes on every prospect message — but defensive): return `200` with the same empty shape.
 
 ### SSE integration
 
-Extend the existing `/api/chat` SSE stream: after `logProspectHeat` writes a new row, emit a `heat` event with the new `{ heat, delta, state, direction, new_signal? }` payload. `HeatThermometer` subscribes and updates in-place without re-fetching.
+Extend the existing `/api/chat` SSE stream: after `logProspectHeat` writes a new row, the server runs `narrativeSignals.extract` on the updated conversation state and emits a `heat` event on the SSE stream. The payload IS the same shape as the `/api/heat` GET response:
 
-This keeps the thermometer reactive during a live conversation without polling.
+```json
+{
+  "current": { "heat": 0.58, "delta": 0.22, "state": "tiède", "direction": "montant" },
+  "new_signal": {
+    "kind": "accept_call",
+    "label": "Accepte le call",
+    "quote": "Yes pas de soucis.",
+    "polarity": "pos",
+    "delta": 0.22,
+    "when": "2026-02-11T09:10:00Z",
+    "message_id": "uuid…"
+  },
+  "total_signals": 25
+}
+```
+
+**Authority model:** the SSE event is authoritative. `HeatThermometer` updates its local state from the SSE payload in place — it does NOT re-fetch `/api/heat` after receiving a `heat` event. The component only calls `/api/heat` (GET) on mount and when `conversationId` changes.
+
+`new_signal` is nullable — fired when the latest prospect message triggered at least one rule. If present, the client prepends it to the local `signals` array (capped at 8). If null, only `current` + `total_signals` are updated.
 
 ### Component: `HeatThermometer.svelte`
 
@@ -218,13 +293,19 @@ New layout:
 
 `ChatMessage` stops rendering `MessageMarginalia` in the right column. Instead, a small `⋯` button at the bottom-right of each bot message toggles an inline collapsable `MessageMarginalia` block **below** the message text (not to the right).
 
+**Toggle behavior:**
+- State is per-message, stored in local component state (`$state` on each `ChatMessage`). Not persisted across page reloads — each reload starts with all toggles closed.
+- Button is a `<button>` element, focusable via keyboard, activated by Enter/Space (native behavior).
+- `aria-expanded` reflects open/closed state; `aria-controls` points to the marginalia block's `id`.
+- The existing grid layout in `ChatMessage.svelte` (two columns: message + marginalia) collapses to a single column; marginalia becomes a child of the message column, rendered below the text content when expanded.
+
 ### Mobile (≤ 768px)
 
-Thermometer collapses to a compact horizontal header above `ChatInput`:
-- Score + state + delta on one line
-- Signals accessible via tap-to-expand (shows a modal or bottom sheet with the journal)
+Thermometer collapses to a compact horizontal bar **above** `ChatInput` (not a top fixed status bar — the chat header is already busy):
 
-Alternatively, the thermometer sits at the top of the page (fixed), like a status bar. TBD — pick at implementation time.
+- One line: score (18px mono) · state label (13px italic, colored) · delta (11px mono)
+- Tappable: opens a bottom-sheet modal with the full journal (signals list, same shape as desktop)
+- The rail itself is hidden on mobile — only text data. The gauge metaphor isn't adding value on narrow width.
 
 ## Non-goals
 
@@ -237,15 +318,9 @@ Alternatively, the thermometer sits at the top of the page (fixed), like a statu
 
 ## Open questions
 
-1. **Mobile placement** — collapsed horizontal bar above input, or fixed top status bar, or tap-to-reveal modal? Implementation time decision.
+1. **Threshold tuning.** Zone boundaries (0.25/0.45/0.65/0.85) are initial guesses. After a few weeks we should calibrate on real data: distribution of heat values where RDVs actually got booked. Not a launch blocker — tune post-launch.
 
-2. **When to regenerate signals.** Every `/api/heat` call? Cached in a table `conversation_signals` and invalidated on new message? Cost/benefit: regen-per-call is simpler but scales linearly with chat page views. A tiny cache keyed by (conversation_id, last_message_id) covers 90% of the cost.
-
-3. **Threshold tuning.** Zone boundaries (0.25/0.45/0.65/0.85) are initial guesses. After a few weeks we should calibrate on real data: distribution of heat values where RDVs actually got booked.
-
-4. **Signal polarity conflicts.** If a single message triggers multiple rules (e.g., prospect says "yes let's book, here's my email"), do we emit one merged signal or N separate ones? Proposed: N separate, prioritized by kind (accept_call > gives_email > positive_interest).
-
-5. **Relance / ghost display persistence.** Do ghost signals stay in the journal once the prospect re-engages, or disappear? Proposed: stay (the cold patch is part of the story), but greyed out.
+2. **Relance / ghost display persistence.** Do ghost signals stay in the journal once the prospect re-engages, or disappear? Proposed default: stay (the cold patch is part of the story), rendered with reduced opacity once a more recent positive signal exists. Revisit after launch based on feel.
 
 ## Implementation phases
 
@@ -266,7 +341,24 @@ Alternatively, the thermometer sits at the top of the page (fixed), like a statu
 
 ## Testing
 
-- **Unit:** narrativeSignals.js against fixtures — each fixture conv produces expected signal sequence.
+- **Unit:** `narrativeSignals.extract` against named fixtures (see below). Each fixture conv produces an expected signal sequence that is snapshotted and compared on every test run.
 - **Integration:** `/api/heat` returns correct shape and handles empty conversations.
 - **Visual:** `/labo/heat` route with 3 fixture states (empty, mid-tiède, chaud-montant) for eyeball review at desktop + mobile sizes.
-- **Regression:** existing MessageMarginalia tests stay passing (it's just moved, not deleted).
+- **Regression:** existing `MessageMarginalia` content-rendering tests stay passing (the component's internal rendering doesn't change). Tests that assert on the parent grid layout or on the marginalia's *position* within `ChatMessage` (right column) WILL need updates — the marginalia moves from a right-column sibling to a below-message child. Flag these at implementation time.
+
+### Fixtures (closed set for Phase 1)
+
+Stored as JSON under `test/fixtures/heat-conversations/`:
+
+| Fixture | Persona | Pattern | Expected signals highlight |
+|---------|---------|---------|----------------------------|
+| `cecilia-bluecoders.json` | Thomas | 4 msgs → prospect proposes call | `propose_call` |
+| `edwige-maveilleia.json` | Adrien | 2 msgs → prospect asks to book | `propose_call`, `books_slot` |
+| `olga-maveilleia.json` | Adrien | Adrien proposes → prospect accepts + gives slot + email | `accept_call`, `books_slot`, `gives_email` |
+| `nathalie-maveilleia.json` | Adrien | Discovery on tools (GetMint) → slot confirm | `business_context`, `books_slot`, `gives_email` |
+| `theotime-maveilleia.json` | Adrien | Delayed (silence) → late reply → RDV | `ghost_2days`, `relance_unanswered`, `accept_call` |
+| `daniel-immostates.json` | Thierry | 87 days, 6 relances, ghost+revival, finally books | `relance_unanswered` (multiple), `positive_interest`, `business_context`, `books_slot` |
+| `hassan-immostates.json` | Thierry | Discovery dance on fractional vs crowdfunding → call | `question_back`, `accept_call` |
+| `pierre-immostates.json` | Thierry | 1 Thierry msg → prospect already interested | `propose_call` |
+| `cold-refusal.json` | synthetic | Prospect says "pas le temps" | `cold_lexical`, heat descent |
+| `empty.json` | any | New conv, no prospect msg yet | no signals, empty state |
