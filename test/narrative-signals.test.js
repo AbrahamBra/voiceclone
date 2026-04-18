@@ -115,3 +115,26 @@ describe("extract — engagement signals", () => {
     assertContainsKinds(signals, fx.expected.includes_kinds);
   });
 });
+
+describe("extract — outbound-only signals", () => {
+  it("daniel-immostates: detects relance_unanswered (multiple outbounds without response)", () => {
+    const fx = loadFixture("daniel-immostates");
+    const { signals } = extract({ messages: fx.messages, heatRows: fx.heatRows, now: new Date(fx.now) });
+    assertContainsKinds(signals, fx.expected.includes_kinds);
+  });
+
+  it("theotime-maveilleia: detects ghost_2days (48h+ after outbound)", () => {
+    const fx = loadFixture("theotime-maveilleia");
+    const { signals } = extract({ messages: fx.messages, heatRows: fx.heatRows, now: new Date(fx.now) });
+    assertContainsKinds(signals, fx.expected.includes_kinds);
+  });
+
+  it("pierre-immostates: detects propose_call (sanity, no ghost or relance)", () => {
+    const fx = loadFixture("pierre-immostates");
+    const { signals } = extract({ messages: fx.messages, heatRows: fx.heatRows, now: new Date(fx.now) });
+    const kinds = new Set(signals.map(s => s.kind));
+    assert.ok(kinds.has("propose_call"), "expected propose_call");
+    assert.ok(!kinds.has("ghost_2days"), "ghost_2days should not fire — prospect replied same day");
+    assert.ok(!kinds.has("relance_unanswered"), "no consecutive outbounds here");
+  });
+});
