@@ -178,6 +178,8 @@ Delta color:
 
 If no `prospect_heat` rows yet (new conv, no prospect msg): display neutral state (score `—`, label "en attente", no color, rail empty).
 
+**Important:** the numeric `heat` value only changes when a new prospect message arrives (via `logProspectHeat`). Outbound-only signals (`ghost_2days`, `relance_unanswered`) do NOT move the rail — their synthetic deltas are journal-only. The rail may therefore stay at the last computed heat even while the journal shows cooling signals. This is intentional: heat is a prospect-side measurement, not a vendor-side one.
+
 ### API: `/api/heat`
 
 ```
