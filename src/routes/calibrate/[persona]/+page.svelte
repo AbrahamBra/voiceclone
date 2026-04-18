@@ -12,6 +12,7 @@
   let messages = $state([]);
   let ratings = $state([]);
   let submitting = $state(false);
+  let persona = $state(null);
 
   $effect(() => {
     if (personaId) loadCalibration(personaId);
@@ -21,13 +22,19 @@
     loading = true;
     loadError = "";
 
+    // Persona fetch is non-blocking: if it fails, calibration still works,
+    // header just falls back to "VoiceClone / calibration" without context.
+    api(`/api/config?persona=${pid}`)
+      .then((personaData) => { persona = personaData.persona || personaData || null; })
+      .catch(() => { /* silent — header falls back */ });
+
     try {
-      const data = await api("/api/calibrate", {
+      const calibData = await api("/api/calibrate", {
         method: "POST",
         body: JSON.stringify({ persona: pid }),
       });
-      messages = data.messages;
-      ratings = data.messages.map(() => ({ score: 0, correction: "" }));
+      messages = calibData.messages;
+      ratings = calibData.messages.map(() => ({ score: 0, correction: "" }));
     } catch {
       loadError = "Calibration indisponible. Vous pouvez passer.";
     } finally {
@@ -86,6 +93,9 @@
       <span class="brand-mark">◎</span>
       <span class="brand-name">VoiceClone</span>
       <span class="brand-sub">/ calibration</span>
+      {#if persona}
+        <span class="brand-context">· {persona.name}{persona.type ? ` · ${persona.type}` : ''}</span>
+      {/if}
     </div>
     <nav class="head-meta mono">
       <span class="kv"><span class="k">essais</span><span class="v">{messages.length || "—"}</span></span>
@@ -125,8 +135,8 @@
               <span class="trial-tag">essai:{pad2(i + 1)}</span>
               {#if msg.context}<span class="trial-context">{msg.context}</span>{/if}
               {#if score > 0}
-                <span class="trial-score mono" class:high={score >= 4} class:low={score <= 2}>
-                  {score}/5
+                <span class="trial-score" class:high={score === 5} class:low={score === 1}>
+                  {score === 5 ? '👍' : score === 3 ? '🤔' : '👎'}
                 </span>
               {/if}
             </header>
@@ -137,15 +147,14 @@
 
             <div class="trial-controls">
               <div class="cal-rating" role="radiogroup" aria-label="Note {i + 1}">
-                {#each [1, 2, 3, 4, 5] as n}
+                {#each [['👎', 1, 'Note négative'], ['🤔', 3, 'Note mitigée'], ['👍', 5, 'Note positive']] as [emoji, scoreValue, aria]}
                   <button
-                    class="rate-btn mono"
-                    class:active={score >= n}
-                    class:selected={score === n}
-                    onclick={() => setRating(i, n)}
-                    aria-label={`Note ${n} sur 5`}
-                    aria-pressed={score === n}
-                  >{n}</button>
+                    class="rate-btn"
+                    class:selected={score === scoreValue}
+                    onclick={() => setRating(i, scoreValue)}
+                    aria-label={aria}
+                    aria-pressed={score === scoreValue}
+                  >{emoji}</button>
                 {/each}
               </div>
               <textarea
@@ -193,6 +202,11 @@
   .brand-mark { color: var(--vermillon); font-size: 14px; }
   .brand-name { font-weight: var(--fw-semi); color: var(--ink); }
   .brand-sub { color: var(--ink-40); }
+  .brand-context {
+    color: var(--ink-70);
+    font-size: var(--fs-tiny);
+    margin-left: 6px;
+  }
   .head-meta { display: inline-flex; gap: 16px; flex-wrap: wrap; }
   .kv { display: inline-flex; gap: 6px; align-items: baseline; }
   .k { color: var(--ink-40); text-transform: uppercase; letter-spacing: 0.08em; font-size: var(--fs-nano); }
@@ -338,25 +352,18 @@
     gap: 3px;
   }
   .rate-btn {
-    width: 36px;
-    height: 32px;
+    width: 44px;
+    height: 36px;
     background: transparent;
     border: 1px solid var(--rule-strong);
-    color: var(--ink-40);
-    font-size: 13px;
-    font-weight: var(--fw-semi);
+    color: var(--ink);
+    font-size: 18px;
     cursor: pointer;
-    font-variant-numeric: tabular-nums;
     transition: all var(--dur-fast) var(--ease);
   }
-  .rate-btn:hover { color: var(--ink); border-color: var(--ink-40); }
-  .rate-btn.active {
-    color: var(--ink);
-    border-color: var(--ink-40);
-  }
+  .rate-btn:hover { border-color: var(--ink-40); transform: translateY(-1px); }
   .rate-btn.selected {
-    background: var(--ink);
-    color: var(--paper);
+    background: var(--paper-subtle);
     border-color: var(--ink);
   }
 
