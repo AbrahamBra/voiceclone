@@ -1232,71 +1232,67 @@ describe("GET /api/heat", { skip: !HAS_DB && "no DB env vars" }, () => {
 Run: `npm test -- --test-name-pattern="GET /api/heat"`
 Expected: FAIL (module missing) OR skip (no env).
 
-- [ ] **Step 4: Implement `api/heat.js`**
+- [ ] **Step 4: Implement `api/heat.js` using the real project helpers**
+
+Verified helpers (from `lib/supabase.js`):
+- `authenticateRequest(req)` — returns `{ client, isAdmin }` or throws/returns nullish on failure (pattern: see `api/conversations.js:9`)
+- `supabase` — the admin client instance (not a factory)
+- `hasPersonaAccess(clientId, personaId)` — access gate
+- `setCors(res, methods)` — CORS + method guard
 
 ```js
 // ============================================================
 // GET /api/heat?conversation_id=<uuid>
 // Returns current prospect heat + narrative signals for the chat thermometer.
 // ============================================================
-import { createSupabaseAdmin } from "../lib/supabase.js";
-import { authenticate } from "../lib/auth.js";
+import { authenticateRequest, supabase, hasPersonaAccess, setCors } from "../lib/supabase.js";
 import { extract, deriveState } from "../lib/heat/narrativeSignals.js";
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    res.setHeader("Allow", "GET");
-    return res.status(405).json({ error: "method_not_allowed" });
-  }
+  setCors(res, "GET, OPTIONS");
+  if (req.method === "OPTIONS") return res.status(204).end();
+  if (req.method !== "GET") return res.status(405).json({ error: "method_not_allowed" });
 
   const convId = (req.query?.conversation_id || "").trim();
-  if (!convId) {
-    return res.status(400).json({ error: "conversation_id required" });
+  if (!convId) return res.status(400).json({ error: "conversation_id required" });
+
+  let client, isAdmin;
+  try {
+    ({ client, isAdmin } = await authenticateRequest(req));
+  } catch (err) {
+    return res.status(401).json({ error: "unauthorized" });
   }
+  if (!client) return res.status(401).json({ error: "unauthorized" });
 
-  const authResult = await authenticate(req);
-  if (!authResult.ok) {
-    return res.status(401).json({ error: authResult.reason || "unauthorized" });
-  }
-
-  const sb = createSupabaseAdmin();
-
-  // Access check — conversation must belong to a persona the caller can access.
-  // The simplest correct check: the conversation exists and its persona is
-  // accessible via the auth token. We reuse the conversation's access_code
-  // column (see api/conversations.js for the pattern).
-  const { data: conv, error: convErr } = await sb
+  // Access check — conversation's persona must be accessible by the caller
+  const { data: conv, error: convErr } = await supabase
     .from("conversations")
-    .select("id, persona_id, access_code_id")
+    .select("id, persona_id, client_id")
     .eq("id", convId)
     .maybeSingle();
-  if (convErr || !conv) {
-    return res.status(404).json({ error: "conversation_not_found" });
-  }
-  if (conv.access_code_id && conv.access_code_id !== authResult.accessCodeId) {
-    return res.status(404).json({ error: "conversation_not_found" });
+  if (convErr || !conv) return res.status(404).json({ error: "conversation_not_found" });
+  if (!isAdmin) {
+    const ok = await hasPersonaAccess(client.id, conv.persona_id);
+    if (!ok) return res.status(404).json({ error: "conversation_not_found" });
   }
 
-  // Fetch all prospect_heat rows for this conversation (ordered by time)
-  const { data: heatRows } = await sb
+  // Fetch all prospect_heat rows (ordered by time)
+  const { data: heatRows } = await supabase
     .from("prospect_heat")
     .select("message_id, heat, delta, signals, created_at")
     .eq("conversation_id", convId)
     .order("created_at", { ascending: true });
 
-  // Fetch the last 200 messages of the conversation (cap for signal extraction cost)
-  const { data: messages } = await sb
+  // Fetch the last 200 messages (cap extraction cost)
+  const { data: messages } = await supabase
     .from("messages")
     .select("id, role, content, created_at")
     .eq("conversation_id", convId)
     .order("created_at", { ascending: true })
     .limit(200);
 
-  // Normalize: messages.role in DB is "user"/"assistant", narrativeSignals expects "user"/"bot"
-  const normalized = (messages || []).map(m => ({
-    ...m,
-    role: m.role === "assistant" ? "bot" : m.role,
-  }));
+  // Normalize: DB role is "user"/"assistant", narrativeSignals expects "user"/"bot"
+  const normalized = (messages || []).map(m => ({ ...m, role: m.role === "assistant" ? "bot" : m.role }));
 
   const { signals, total } = extract({
     messages: normalized,
@@ -1304,10 +1300,9 @@ export default async function handler(req, res) {
     now: new Date(),
   });
 
-  // Current heat = latest prospect_heat row
   const lastHeat = (heatRows && heatRows.length) ? heatRows[heatRows.length - 1] : null;
-  const heat = lastHeat ? lastHeat.heat : null;
-  const delta = lastHeat ? lastHeat.delta : null;
+  const heat = lastHeat ? Number(lastHeat.heat) : null;
+  const delta = lastHeat ? (lastHeat.delta != null ? Number(lastHeat.delta) : null) : null;
   const { state, direction } = deriveState(heat, delta);
 
   return res.status(200).json({
@@ -1318,7 +1313,7 @@ export default async function handler(req, res) {
 }
 ```
 
-**Important:** before writing, VERIFY by reading `api/conversations.js` that `authenticate` exists in `lib/auth.js` and that conversations have a queryable access-code column. If the project uses a different helper (e.g., `hasPersonaAccess`), use that instead. The exact call signatures should match the existing fidelity / conversations endpoints.
+**Note:** the integration test from Step 2 uses a simplified `req` shape — make sure the test stubs `req.query` and `req.headers` to match what `authenticateRequest` expects (see `api/conversations.js` for reference).
 
 - [ ] **Step 5: Run tests to confirm pass**
 
@@ -1463,9 +1458,9 @@ Create `src/lib/components/HeatThermometer.svelte`:
   /** @typedef {{heat: number|null, delta: number|null, state: string|null, direction: string|null}} Current */
   /** @typedef {{kind: string, label: string, quote: string, polarity: "pos"|"neg", delta: number, when: string, message_id: string|null}} Signal */
 
-  let {
-    conversationId = $bindable(null),
-  } = $props();
+  // One-way prop from parent. The parent owns the current conversation id.
+  // Parent uses `bind:this={thermRef}` to call applyHeatEvent imperatively.
+  let { conversationId = null } = $props();
 
   let current = $state(null);
   let signals = $state([]);
