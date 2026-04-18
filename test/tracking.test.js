@@ -31,3 +31,13 @@ test("track() swallows errors from plausible()", () => {
   assert.doesNotThrow(() => track("x"));
   delete globalThis.window;
 });
+
+test("track() is noop when only the queue stub is present (data-domain unset)", () => {
+  const calls = [];
+  const stub = (event, opts) => calls.push([event, opts]);
+  stub.q = [];
+  globalThis.window = { plausible: stub };
+  track("clone_created", { type: "posts" });
+  assert.equal(calls.length, 0, "stub should not be called when .q queue still present");
+  delete globalThis.window;
+});

@@ -48,12 +48,19 @@ export default async function handler(req, res) {
     const token = query.token;
     if (!token) { res.status(400).json({ error: "token required" }); return; }
 
-    const { data: st } = await supabase
+    const { data: st, error: selErr } = await supabase
       .from("share_tokens")
       .select("persona_id, expires_at, personas(name, title, avatar), creator:clients!share_tokens_created_by_fkey(name)")
       .eq("token", token)
       .single();
 
+    if (selErr) {
+      console.log(JSON.stringify({ event: "share_get_db_error", token, error: selErr.message, code: selErr.code }));
+      // PGRST200 family = relationship/FK hint not resolved → distinct error so the UI can surface it
+      if (selErr.code === "PGRST200" || /relationship|fkey/i.test(selErr.message || "")) {
+        res.status(500).json({ error: "Configuration share incorrecte" }); return;
+      }
+    }
     if (!st) { res.status(404).json({ error: "Token invalide" }); return; }
     if (new Date(st.expires_at) < new Date()) {
       res.status(410).json({ error: "Lien expire" }); return;
@@ -85,12 +92,15 @@ export default async function handler(req, res) {
     if (!token) { res.status(400).json({ error: "token required" }); return; }
     if (!client) { res.status(401).json({ error: "Login required" }); return; }
 
-    const { data: st } = await supabase
+    const { data: st, error: selErr } = await supabase
       .from("share_tokens")
       .select("persona_id, expires_at, personas(client_id)")
       .eq("token", token)
       .single();
 
+    if (selErr) {
+      console.log(JSON.stringify({ event: "share_put_db_error", token, error: selErr.message, code: selErr.code }));
+    }
     if (!st) { res.status(404).json({ error: "Token invalide" }); return; }
     if (new Date(st.expires_at) < new Date()) {
       res.status(410).json({ error: "Lien expire" }); return;
