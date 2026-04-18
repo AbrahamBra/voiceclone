@@ -259,6 +259,7 @@ export default async function handler(req, res) {
       rhythmCtx: {
         isFirstContact: !convId || (Array.isArray(messages) && messages.length <= 1),
         personaOverrides: Array.isArray(persona.voice?.setter_overrides) ? persona.voice.setter_overrides : [],
+        personaVoice: persona.voice || null,
       },
     });
     // Persist messages + update conversation (await to avoid Vercel killing the function)

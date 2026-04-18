@@ -23,6 +23,7 @@ import { createClient } from "@supabase/supabase-js";
 import { extractDraft } from "../lib/critic/extractDraft.js";
 import { computeRhythmMetrics } from "../lib/critic/rhythmMetrics.js";
 import { mahalanobisDistance, BASELINE_DIMS } from "../lib/critic/mahalanobis.js";
+import { evaluateVoice } from "../lib/critic/voiceCritic.js";
 
 const personaSlug = process.argv[2];
 if (!personaSlug) {
@@ -39,22 +40,24 @@ function dist(values, bins = [0, 1, 2, 3, 4, 5, 999]) {
 function pct(n, total) { return total ? `${Math.round(100 * n / total)}%` : "-"; }
 function mean(arr) { return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0; }
 
-function scoreText(text, baseline) {
+function scoreText(text, baseline, personaVoice) {
   const cleaned = extractDraft(text) || text;
   if ((cleaned.match(/\S+/g) || []).length < 5) return null;
   const metrics = computeRhythmMetrics(cleaned);
   if (metrics.rm_n_sentences < 1) return null;
   const m = mahalanobisDistance(metrics, baseline);
   if (!m) return null;
-  return { ...m, cleaned };
+  const v = evaluateVoice(cleaned, personaVoice || {});
+  return { ...m, cleaned, voice: v };
 }
 
 async function main() {
-  // 1. Target persona + baseline
+  // 1. Target persona + baseline + voice
   const { data: targets } = await supabase
-    .from("personas").select("id, name, slug")
+    .from("personas").select("id, name, slug, voice")
     .or(`name.ilike.${personaSlug},slug.ilike.${personaSlug}`);
   const targetIds = (targets || []).map(p => p.id);
+  const targetVoice = targets?.[0]?.voice || {};
   if (!targetIds.length) throw new Error("persona cible introuvable");
 
   const { data: baseline } = await supabase
@@ -101,7 +104,7 @@ async function main() {
   // 4. Score tout.
   const goldScores = [];
   for (const g of golds || []) {
-    const s = scoreText(g.content, baseline);
+    const s = scoreText(g.content, baseline, targetVoice);
     if (s) goldScores.push(s);
   }
 
@@ -109,7 +112,7 @@ async function main() {
   const perPersona = {};
   for (const pid of Object.keys(byPersona)) {
     const { name, slug, texts } = byPersona[pid];
-    const ss = texts.map(t => scoreText(t, baseline)).filter(Boolean);
+    const ss = texts.map(t => scoreText(t, baseline, targetVoice)).filter(Boolean);
     if (!ss.length) continue;
     perPersona[slug] = { name, slug, count: ss.length, z_mean: +mean(ss.map(s => s.dominant_z)).toFixed(2) };
     otherScores.push(...ss);
@@ -138,6 +141,20 @@ async function main() {
     const f1 = (p + rc) > 0 ? 2 * p * rc / (p + rc) : 0;
     console.log(`z>=${thr.toFixed(2).padStart(5)} |    ${String(tp).padStart(3)} (${pct(tp, otherScores.length).padStart(4)})  | ${String(fn).padStart(3)}  |   ${String(fp).padStart(2)} (${pct(fp, goldScores.length).padStart(4)})   | ${String(tn).padStart(2)} |   ${p.toFixed(2)}    |  ${rc.toFixed(2)}  | ${f1.toFixed(2)}`);
   }
+
+  console.log(`\n=== Signaux voix (vs règles Thomas) ===`);
+  const voiceStats = (scores) => {
+    const forbid = scores.filter(s => s.voice?.signals?.v_forbidden_count > 0).length;
+    const ang = scores.filter(s => s.voice?.signals?.v_anglicized_count > 0).length;
+    const hyphen = scores.filter(s => s.voice?.signals?.v_has_hyphen_connector).length;
+    const sigAvg = mean(scores.map(s => s.voice?.signals?.v_signature_count || 0));
+    const flagAny = scores.filter(s => s.voice?.shouldFlag).length;
+    return { forbid, ang, hyphen, sigAvg: sigAvg.toFixed(2), flagAny };
+  };
+  const gs = voiceStats(goldScores);
+  const os = voiceStats(otherScores);
+  console.log(`thomas_gold    (N=${goldScores.length}) : forbidden=${gs.forbid}  angl.=${gs.ang}  hyphen=${gs.hyphen}  sig_moy=${gs.sigAvg}  flagAny=${gs.flagAny} (${pct(gs.flagAny, goldScores.length)})`);
+  console.log(`autres_persos  (N=${otherScores.length}) : forbidden=${os.forbid}  angl.=${os.ang}  hyphen=${os.hyphen}  sig_moy=${os.sigAvg}  flagAny=${os.flagAny} (${pct(os.flagAny, otherScores.length)})`);
 
   console.log(`\n=== Dim dominante par classe ===`);
   const dimCount = { gold: {}, other: {} };

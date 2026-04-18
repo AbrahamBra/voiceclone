@@ -5,6 +5,12 @@ import { extractDraft } from "../lib/critic/extractDraft.js";
 import { degradeRhythm } from "../lib/critic/degradeRhythm.js";
 import { computeBaseline, mahalanobisDistance, BASELINE_DIMS } from "../lib/critic/mahalanobis.js";
 import { evaluateRhythm } from "../lib/critic/rhythmCritic.js";
+import { evaluateVoice } from "../lib/critic/voiceCritic.js";
+
+const THOMAS_VOICE = {
+  forbiddenWords: ["cordialement", "synergies", "leverager"],
+  signaturePhrases: ["c'est propre", "ok intéressant", "avec plaisir ;)"],
+};
 
 test("computeRhythmMetrics — texte vide", () => {
   const m = computeRhythmMetrics("");
@@ -91,6 +97,71 @@ test("evaluateRhythm — sans baseline, pas de mahalanobis dans signals", () => 
   const r = evaluateRhythm("Salut. Nice. Tu fais quoi ?");
   assert.equal(r.baselineUsed, false);
   assert.equal(r.signals.mahalanobis_distance, undefined);
+});
+
+test("evaluateVoice — forbidden word flag", () => {
+  const r = evaluateVoice("Cordialement, je reviens vers vous.", THOMAS_VOICE);
+  assert.ok(r.shouldFlag);
+  assert.equal(r.signals.v_forbidden_count, 1);
+  assert.ok(r.reasons.some(x => x.startsWith("V1")));
+});
+
+test("evaluateVoice — expression interdite multi-mots", () => {
+  const voice = { forbiddenWords: ["bien à vous", "je me permets"] };
+  const r = evaluateVoice("Je me permets de vous recontacter.", voice);
+  assert.ok(r.shouldFlag);
+  assert.equal(r.signals.v_forbidden_count, 1);
+});
+
+test("evaluateVoice — verbe anglais conjugué", () => {
+  const r = evaluateVoice("Tu scales ton business comment ?", THOMAS_VOICE);
+  assert.ok(r.shouldFlag);
+  assert.equal(r.signals.v_anglicized_count, 1);
+  assert.ok(r.reasons.some(x => x.startsWith("V2")));
+});
+
+test("evaluateVoice — anglicismes NOMS autorisés (lead, call, setup, scaling)", () => {
+  const r = evaluateVoice("On peut faire un call pour ton setup ? Scaling est ok ?", THOMAS_VOICE);
+  assert.equal(r.signals.v_anglicized_count, 0, "pas de verbe anglais conjugué");
+  assert.ok(!r.shouldFlag);
+});
+
+test("evaluateVoice — tiret connecteur mid-phrase", () => {
+  const r = evaluateVoice("J'ai vu ton post — c'est intéressant", THOMAS_VOICE);
+  assert.ok(r.signals.v_has_hyphen_connector);
+  assert.ok(r.reasons.some(x => x.startsWith("V3")));
+});
+
+test("evaluateVoice — bullet list en début de ligne = PAS un connecteur", () => {
+  const r = evaluateVoice("Voici :\n- point 1\n- point 2", THOMAS_VOICE);
+  assert.equal(r.signals.v_has_hyphen_connector, false);
+});
+
+test("evaluateVoice — signature phrases counted (positive, no flag)", () => {
+  const r = evaluateVoice("Ok intéressant. C'est propre.", THOMAS_VOICE);
+  assert.equal(r.signals.v_signature_count, 2);
+  assert.equal(r.shouldFlag, false);
+});
+
+test("evaluateVoice — texte clean Thomas", () => {
+  const r = evaluateVoice("Salut Marc, nice ton dernier post. Tu acquiers comment tes clients ?", THOMAS_VOICE);
+  assert.equal(r.shouldFlag, false);
+  assert.equal(r.signals.v_forbidden_count, 0);
+  assert.equal(r.signals.v_anglicized_count, 0);
+});
+
+test("evaluateVoice — persona sans règles = score neutre", () => {
+  const r = evaluateVoice("Quel que soit le texte.", {});
+  assert.equal(r.score, 1);
+  assert.equal(r.shouldFlag, false);
+});
+
+test("evaluateRhythm — intègre voice signals et flag", () => {
+  const r = evaluateRhythm("Cordialement, leverager cette opportunité.", { personaVoice: THOMAS_VOICE });
+  assert.ok(r.shouldFlag);
+  assert.ok(r.voiceUsed);
+  assert.ok(r.signals.v_forbidden_count >= 2);
+  assert.ok(r.reasons.some(x => x.startsWith("V1")));
 });
 
 test("evaluateRhythm — avec baseline, mahalanobis présent et reason drift si |z|≥2", () => {
