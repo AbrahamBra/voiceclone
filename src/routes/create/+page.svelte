@@ -33,6 +33,23 @@
   // Step 3: DMs LinkedIn
   let dmsText = $state("");
 
+  // Detect conversations with < 2 distinct speakers (monologue = useless for cloning turn-taking).
+  // A "speaker" = a line starting with "Name:" (letters up to 30 chars then colon).
+  let dmIssues = $derived.by(() => {
+    if (!dmsText.trim()) return [];
+    const convs = dmsText.trim().split(/\n---\n/);
+    const issues = [];
+    convs.forEach((conv, i) => {
+      if (conv.trim().length < 20) return;
+      const speakers = new Set();
+      const lineRegex = /^([A-Za-zÀ-ÿ][^:\n]{0,30}):/gm;
+      let m;
+      while ((m = lineRegex.exec(conv)) !== null) speakers.add(m[1].trim());
+      if (speakers.size < 2) issues.push({ idx: i + 1, speakers: speakers.size });
+    });
+    return issues;
+  });
+
   // Step 4: Documents + Génération
   // pendingFiles: [{ name, content, status: 'pending'|'uploading'|'done'|'error', error? }]
   let pendingFiles = $state([]);
@@ -329,14 +346,31 @@
               <span>Le style de conversation 1:1 du clone</span>
             </div>
             <p class="step-desc">
-              Copiez-collez des échanges DM réels. Séparez chaque conversation par <code>---</code>. Cette étape génère une intelligence séparée pour les scénarios de prospection et de qualification.
+              Colle des conversations <strong>complètes</strong> — les deux côtés, du premier message au dernier. Un monologue unilatéral ne sert à rien : le clone apprend comment tu <em>relances</em>, <em>réponds</em>, <em>clôtures</em>. Sépare chaque conversation par <code>---</code>.
             </p>
 
-            <textarea rows="14" bind:value={dmsText} placeholder="[Conversation 1]&#10;Prospect: Bonjour, j'ai vu votre post sur...&#10;Moi: Salut ! Oui exactement, ...&#10;---&#10;[Conversation 2]&#10;..."></textarea>
+            <details class="dm-example">
+              <summary class="dm-example-sum mono">Voir un exemple de conversation bien formatée</summary>
+              <pre class="dm-example-body">[Conversation 1]
+Prospect: Bonjour, j'ai vu ton post sur le GTM B2B — t'en penses quoi du PLG pur pour un SaaS vertical ?
+Moi: Salut Marc ! Pour un vertical, le PLG pur est rare — la plupart mixent. T'es à quel stade ?
+Prospect: Pre-seed, on finalise le MVP. 2 early users.
+Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers mois. DM si tu veux creuser.</pre>
+            </details>
+
+            <textarea rows="14" bind:value={dmsText} placeholder="[Conversation 1]&#10;Prospect: ...&#10;Moi: ...&#10;Prospect: ...&#10;Moi: ...&#10;---&#10;[Conversation 2]&#10;..."></textarea>
 
             {#if dmsText.trim()}
               <div class="count-badge count-ok">
                 {dmsText.trim().split(/\n---\n/).filter(d => d.trim().length > 20).length} conversation(s) détectée(s)
+              </div>
+            {/if}
+
+            {#if dmIssues.length > 0}
+              <div class="dm-warn">
+                ⚠ {dmIssues.length === 1 ? "Conversation" : "Conversations"}
+                {dmIssues.map(i => i.idx).join(", ")} :
+                un seul interlocuteur détecté. Colle les deux côtés pour que le clone apprenne la dynamique.
               </div>
             {/if}
 
@@ -588,6 +622,48 @@
   }
 
   .count-badge.count-ok { color: var(--success, #4ade80); }
+
+  .step-desc strong { color: var(--text); font-weight: 600; }
+  .step-desc em { font-style: italic; color: var(--text-secondary); }
+
+  .dm-example {
+    margin-bottom: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .dm-example-sum {
+    cursor: pointer;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    list-style: none;
+  }
+  .dm-example-sum::-webkit-details-marker { display: none; }
+  .dm-example-sum:hover { color: var(--text-secondary); }
+  .dm-example[open] .dm-example-sum { border-bottom: 1px dashed var(--border); }
+  .dm-example-body {
+    margin: 0;
+    padding: 0.75rem;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.75rem;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .dm-warn {
+    font-size: 0.6875rem;
+    color: #b87300;
+    padding: 6px 10px;
+    border-left: 2px solid #b87300;
+    background: rgba(184, 115, 0, 0.08);
+    margin-top: 0.5rem;
+    line-height: 1.4;
+  }
 
   .btn-secondary {
     padding: 0.5rem 0.75rem;
