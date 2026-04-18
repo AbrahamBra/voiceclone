@@ -1,0 +1,74 @@
+import { strict as assert } from "node:assert";
+import { describe, it } from "node:test";
+import { readFileSync } from "node:fs";
+import { extract, deriveState } from "../lib/heat/narrativeSignals.js";
+
+function loadFixture(name) {
+  return JSON.parse(readFileSync(`test/fixtures/heat-conversations/${name}.json`, "utf8"));
+}
+
+describe("narrativeSignals.extract", () => {
+  it("returns empty result for empty fixture", () => {
+    const fx = loadFixture("empty");
+    const result = extract({
+      messages: fx.messages,
+      heatRows: fx.heatRows,
+      now: new Date(fx.now),
+    });
+    assert.deepEqual(result, { signals: [], total: 0 });
+  });
+});
+
+describe("deriveState", () => {
+  it("maps heat ∈ [0, 0.25) to glacé", () => {
+    assert.equal(deriveState(0.10, 0).state, "glacé");
+    assert.equal(deriveState(0.249, 0).state, "glacé");
+  });
+  it("maps heat ∈ [0.25, 0.45) to froid", () => {
+    assert.equal(deriveState(0.25, 0).state, "froid");
+    assert.equal(deriveState(0.449, 0).state, "froid");
+  });
+  it("maps heat ∈ [0.45, 0.65) to tiède", () => {
+    assert.equal(deriveState(0.50, 0).state, "tiède");
+  });
+  it("maps heat ∈ [0.65, 0.85) to chaud", () => {
+    assert.equal(deriveState(0.70, 0).state, "chaud");
+  });
+  it("maps heat ≥ 0.85 to brûlant", () => {
+    assert.equal(deriveState(0.90, 0).state, "brûlant");
+    assert.equal(deriveState(1.00, 0).state, "brûlant");
+  });
+  it("direction montant for delta > 0.03", () => {
+    assert.equal(deriveState(0.5, 0.04).direction, "montant");
+  });
+  it("direction descendant for delta < -0.03", () => {
+    assert.equal(deriveState(0.5, -0.04).direction, "descendant");
+  });
+  it("direction stable for |delta| ≤ 0.03", () => {
+    assert.equal(deriveState(0.5, 0.02).direction, "stable");
+    assert.equal(deriveState(0.5, -0.02).direction, "stable");
+    assert.equal(deriveState(0.5, 0).direction, "stable");
+  });
+  it("null heat returns null state and direction", () => {
+    const r = deriveState(null, null);
+    assert.equal(r.state, null);
+    assert.equal(r.direction, null);
+  });
+});
+
+describe("extract — cold-refusal fixture", () => {
+  const fx = loadFixture("cold-refusal");
+
+  it("emits exactly one cold_lexical signal", () => {
+    const { signals, total } = extract({
+      messages: fx.messages,
+      heatRows: fx.heatRows,
+      now: new Date(fx.now),
+    });
+    assert.equal(total, 1);
+    assert.equal(signals.length, 1);
+    assert.equal(signals[0].kind, "cold_lexical");
+    assert.equal(signals[0].polarity, "neg");
+    assert.match(signals[0].quote, /pas le temps/i);
+  });
+});
