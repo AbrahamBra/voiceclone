@@ -11,6 +11,14 @@
   let personasList = $state([]);
   let activity = $state([]);
 
+  let sortedPersonas = $derived(
+    [...personasList].sort((a, b) => {
+      const sa = a.fidelity?.score_global ?? 999;
+      const sb = b.fidelity?.score_global ?? 999;
+      return sa - sb;
+    })
+  );
+
   // Auth guard
   $effect(() => {
     if (!$isAdmin) goto("/");
@@ -164,14 +172,25 @@
     <section class="section">
       <h2 class="section-title">Personas</h2>
       <div class="persona-grid">
-        {#each personasList as p}
+        {#each sortedPersonas as p}
           <div class="persona-card">
             <div class="persona-header">
               <span class="persona-avatar">{p.avatar || "?"}</span>
-              <div>
+              <div class="persona-header-info">
                 <strong class="persona-name">{p.name}</strong>
                 <span class="persona-owner">{p.client_name}</span>
               </div>
+              {#if p.fidelity}
+                <span
+                  class="fid-badge"
+                  class:fid-ok={p.fidelity.score_global >= 75}
+                  class:fid-warn={p.fidelity.score_global >= 50 && p.fidelity.score_global < 75}
+                  class:fid-bad={p.fidelity.score_global < 50}
+                  title="Fidélité composite: {p.fidelity.score_global}"
+                >
+                  {p.fidelity.score_global}
+                </span>
+              {/if}
             </div>
             <div class="persona-stats">
               <div class="persona-stat">
@@ -187,9 +206,6 @@
                 <span class="persona-stat-lbl">entites</span>
               </div>
             </div>
-            {#if p.fidelity}
-              <div class="admin-fidelity">Fidelite: {p.fidelity.score_global}</div>
-            {/if}
           </div>
         {/each}
       </div>
@@ -415,6 +431,10 @@
     gap: 0.625rem;
     margin-bottom: 0.625rem;
   }
+  .persona-header-info {
+    min-width: 0;
+    flex: 1;
+  }
 
   .persona-avatar {
     width: 28px;
@@ -464,11 +484,17 @@
     color: var(--text-tertiary);
   }
 
-  .admin-fidelity {
+  .fid-badge {
+    padding: 2px 8px;
     font-size: 0.6875rem;
-    color: var(--text-secondary);
-    margin-top: 0.25rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    border: 1px solid;
+    flex-shrink: 0;
   }
+  .fid-ok { border-color: var(--text-tertiary); color: var(--text); }
+  .fid-warn { border-color: #b87300; color: #b87300; }
+  .fid-bad { border-color: var(--vermillon, #e03131); color: var(--vermillon, #e03131); }
 
   /* Activity feed */
   .activity-list {
