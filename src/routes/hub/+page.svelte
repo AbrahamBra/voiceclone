@@ -137,6 +137,9 @@
       {#if $isAdmin}
         <span class="kv kv-admin"><span class="dot"></span><span class="v">admin</span></span>
       {/if}
+      {#if $canCreateClone || $isAdmin}
+        <button class="head-action" onclick={() => goto("/create")}>+ Créer</button>
+      {/if}
     </nav>
   </header>
 
@@ -249,23 +252,10 @@
       </section>
     {/if}
 
-    {#if $canCreateClone || $isAdmin}
-      <section class="hub-section">
-        <h2 class="hub-section-title">Nouveau clone</h2>
-        <button class="action-card" onclick={() => goto("/create")} transition:fly={{ y: 12, delay: personaConfigs.length * 80 + 40, duration: 200 }}>
-          <div class="action-icon">+</div>
-          <div class="action-info">
-            <strong>Créer un clone</strong>
-            <span>A partir d'un profil de reseau social</span>
-          </div>
-        </button>
-      </section>
-    {/if}
-
     {#if $isAdmin}
       <section class="hub-section">
         <h2 class="hub-section-title">Administration</h2>
-        <a href="/admin" class="action-card" transition:fly={{ y: 12, delay: personaConfigs.length * 80 + 120, duration: 200 }}>
+        <a href="/admin" class="action-card" transition:fly={{ y: 12, delay: personaConfigs.length * 80 + 40, duration: 200 }}>
           <div class="action-icon">~</div>
           <div class="action-info">
             <strong>Dashboard admin</strong>
@@ -277,7 +267,7 @@
 
     <section class="hub-section">
       <h2 class="hub-section-title">Ressources</h2>
-      <a href="/guide" class="action-card" transition:fly={{ y: 12, delay: personaConfigs.length * 80 + ($isAdmin ? 200 : 120), duration: 200 }}>
+      <a href="/guide" class="action-card" transition:fly={{ y: 12, delay: personaConfigs.length * 80 + ($isAdmin ? 120 : 40), duration: 200 }}>
         <div class="action-icon">?</div>
         <div class="action-info">
           <strong>Guide d'onboarding</strong>
@@ -336,6 +326,19 @@
     0%, 60%, 100% { opacity: 1; }
     80% { opacity: 0.25; }
   }
+
+  .head-action {
+    padding: 2px 10px;
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid var(--rule-strong);
+    cursor: pointer;
+    transition: border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+    line-height: 1.4;
+  }
+  .head-action:hover { border-color: var(--vermillon); color: var(--vermillon); }
 
   .hub {
     max-width: 620px;
