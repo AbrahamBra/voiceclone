@@ -33,9 +33,12 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
   if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
 
-  // Rate limiting
+  // Rate limiting — rateLimit() became async in migration 017 (Supabase RPC
+  // source of truth). Missing `await` here meant `rl` was a Promise and
+  // `rl.allowed === undefined`, so the guard always tripped → every POST
+  // /api/chat returned 429 since 2026-04-17.
   const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress || "unknown";
-  const rl = rateLimit(ip);
+  const rl = await rateLimit(ip);
   if (!rl.allowed) { res.status(429).json({ error: "Too many requests", retryAfter: rl.retryAfter }); return; }
 
   let client, isAdmin;
