@@ -1,0 +1,25 @@
+{
+  "name": "hassan-immostates",
+  "description": "Thierry × Hassan — discovery dance on fractional vs crowdfunding + accept",
+  "now": "2025-12-10T12:00:00Z",
+  "messages": [
+    { "id": "m1", "role": "bot", "content": "Salut Hassan comment tu vas?", "created_at": "2025-11-20T15:36:00Z" },
+    { "id": "m2", "role": "user", "content": "Salut Gaetan c'est plutôt ton concept dans sa globalité que je trouve intéressant 👍🏽", "created_at": "2025-11-20T17:05:00Z" },
+    { "id": "m3", "role": "bot", "content": "Je suis curieux de savoir, c'est plutôt le marché US, le modèle fractionné, ou les rendements qui t'attirent le plus ?", "created_at": "2025-11-20T18:46:00Z" },
+    { "id": "m4", "role": "user", "content": "Le modèle fractionné que je trouves intéressant même si je penses qu'il n'est pas assez connu du grand public comme un vrai modèle d'investissement pour des revenus passifs… tu penses que c'est dû à quoi ?", "created_at": "2025-11-20T20:00:00Z" },
+    { "id": "m5", "role": "bot", "content": "Je pense que le modèle fractionné est encore peu connu parce qu'il sort des codes habituels de l'immo.", "created_at": "2025-11-20T20:07:00Z" },
+    { "id": "m6", "role": "user", "content": "Parce que tu fais la différence entre le crowdfunding et l'immobilier fractionné ? Au niveau de la réglementation c'est souvent pareil non ?", "created_at": "2025-12-09T16:05:00Z" },
+    { "id": "m7", "role": "bot", "content": "ce que je te propose c'est que l'on continue cette discussion autour d'un call qu'est ce que t'en dis ?", "created_at": "2025-12-10T10:55:00Z" },
+    { "id": "m8", "role": "user", "content": "Oui, avec plaisir", "created_at": "2025-12-10T11:47:00Z" }
+  ],
+  "heatRows": [
+    { "message_id": "m2", "heat": 0.55, "delta": null, "signals": {}, "created_at": "2025-11-20T17:05:00Z" },
+    { "message_id": "m4", "heat": 0.65, "delta": 0.10, "signals": {}, "created_at": "2025-11-20T20:00:00Z" },
+    { "message_id": "m6", "heat": 0.55, "delta": -0.10, "signals": {}, "created_at": "2025-12-09T16:05:00Z" },
+    { "message_id": "m8", "heat": 0.80, "delta": 0.25, "signals": {}, "created_at": "2025-12-10T11:47:00Z" }
+  ],
+  "expected": {
+    "includes_kinds": ["question_back", "accept_call"],
+    "current": { "state": "chaud", "direction": "montant" }
+  }
+}

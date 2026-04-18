@@ -1,0 +1,25 @@
+{
+  "name": "cold-refusal",
+  "description": "Prospect explicitly declines — cold_lexical signal + heat descent",
+  "now": "2026-04-18T12:00:00Z",
+  "messages": [
+    { "id": "m1", "role": "bot", "content": "Salut Marc, comment tu vas ? L'immo fractionné ça te parle ?", "created_at": "2026-04-18T11:00:00Z" },
+    { "id": "m2", "role": "user", "content": "Pas le temps pour ça, plus tard peut-être.", "created_at": "2026-04-18T11:05:00Z" }
+  ],
+  "heatRows": [
+    {
+      "message_id": "m2",
+      "heat": 0.18,
+      "delta": -0.32,
+      "signals": { "len_norm": 0.14, "question_ratio": 0, "recency": 1.0, "lexical": 0.0, "trend": 0.5 },
+      "created_at": "2026-04-18T11:05:00Z"
+    }
+  ],
+  "expected": {
+    "total": 1,
+    "signals": [
+      { "kind": "cold_lexical", "polarity": "neg", "quote_contains": "pas le temps" }
+    ],
+    "current": { "heat": 0.18, "delta": -0.32, "state": "glacé", "direction": "descendant" }
+  }
+}
