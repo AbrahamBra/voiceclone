@@ -72,3 +72,33 @@ describe("extract — cold-refusal fixture", () => {
     assert.match(signals[0].quote, /pas le temps/i);
   });
 });
+
+// Helper: check that signals contains every kind in expected.includes_kinds
+function assertContainsKinds(signals, kinds) {
+  const foundKinds = new Set(signals.map(s => s.kind));
+  for (const k of kinds) {
+    assert.ok(foundKinds.has(k), `expected kind "${k}" in signals, got [${[...foundKinds].join(", ")}]`);
+  }
+}
+
+describe("extract — call-related signals", () => {
+  it("cecilia-bluecoders: detects propose_call", () => {
+    const fx = loadFixture("cecilia-bluecoders");
+    const { signals } = extract({ messages: fx.messages, heatRows: fx.heatRows, now: new Date(fx.now) });
+    assertContainsKinds(signals, fx.expected.includes_kinds);
+    const propose = signals.find(s => s.kind === "propose_call");
+    assert.match(propose.quote, /de vive voix/i);
+  });
+
+  it("edwige-maveilleia: detects propose_call in a single message", () => {
+    const fx = loadFixture("edwige-maveilleia");
+    const { signals } = extract({ messages: fx.messages, heatRows: fx.heatRows, now: new Date(fx.now) });
+    assertContainsKinds(signals, fx.expected.includes_kinds);
+  });
+
+  it("olga-maveilleia: detects accept_call + books_slot + gives_email", () => {
+    const fx = loadFixture("olga-maveilleia");
+    const { signals } = extract({ messages: fx.messages, heatRows: fx.heatRows, now: new Date(fx.now) });
+    assertContainsKinds(signals, fx.expected.includes_kinds);
+  });
+});
