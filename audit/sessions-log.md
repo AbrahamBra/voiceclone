@@ -111,10 +111,40 @@ Avant d'agir :
 
 _(à compléter session par session)_
 
-### Session 2 — [date] · Sprint 0 Fondations
+### Session 2 — 2026-04-18 · Sprint 0 Fondations — Split A (partiel)
 
-**Scope** : _(à renseigner)_
-**Livrables** : _(à renseigner)_
-**Décisions** : _(à renseigner)_
-**Blocages** : _(à renseigner)_
-**Prochaine session** : _(à renseigner)_
+**Durée** : ~1h10 (10 min reconnaissance + 1h Split A amorcé)
+**Scope réel** : démarrage Split A (Étape 1 migration + Étape 2 helper frontend). Session courte → livraison partielle documentée, rien de cassé.
+
+**Livrables produits** :
+- `audit/sprint-0-recon.md` — reconnaissance complète du schéma (tables, migrations, sémantique scenarios, RLS, numérotation) pour que la prochaine session n'ait pas à re-explorer.
+- `supabase/025_sprint0_foundation.sql` — migration écrite, **PAS ENCORE APPLIQUÉE**. Batch 0.c (organizations + organization_id + persona_shares.role) + 0.b additive (enum scenario_canonical 11 valeurs + conversations.scenario_type nullable avec soft backfill). Idempotente, transactionnelle, rollback documenté.
+- `src/lib/scenarios.js` — catalogue frontend canonique (11 scenarios, JSDoc typé), helpers `isScenarioId`, `legacyKeyFor`, `supportedCanonicalScenarios`. Nommée `CANONICAL_SCENARIOS` pour éviter la collision avec `SCENARIOS` de landing-demo.
+- `test/scenarios.test.js` — 16 tests, 100% pass. Verrouille l'ordre canonique, la cohérence kind/legacyKey, les fallbacks legacy jsonb, l'immuabilité du catalogue.
+
+**Décisions tranchées pendant la session** :
+1. Option A (strict additif, dual-write) retenue pour 0.b. Option B (hard migration de personas.scenarios jsonb) reportée hors Sprint 0.
+2. Enum = 11 valeurs (inclusion de `post_coulisse` depuis philosophy.md §6) plutôt que 10 (roadmap.md). Raison : philo canonique + `ALTER TYPE ADD VALUE` ultérieur coûteux.
+3. `persona_shares.role` plutôt que `share_tokens.role` (junction durable vs invitation ephemère).
+4. Numéro migration = `025_` (dernier utilisé = 024). Confirmé : pas de CLI Supabase / pas de runner → application manuelle via SQL Editor.
+5. Nom export = `CANONICAL_SCENARIOS` (pas `SCENARIOS` — collision avec landing-demo).
+
+**État à la fin de la session** :
+- Code committé (voir git log) ✓
+- Tests passés : 238/238 (dont 16 nouveaux sur scenarios) ✓
+- Migration 025 **écrite mais non appliquée à la DB** — à faire en ouverture session suivante.
+- Ni Étape 2 frontend (dropdown scenario switcher in chat), ni 0.a ménage, ni 0.d tracking n'ont été entamés.
+
+**Reste à faire sur Split A** :
+- **Appliquer 025 sur Supabase** (staging puis prod) + lancer les queries de vérification listées en bas du fichier SQL.
+- **Étape 2 frontend** (~14h restantes estimées) : dropdown scenario inline gauche du textarea chat ; nouveau chat → `scenario_type` non-null ; tests E2E création chat par scenario_type.
+
+**Reste à faire sur Split B** (session ultérieure) :
+- 0.a Ménage 9 items (~12h)
+- 0.d Tracking Plausible/Posthog (~4h + décision vendor à trancher)
+
+**Blocages / risques** :
+- Worktrees non nettoyés (29 entrées dans `.claude/worktrees/`) — flag noté dans sprint-0-recon.md, hors scope.
+- `personas.scenarios` jsonb reste un héritage : la restructuration sera un jour nécessaire (probablement Sprint 2-3 quand on introduit des configs per-intent).
+
+**Prochaine session suggérée** : continuation Split A (appliquer 025 + coder Étape 2 frontend). 1 session moyenne (3-4h).
