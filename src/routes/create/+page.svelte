@@ -6,11 +6,10 @@
   import { fly } from "svelte/transition";
 
   let cloneType = $state(null); // 'posts' | 'dm' | 'both'
-  let step = $state('calibration');
+  let step = $state('type');
   let direction = $state(1);
 
   const steps = $derived([
-    'calibration',
     'type',
     'info',
     ...(cloneType !== 'dm'    ? ['posts'] : []),
@@ -18,8 +17,6 @@
     'docs',
   ]);
   const TOTAL = $derived(steps.length);
-  // Steps that appear in the visible progress bar (exclude pre-steps)
-  const BARRED_STEPS = $derived(steps.filter(s => s !== 'calibration' && s !== 'type'));
 
   // Step 1: Infos générales
   let linkedinUrl = $state("");
@@ -206,13 +203,11 @@
   <div class="create-container">
     <h2>Créer un clone</h2>
     <p class="create-subtitle">
-      {#if step !== 'calibration' && step !== 'type'}
-        Étape {BARRED_STEPS.indexOf(step) + 1}/{BARRED_STEPS.length}
-      {/if}
+      Étape {steps.indexOf(step) + 1}/{TOTAL}
     </p>
-    <div class="step-bar" aria-hidden={step === 'calibration' || step === 'type'}>
-      {#each BARRED_STEPS as s, i}
-        <div class="step-bar-item" class:active={BARRED_STEPS.indexOf(step) >= i}></div>
+    <div class="step-bar">
+      {#each steps as _, i}
+        <div class="step-bar-item" class:active={steps.indexOf(step) >= i}></div>
       {/each}
     </div>
 
@@ -222,95 +217,7 @@
         in:fly={{ x: 100 * direction, duration: 250 }}
         out:fly={{ x: -100 * direction, duration: 200 }}
       >
-        {#if step === 'calibration'}
-          <!-- Step 0: Calibration — rubric + scrape-first -->
-          <div class="create-step">
-            <div class="step-header">
-              <strong>Calibration du clone</strong>
-              <span>Avant de commencer, voici ce que le clone apprend — et d'où.</span>
-            </div>
-
-            <ol class="rubric">
-              <li class="rubric-row">
-                <span class="rubric-idx mono">01</span>
-                <div class="rubric-body">
-                  <div class="rubric-name">Profil</div>
-                  <div class="rubric-desc">Nom, poste, bio. Sert de baseline d'identité et de positionnement.</div>
-                </div>
-                <span class="rubric-src mono">LinkedIn /in/&lt;toi&gt;</span>
-              </li>
-              <li class="rubric-row">
-                <span class="rubric-idx mono">02</span>
-                <div class="rubric-body">
-                  <div class="rubric-name">Posts publics</div>
-                  <div class="rubric-desc">Style d'écriture long-form : rythme, ponctuation, mots signature, forbidden words détectés.</div>
-                </div>
-                <span class="rubric-src mono">tes posts LinkedIn</span>
-              </li>
-              <li class="rubric-row">
-                <span class="rubric-idx mono">03</span>
-                <div class="rubric-body">
-                  <div class="rubric-name">DMs 1:1 (optionnel)</div>
-                  <div class="rubric-desc">Style conversationnel : longueur, informalité, patterns de questions.</div>
-                </div>
-                <span class="rubric-src mono">copier-coller tes DMs</span>
-              </li>
-              <li class="rubric-row">
-                <span class="rubric-idx mono">04</span>
-                <div class="rubric-body">
-                  <div class="rubric-name">Documents métier (optionnel)</div>
-                  <div class="rubric-desc">Offre, méthode, cas client. Alimente le retrieval au moment de répondre.</div>
-                </div>
-                <span class="rubric-src mono">txt · pdf · docx</span>
-              </li>
-            </ol>
-
-            <div class="calib-divider" role="separator"></div>
-
-            <div class="calib-primary">
-              <label class="calib-label mono" for="calib-url">LinkedIn URL — auto-remplit profil et posts</label>
-              <div class="scrape-row">
-                <input
-                  id="calib-url"
-                  type="text"
-                  placeholder="linkedin.com/in/..."
-                  bind:value={linkedinUrl}
-                  disabled={scraping}
-                  onkeydown={(e) => { if (e.key === 'Enter' && linkedinUrl.trim() && !scraping) scrapeLinkedIn(); }}
-                />
-                <button
-                  class="btn-primary"
-                  onclick={scrapeLinkedIn}
-                  disabled={scraping || !linkedinUrl.trim()}
-                >
-                  {scraping ? "Récupération…" : "Scraper"}
-                </button>
-              </div>
-              {#if scrapeStatus}
-                <div class="scrape-status" class:scrape-status-success={scrapeSuccess}>{scrapeStatus}</div>
-              {/if}
-              {#if scrapeSuccess}
-                <div class="calib-recap">
-                  <div class="recap-line"><span class="mono">profil</span> <span>{personaName}{personaTitle ? ` · ${personaTitle}` : ''}</span></div>
-                  {#if postsText}
-                    <div class="recap-line"><span class="mono">posts</span> <span>{postsText.split(/\n---\n/).filter(p => p.trim().length > 30).length} détectés</span></div>
-                  {/if}
-                </div>
-              {/if}
-            </div>
-
-            <div class="calib-secondary mono">
-              Pas de LinkedIn ? <button class="link-btn" onclick={() => { nextStep(); }}>Continuer sans scrape →</button>
-            </div>
-
-            <div class="create-actions">
-              <button onclick={nextStep} disabled={scraping}>
-                {scrapeSuccess ? "Continuer →" : "Continuer sans scrape"}
-              </button>
-            </div>
-          </div>
-
-        {:else if step === 'type'}
+        {#if step === 'type'}
           <div class="create-step">
             <div class="step-header">
               <strong>Pourquoi créer ce clone ?</strong>
@@ -576,124 +483,6 @@
   .create-step-wrap {
     position: relative;
   }
-
-  /* ─── Calibration step (step 0) ─────────────────── */
-  .rubric {
-    list-style: none;
-    padding: 0;
-    margin: 8px 0 12px;
-    border: 1px solid var(--rule-strong);
-    background: var(--paper-subtle);
-  }
-  .rubric-row {
-    display: grid;
-    grid-template-columns: 32px 1fr auto;
-    align-items: baseline;
-    gap: 10px;
-    padding: 10px 12px;
-    border-bottom: 1px dashed var(--rule);
-  }
-  .rubric-row:last-child { border-bottom: 0; }
-  .rubric-idx {
-    font-size: var(--fs-micro);
-    font-weight: var(--fw-semi);
-    color: var(--vermillon);
-  }
-  .rubric-body { min-width: 0; }
-  .rubric-name {
-    font-family: var(--font-ui);
-    font-size: var(--fs-body);
-    font-weight: var(--fw-medium);
-    color: var(--ink);
-    margin-bottom: 2px;
-  }
-  .rubric-desc {
-    font-family: var(--font-ui);
-    font-size: var(--fs-small);
-    color: var(--ink-70);
-    line-height: var(--lh-snug);
-  }
-  .rubric-src {
-    justify-self: end;
-    font-size: var(--fs-nano);
-    text-transform: uppercase;
-    letter-spacing: var(--ls-caps);
-    color: var(--ink-40);
-    white-space: nowrap;
-  }
-
-  .calib-divider {
-    height: 1px;
-    background: var(--rule-strong);
-    margin: 16px 0 12px;
-  }
-  .calib-primary { margin-bottom: 8px; }
-  .calib-label {
-    display: block;
-    font-size: var(--fs-nano);
-    text-transform: uppercase;
-    letter-spacing: var(--ls-caps);
-    color: var(--ink-40);
-    margin-bottom: 6px;
-  }
-
-  .btn-primary {
-    padding: 10px 16px;
-    background: var(--ink);
-    color: var(--paper);
-    border: 1px solid var(--ink);
-    font-family: var(--font-mono);
-    font-size: var(--fs-tiny);
-    min-height: var(--touch-min);
-    cursor: pointer;
-    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
-  }
-  .btn-primary:hover:not(:disabled) {
-    background: var(--vermillon);
-    border-color: var(--vermillon);
-  }
-  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  .calib-recap {
-    margin-top: 8px;
-    padding: 8px 10px;
-    background: var(--paper-subtle);
-    border-left: 2px solid var(--vermillon);
-    font-size: var(--fs-small);
-  }
-  .recap-line {
-    display: grid;
-    grid-template-columns: 60px 1fr;
-    gap: 10px;
-    padding: 2px 0;
-    color: var(--ink-70);
-  }
-  .recap-line .mono {
-    font-size: var(--fs-nano);
-    text-transform: uppercase;
-    letter-spacing: var(--ls-caps);
-    color: var(--ink-40);
-  }
-
-  .calib-secondary {
-    margin-top: 10px;
-    font-size: var(--fs-tiny);
-    color: var(--ink-40);
-  }
-  .link-btn {
-    background: transparent;
-    border: none;
-    color: var(--vermillon);
-    font-family: var(--font-mono);
-    font-size: var(--fs-tiny);
-    padding: 4px 0;
-    cursor: pointer;
-    border-bottom: 1px dashed var(--vermillon);
-    min-height: var(--touch-min);
-    display: inline-flex;
-    align-items: center;
-  }
-  .link-btn:hover { color: var(--vermillon-dim); }
 
   .create-step {
     margin-top: 1.25rem;
