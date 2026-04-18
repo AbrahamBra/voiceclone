@@ -40,6 +40,10 @@ export default async function handler(req, res) {
       name: persona.name,
       title: persona.title,
       avatar: persona.avatar,
+      // type drives ScenarioSwitcher filtering on the frontend
+      // ('posts' | 'dm' | 'both' per migration 008). Exposing it is safe —
+      // it's already implicitly leaked by the scenarios dict shape.
+      type: persona.type || null,
       scenarios,
       theme: persona.theme,
     });

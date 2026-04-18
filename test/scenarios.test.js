@@ -131,6 +131,28 @@ describe("supportedCanonicalScenarios", () => {
     assert.deepEqual(supportedCanonicalScenarios({}), []);
   });
 
+  test("legacy fallback: 'qualification' key treated as DM signal", () => {
+    // Real-world case: Thomas/Paolo personas have {qualification, default}
+    // as scenarios keys. Without type column, we still want DM canonicals.
+    const ids = supportedCanonicalScenarios({
+      type: null,
+      scenarios: { qualification: {}, default: {} },
+    });
+    assert.equal(ids.length, 4);
+    assert.ok(ids.every((id) => CANONICAL_SCENARIOS[id].kind === "dm"));
+  });
+
+  test("legacy fallback: ambiguous keys only ('default') → all 11 shown", () => {
+    // "default" alone is ambiguous — both post and DM personas carry it.
+    // Preferable to expose all and let user pick than to hide DM choices
+    // from a DM-only persona (the bug that motivated this branch).
+    const ids = supportedCanonicalScenarios({
+      type: null,
+      scenarios: { default: {} },
+    });
+    assert.equal(ids.length, 11);
+  });
+
   test("returns a fresh array — mutating output must not affect SCENARIO_IDS", () => {
     const ids = supportedCanonicalScenarios({ type: "both" });
     ids.pop();

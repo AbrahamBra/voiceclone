@@ -144,10 +144,19 @@ export function supportedCanonicalScenarios(persona) {
   if (type === "dm") return filterByKind("dm");
   if (type === "both") return [...SCENARIO_IDS];
 
-  // Legacy fallback : some personas may predate the type column backfill.
+  // Legacy fallback (only hit when the backend forgot to include type,
+  // or for a persona predating migration 008). We derive support strictly
+  // from explicit jsonb keys. "default" is NOT treated as evidence of
+  // post-support — DM-only personas almost always carry a "default" entry
+  // too, which used to mis-classify them as post-supporting.
   const keys = new Set(Object.keys(persona.scenarios ?? {}));
-  const supportsPost = keys.has("post") || keys.has("default");
-  const supportsDm = keys.has("dm");
+  const supportsPost = keys.has("post");
+  const supportsDm = keys.has("dm") || keys.has("qualification");
+  if (!supportsPost && !supportsDm) {
+    // Only ambiguous keys (e.g. just { default }) — show everything and
+    // let the user pick rather than silently hide canonical scenarios.
+    return keys.size > 0 ? [...SCENARIO_IDS] : [];
+  }
   return SCENARIO_IDS.filter((id) => {
     const kind = CANONICAL_SCENARIOS[id].kind;
     return (kind === "post" && supportsPost) || (kind === "dm" && supportsDm);
