@@ -14,6 +14,7 @@
   } from "$lib/stores/chat.js";
   import { showToast } from "$lib/stores/ui.js";
   import { api, authHeaders } from "$lib/api.js";
+  import { track } from "$lib/tracking.js";
   import { streamChat } from "$lib/sse.js";
   import { legacyKeyFor, isScenarioId } from "$lib/scenarios.js";
   import ChatMessage from "$lib/components/ChatMessage.svelte";
@@ -320,6 +321,11 @@
       { id: userId, role: "user", content: text, timestamp: now },
       { id: botId, role: "bot", content: "", typing: true, timestamp: now },
     ]);
+
+    track("message_sent", {
+      scenario_type: $currentScenarioType || $currentScenario || "default",
+      persona_id: personaId,
+    });
 
     let botText = "";
 

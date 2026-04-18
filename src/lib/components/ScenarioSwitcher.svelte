@@ -13,6 +13,7 @@
     CANONICAL_SCENARIOS,
     supportedCanonicalScenarios,
   } from "$lib/scenarios.js";
+  import { track } from "$lib/tracking.js";
 
   /**
    * @typedef {import("$lib/scenarios.js")} ScenariosModule
@@ -71,6 +72,7 @@
   function pick(/** @type {ScenarioId} */ id) {
     open = false;
     if (id === value) return;
+    track("scenario_switched", { from: value ?? "none", to: id });
     onchange(id);
   }
 

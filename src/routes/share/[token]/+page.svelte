@@ -4,6 +4,7 @@
   import { fade } from "svelte/transition";
   import { accessCode, sessionToken } from "$lib/stores/auth.js";
   import { authHeaders } from "$lib/api.js";
+  import { track } from "$lib/tracking.js";
 
   let state = $state("loading"); // loading | login | preview | already | claimed | error
   let persona = $state(null);
@@ -76,6 +77,7 @@
         return;
       }
       state = "claimed";
+      track("share_claimed", {});
     } catch {
       errorMsg = "Erreur de connexion";
       state = "error";

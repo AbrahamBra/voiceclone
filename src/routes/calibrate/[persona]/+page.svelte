@@ -4,6 +4,7 @@
   import { api } from "$lib/api.js";
   import { showToast } from "$lib/stores/ui.js";
   import { renderMarkdown } from "$lib/utils.js";
+  import { track } from "$lib/tracking.js";
 
   let personaId = $derived($page.data.personaId);
 
@@ -66,6 +67,7 @@
         body: JSON.stringify({ persona: personaId, ratings: payload }),
       });
       if (data.message) showToast(data.message);
+      track("correction_submitted", { source: "calibrate" });
     } catch {
       // silent
     }

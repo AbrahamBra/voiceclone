@@ -3,6 +3,7 @@
   import { api } from "$lib/api.js";
   import { showToast } from "$lib/stores/ui.js";
   import { extractFileText } from "$lib/file-extraction.js";
+  import { track } from "$lib/tracking.js";
   import { fly } from "svelte/transition";
 
   let cloneType = $state(null); // 'posts' | 'dm' | 'both'
@@ -149,6 +150,10 @@
         }),
       });
       persona = data.persona;
+      track("clone_created", {
+        type: cloneType,
+        has_docs: pendingFiles.filter(f => f.status === "pending").length > 0,
+      });
     } catch (err) {
       if (err.status === 402) {
         generateStatus = "Budget dépassé. Ajoutez votre clé API dans les paramètres.";

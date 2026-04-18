@@ -6,6 +6,7 @@
   import { personas, canCreateClone, personaConfig, currentPersonaId } from "$lib/stores/persona.js";
   import { showToast } from "$lib/stores/ui.js";
   import { api, authHeaders } from "$lib/api.js";
+  import { track } from "$lib/tracking.js";
   import StyleFingerprint from "$lib/components/StyleFingerprint.svelte";
 
   /** @type {Array<{persona: any, config: any, scenarios: Array<{key: string, label: string, description: string}>}>} */
@@ -100,6 +101,7 @@
       });
       if (!resp.ok) throw new Error("Failed");
       const { token } = await resp.json();
+      track("share_created", { persona_id: personaId });
       const url = `${window.location.origin}/share/${token}`;
       await navigator.clipboard.writeText(url);
       showToast("Lien de partage copie !");
