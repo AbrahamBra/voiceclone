@@ -138,3 +138,18 @@ describe("extract — outbound-only signals", () => {
     assert.ok(!kinds.has("relance_unanswered"), "no consecutive outbounds here");
   });
 });
+
+describe("extract — priority ordering", () => {
+  it("sorts signals from the same message by kind priority", () => {
+    const messages = [
+      { id: "b1", role: "bot", content: "On se cale un call ?", created_at: "2026-04-18T10:00:00Z" },
+      { id: "u1", role: "user", content: "Oui, mon email : test@example.com", created_at: "2026-04-18T10:01:00Z" },
+    ];
+    const heatRows = [
+      { message_id: "u1", heat: 0.8, delta: 0.3, signals: {}, created_at: "2026-04-18T10:01:00Z" },
+    ];
+    const { signals } = extract({ messages, heatRows, now: new Date("2026-04-18T10:05:00Z") });
+    const kinds = signals.filter(s => s.message_id === "u1").map(s => s.kind);
+    assert.deepEqual(kinds, ["accept_call", "gives_email"]);
+  });
+});
