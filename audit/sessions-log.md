@@ -199,3 +199,11 @@ _(à compléter session par session)_
 - Thierry orpheline : fixé en Session 3 (attaché Brahim)
 
 **Prochaine session suggérée** : Split B (ménage 0.a + tracking 0.d). Décision vendor tracking à pré-trancher (Plausible simple vs Posthog funnels riches).
+
+**Addenda post-déploiement prod (2 hotfixes)** :
+- `8f41fcb fix(sprint-0): expose persona.type in /api/config + harden scenario fallback` — le switcher affichait 7 canoniques post pour des personas DM parce que `/api/config` strippait `persona.type`. Symptôme AhmetA : "tous les scenarios sont des scenarios de posts même pour les DM". Fix : exposer `type` au payload + durcir fallback legacy (plus de "default" = post, ajoute "qualification" = DM).
+- `f81ff7f fix(chat): await rateLimit() — was silently returning 429 on every POST` — bug pré-existant legacy (commit 982b04c du 17/04), non lié à Sprint 0 : `rateLimit()` a été migré async (migration 017 Supabase RPC) mais le call-site `chat.js` n'avait pas reçu le `await`. Chat prod cassé depuis 24h, non détecté parce que `vite dev` ne sert pas `api/`. Révélé par les tests Sprint 0.b. `clone.js` avait déjà le await — seul `chat.js` manquait.
+
+**Validation finale dual-write** : conv créée via switcher persiste `scenario: "post", scenario_type: "post_prise_position"` comme attendu.
+
+**Leçon ops pour Split B** : local dev `vercel dev` (pas `vite dev`) ou smoke test CI sur `POST /api/chat` pour détecter les régressions serverless-only.
