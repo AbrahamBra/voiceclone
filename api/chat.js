@@ -142,13 +142,26 @@ export default async function handler(req, res) {
   }
 
   // Build system prompt (pure function)
-  const { prompt: systemPrompt } = buildSystemPrompt({
+  const {
+    prompt: systemPrompt,
+    detectedPages,
+    injectedEntities,
+    injectedCorrectionsCount,
+  } = buildSystemPrompt({
     persona,
     knowledgeMatches,
     scenarioContent,
     corrections,
     ontology,
   });
+
+  // Audit trail: what actually shaped THIS response — sent to the UI so the
+  // user can see "why did the clone say that?" instead of a black box.
+  const sources = {
+    knowledgePages: detectedPages || [],
+    entities: injectedEntities || [],
+    correctionsCount: injectedCorrectionsCount || 0,
+  };
 
   const sse = initSSE(res);
   const apiKey = getApiKey(client);
@@ -256,6 +269,7 @@ export default async function handler(req, res) {
       model: routing.model,
       personaId: persona.id,
       conversationId: convId || null,
+      sources,
       rhythmCtx: {
         isFirstContact: !convId || (Array.isArray(messages) && messages.length <= 1),
         personaOverrides: Array.isArray(persona.voice?.setter_overrides) ? persona.voice.setter_overrides : [],

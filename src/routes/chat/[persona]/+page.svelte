@@ -346,6 +346,7 @@
                     fidelity: evt?.fidelity || null,
                     live_style: evt?.live_style || null,
                     violations: evt?.violations || [],
+                    sources: evt?.sources || null,
                   }
                 : m
             )
