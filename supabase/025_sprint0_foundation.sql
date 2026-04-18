@@ -15,11 +15,16 @@
 --   - RLS consistent with 019_rls_baseline.sql (service_role bypass).
 --
 -- Application : manual via Supabase SQL Editor.
--- Verification queries listed at bottom (run after COMMIT).
+-- NOTE pooler : le SQL Editor Supabase passe par supavisor (transaction-pooled),
+-- qui ne garantit pas qu'un BEGIN/COMMIT explicite soit honoré à travers tous
+-- les statements d'un script (chaque statement peut atterrir sur une connexion
+-- différente). Cette migration se passe donc de BEGIN/COMMIT. Atomicité perdue
+-- mais idempotence conservée (IF NOT EXISTS + NOT EXISTS partout) → réappliquer
+-- est sûr si une étape échoue.
+-- Si tu tiens à l'atomicité, exécute en 3 blocs (voir séparateurs "section").
+-- Verification queries listed at bottom.
 -- Rollback notes at bottom (all reversible).
 -- ============================================================
-
-BEGIN;
 
 -- ============================================================
 -- 0.c — Organizations + agence-first readiness
@@ -164,8 +169,6 @@ END
 FROM personas p
 WHERE cv.persona_id = p.id AND cv.scenario_type IS NULL;
 
-COMMIT;
-
 -- ============================================================
 -- Post-apply verification (run manually after COMMIT)
 -- ============================================================
@@ -192,17 +195,16 @@ COMMIT;
 -- ============================================================
 -- Rollback (manual, only if needed ; migration is safe to keep)
 -- ============================================================
--- BEGIN;
---   ALTER TABLE conversations DROP COLUMN IF EXISTS scenario_type;
---   DROP INDEX IF EXISTS idx_conversations_scenario_type;
---   DROP TYPE IF EXISTS scenario_canonical;
---   ALTER TABLE persona_shares DROP CONSTRAINT IF EXISTS persona_shares_role_check;
---   ALTER TABLE persona_shares DROP COLUMN IF EXISTS role;
---   ALTER TABLE conversations DROP COLUMN IF EXISTS organization_id;
---   ALTER TABLE personas      DROP COLUMN IF EXISTS organization_id;
---   ALTER TABLE clients       DROP COLUMN IF EXISTS organization_id;
---   DROP INDEX IF EXISTS idx_conversations_org;
---   DROP INDEX IF EXISTS idx_personas_org;
---   DROP INDEX IF EXISTS idx_clients_org;
---   DROP TABLE IF EXISTS organizations CASCADE;
--- COMMIT;
+-- Exécuter dans l'ordre (pas de BEGIN/COMMIT — pooler Supabase, cf. note plus haut).
+-- ALTER TABLE conversations DROP COLUMN IF EXISTS scenario_type;
+-- DROP INDEX IF EXISTS idx_conversations_scenario_type;
+-- DROP TYPE IF EXISTS scenario_canonical;
+-- ALTER TABLE persona_shares DROP CONSTRAINT IF EXISTS persona_shares_role_check;
+-- ALTER TABLE persona_shares DROP COLUMN IF EXISTS role;
+-- ALTER TABLE conversations DROP COLUMN IF EXISTS organization_id;
+-- ALTER TABLE personas      DROP COLUMN IF EXISTS organization_id;
+-- ALTER TABLE clients       DROP COLUMN IF EXISTS organization_id;
+-- DROP INDEX IF EXISTS idx_conversations_org;
+-- DROP INDEX IF EXISTS idx_personas_org;
+-- DROP INDEX IF EXISTS idx_clients_org;
+-- DROP TABLE IF EXISTS organizations CASCADE;
