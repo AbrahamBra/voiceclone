@@ -114,7 +114,9 @@ On each new clone message:
 | `propose_call` | prospect message initiates call (`on peut en discuter de vive voix`, `on bloque une visio`, `booker un call`, `je suis disponible`) | "Propose le call elle-même" | prospect msg snippet |
 | `gives_email` | prospect message matches email regex | "Donne son email" | matched email (masked) |
 | `books_slot` | prospect message confirms slot (`j'ai booké`, `c'est fait`, date + heure pattern) | "Confirme un créneau" | prospect msg snippet |
-| `business_context` | prospect message word count ≥ 80 (same measure as `normLength` in `prospectHeat.js` — `(content.match(/\S+/g) \|\| []).length`) AND contains business terms (`client`, `équipe`, `biz`, `marché`, `portfolio`, role titles) | "Détaille son contexte" | first sentence up to 120 chars |
+| `business_context` | prospect message word count ≥ 25 (measured via `(content.match(/\S+/g) \|\| []).length` — same counter as `normLength` in `prospectHeat.js`) AND contains business terms (`client`, `équipe`, `biz`, `marché`, `portfolio`, role titles, `investissement`, `presta`, `acquisition`, asset types) | "Détaille son contexte" | first sentence up to 120 chars |
+
+**Note (post-implementation calibration):** the original 80-word threshold was too high for typical French LinkedIn DMs (which run 25-60 words). Calibration against real-fixture conversations (Nathalie ~47 words, Daniel ~29 words) led to lowering to 25. Revisit once we have telemetry on false-positive rate.
 | `positive_interest` | prospect lexical_score ≥ 0.75 AND no other rule triggered | "Verbalise intérêt" | matched positive word's sentence |
 | `question_back` | prospect message ends with "?" AND contains curiosity markers (`comment`, `pourquoi`, `tu peux m'en dire plus`) | "Pose une question en retour" | the question |
 | `ghost_2days` | last outbound from clone, no inbound for ≥48h | "2+ jours de silence" | nombre de jours |
