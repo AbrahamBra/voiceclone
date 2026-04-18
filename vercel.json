@@ -1,6 +1,7 @@
 {
   "framework": "sveltekit",
   "buildCommand": "vite build",
+  "devCommand": "vite dev --port $PORT",
   "outputDirectory": ".svelte-kit/output",
   "functions": {
     "api/chat.js": { "maxDuration": 60 },
