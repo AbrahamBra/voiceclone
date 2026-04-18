@@ -11,6 +11,7 @@
   let errorMsg = $state("");
   let code = $state("");
   let claiming = $state(false);
+  let sharedByName = $state(null);
 
   const token = $page.params.token;
 
@@ -36,6 +37,7 @@
       const data = await resp.json();
       persona = data.persona;
       personaId = data.persona_id;
+      sharedByName = data.shared_by_name || null;
       state = data.already_shared ? "already" : "preview";
     } catch {
       errorMsg = "Erreur de connexion";
@@ -102,6 +104,9 @@
         <div class="avatar">{persona?.avatar || "?"}</div>
         <h2>{persona?.name || "Clone"}</h2>
         {#if persona?.title}<p class="muted">{persona.title}</p>{/if}
+        {#if sharedByName}
+          <p class="shared-by">Partagé par <strong>{sharedByName}</strong></p>
+        {/if}
       </div>
       <p>On vous partage ce clone. Voulez-vous l'ajouter a votre compte ?</p>
       <button class="btn-primary" onclick={claimShare} disabled={claiming}>
@@ -117,9 +122,11 @@
       <button class="btn-primary" onclick={() => goto("/")}>Retour</button>
 
     {:else if state === "claimed"}
-      <h2>Clone ajoute !</h2>
-      <p class="muted">Le clone est maintenant disponible dans votre hub.</p>
-      <button class="btn-primary" onclick={() => goto("/")}>Aller au hub</button>
+      <h2>Clone ajouté !</h2>
+      <p class="muted">Tu peux commencer à l'utiliser directement.</p>
+      <button class="btn-primary" onclick={() => goto(`/chat/${personaId}`)}>
+        Ouvrir chat direct
+      </button>
 
     {:else if state === "error"}
       <h2>Erreur</h2>
@@ -231,5 +238,15 @@
     font-size: 0.8125rem;
     line-height: 1.5;
     margin: 0 0 0.5rem;
+  }
+
+  .shared-by {
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+    margin: 0.25rem 0 0.75rem;
+  }
+  .shared-by strong {
+    color: var(--text-secondary);
+    font-weight: 600;
   }
 </style>

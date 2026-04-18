@@ -50,7 +50,7 @@ export default async function handler(req, res) {
 
     const { data: st } = await supabase
       .from("share_tokens")
-      .select("persona_id, expires_at, personas(name, title, avatar)")
+      .select("persona_id, expires_at, personas(name, title, avatar), creator:clients!share_tokens_created_by_fkey(name)")
       .eq("token", token)
       .single();
 
@@ -73,6 +73,7 @@ export default async function handler(req, res) {
     res.json({
       persona: st.personas,
       persona_id: st.persona_id,
+      shared_by_name: st.creator?.name || null,
       already_shared: alreadyShared,
     });
     return;
