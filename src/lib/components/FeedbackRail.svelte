@@ -53,6 +53,7 @@
     switch (type) {
       case "validated": return "✓";
       case "validated_edited": return "✓*";
+      case "client_validated": return "✓✓";
       case "corrected": return "✎";
       case "saved_rule": return "📏";
       default: return "·";
@@ -63,6 +64,7 @@
     switch (type) {
       case "validated": return "validé";
       case "validated_edited": return "validé (édité)";
+      case "client_validated": return "c'est ça (client)";
       case "corrected": return "corrigé";
       case "saved_rule": return "règle enregistrée";
       default: return type;
