@@ -334,9 +334,9 @@
             <div class="metric">
               <div class="m-head">
                 <span class="m-name mono">{m.name}</span>
-                <span class="m-val mono">{fmtNum(m.value, m.name === "collapse_idx" || m.name === "kurtosis" ? 1 : 2)}</span>
+                <span class="m-val mono">{fmtNum(m.value, m.name === "collapse" || m.name === "kurtosis" ? 1 : 2)}</span>
               </div>
-              <div class="m-bar"><div class="m-bar-fill" style="width: {Math.min(100, (m.name === 'collapse_idx' ? m.value : m.value * 50))}%"></div></div>
+              <div class="m-bar"><div class="m-bar-fill" style="width: {Math.min(100, (m.name === 'collapse' ? m.value : m.value * 50))}%"></div></div>
             </div>
           {/each}
         </div>

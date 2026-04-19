@@ -21,16 +21,29 @@
   let pulseKey = $state(0);
   let pulsing = $state(false);
   let lastSig = $state("");
+  // Track previous fidelity for Δ display (matches landing panel 05 parity).
+  let prevFidelity = $state(null);
 
   $effect(() => {
     const sig = JSON.stringify([fidelity, collapseIdx, breakdown]);
     if (sig === lastSig) return;
+    // Capture previous fidelity BEFORE accepting the new value as current.
+    if (pulseKey > 0 && fidelity !== null && lastSig) {
+      try {
+        const [prevFid] = JSON.parse(lastSig);
+        if (prevFid !== null && prevFid !== fidelity) prevFidelity = prevFid;
+      } catch { /* malformed sig — skip */ }
+    }
     lastSig = sig;
     if (pulseKey === 0) { pulseKey = 1; return; } // skip initial mount
     pulsing = true;
     const id = setTimeout(() => { pulsing = false; }, 600);
     return () => clearTimeout(id);
   });
+
+  let fidDelta = $derived(
+    fidelity !== null && prevFidelity !== null ? fidelity - prevFidelity : null
+  );
 
   // Live fidelity state for color (mirror cockpit logic).
   let fidelityState = $derived(
@@ -85,7 +98,11 @@
       <span class="sh-name">fidélité</span>
     </div>
     <div class="fid-big mono">{fmt(fidelity, 3)}</div>
-    <div class="fid-thresh mono">seuil {FIDELITY_THRESHOLD.toFixed(3)}</div>
+    {#if fidDelta !== null}
+      <div class="fid-delta mono" class:negative={fidDelta < 0}>Δ {fidDelta >= 0 ? '+' : ''}{fmt(fidDelta, 3)}</div>
+    {:else}
+      <div class="fid-thresh mono">seuil {FIDELITY_THRESHOLD.toFixed(3)}</div>
+    {/if}
     <div class="fid-bar">
       <div class="fid-bar-fill" style="width: {Math.max(0, Math.min(100, (fidelity ?? 0) * 100))}%"></div>
       <div class="fid-bar-threshold" style="left: {FIDELITY_THRESHOLD * 100}%"></div>
@@ -184,7 +201,7 @@
   .fid-big {
     grid-column: 2;
     grid-row: 1;
-    font-size: 22px;
+    font-size: 28px;
     font-weight: 500;
     color: var(--ink, #1a1a1a);
     letter-spacing: -0.02em;
@@ -199,6 +216,14 @@
     font-size: 9.5px;
     color: var(--ink-40, #9a9690);
   }
+  .fid-delta {
+    grid-column: 2;
+    grid-row: 2;
+    font-size: 11px;
+    color: var(--ink-40, #9a9690);
+    font-variant-numeric: tabular-nums;
+  }
+  .fid-delta.negative { color: var(--vermillon, #d93e30); }
   .fid-bar {
     grid-column: 2;
     grid-row: 3;
