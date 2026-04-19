@@ -129,7 +129,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  let { linkedin_text, posts, dms, documents, name, cloneType } = req.body || {};
+  let { linkedin_text, posts, dms, documents, name, cloneType, client_label } = req.body || {};
 
   const validTypes = ['posts', 'dm', 'both'];
   if (cloneType && !validTypes.includes(cloneType)) {
@@ -247,6 +247,8 @@ export default async function handler(req, res) {
     // Step 4: Save to Supabase
     const slug = personaConfig.name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
 
+    const cleanLabel = typeof client_label === "string" ? client_label.trim().slice(0, 120) : null;
+
     const { data: persona, error: insertErr } = await supabase
       .from("personas")
       .insert({
@@ -260,6 +262,7 @@ export default async function handler(req, res) {
         voice: personaConfig.voice,
         scenarios: personaConfig.scenarios,
         theme: personaConfig.theme || { accent: "#2563eb", background: "#0a0a0a", surface: "#141414", text: "#e5e5e5" },
+        client_label: cleanLabel || null,
       })
       .select()
       .single();

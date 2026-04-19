@@ -153,7 +153,7 @@
       class="gauge-help"
       class:pulse={hintPulse}
       onclick={toggleGlossary}
-      aria-label="Comment lire la santé du style ?"
+      aria-label="Aide — lire les métriques, corriger, changer de clone"
       aria-expanded={glossaryOpen}
     >?</button>
   </div>
@@ -162,32 +162,56 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="glossary-backdrop" onclick={toggleGlossary}></div>
-    <aside class="glossary" role="dialog" aria-label="Glossaire laboratoire">
+    <aside class="glossary" role="dialog" aria-label="Aide contextuelle">
       <header class="gl-head">
-        <span class="gl-title mono">glossaire · santé du style</span>
+        <span class="gl-title mono">aide · rapide</span>
         <button class="gl-close" onclick={toggleGlossary} aria-label="Fermer">×</button>
       </header>
-      <dl class="gl-body">
-        <dt class="mono">style sain</dt>
-        <dd>Collapse ≥ 70 <strong>et</strong> fidélité ≥ 0.720 <strong>et</strong> aucune règle d'anti-pattern active. Le clone parle comme votre persona.</dd>
 
-        <dt class="mono">style alerte</dt>
-        <dd>Collapse entre 50 et 70, <strong>ou</strong> des règles d'anti-pattern sont actives. Signal faible — à surveiller.</dd>
+      <div class="gl-section">
+        <h3 class="gl-sec-title mono">santé du style</h3>
+        <dl class="gl-body">
+          <dt class="mono">style sain</dt>
+          <dd>Collapse ≥ 70 <strong>et</strong> fidélité ≥ 0.720 <strong>et</strong> aucune règle d'anti-pattern active.</dd>
 
-        <dt class="mono">style dérive</dt>
-        <dd>Collapse &lt; 50 <strong>ou</strong> fidélité &lt; 0.720. Le style s'effondre vers un LLM générique — une passe de réécriture est déclenchée.</dd>
+          <dt class="mono">style alerte</dt>
+          <dd>Collapse 50–70, <strong>ou</strong> règles actives. Signal faible, à surveiller.</dd>
 
-        <dt class="mono">collapse</dt>
-        <dd>Indice 0–100 de préservation du style du persona.</dd>
+          <dt class="mono">style dérive</dt>
+          <dd>Collapse &lt; 50 <strong>ou</strong> fidélité &lt; 0.720. Une passe de réécriture est déclenchée.</dd>
+        </dl>
+      </div>
 
-        <dt class="mono">fidélité</dt>
-        <dd>Similarité cosinus entre la sortie et votre corpus de référence. Seuil 0.720.</dd>
+      <div class="gl-section">
+        <h3 class="gl-sec-title mono">métriques</h3>
+        <dl class="gl-body">
+          <dt class="mono">collapse</dt>
+          <dd>Indice 0–100 de préservation du style du persona.</dd>
 
-        <dt class="mono">règles</dt>
-        <dd>Nombre de règles d'anti-pattern actives (tournures indésirables détectées).</dd>
-      </dl>
+          <dt class="mono">fidélité</dt>
+          <dd>Similarité cosinus vs. corpus source. Seuil 0.720.</dd>
+
+          <dt class="mono">règles</dt>
+          <dd>Tournures indésirables détectées (markdown, auto-référence, clichés FR).</dd>
+        </dl>
+      </div>
+
+      <div class="gl-section">
+        <h3 class="gl-sec-title mono">flux quotidien</h3>
+        <dl class="gl-body">
+          <dt class="mono">corriger un message</dt>
+          <dd>Clic sur <code>corriger</code> sous le message bot. Ta correction nourrit les règles du clone. <a class="gl-link" href="/guide#feedback" target="_blank" rel="noopener">voir le guide →</a></dd>
+
+          <dt class="mono">changer de clone</dt>
+          <dd>Clic sur l'avatar du cockpit, ou <code>Cmd+Shift+C</code>. Le contexte conversation est préservé par clone.</dd>
+
+          <dt class="mono">alimenter la base</dt>
+          <dd>Plus le clone a de contexte (posts, DMs, docs métier), plus il est précis. <a class="gl-link" href="/guide#knowledge" target="_blank" rel="noopener">voir le guide →</a></dd>
+        </dl>
+      </div>
+
       <footer class="gl-foot mono">
-        survolez le badge pour le détail en direct
+        <a class="gl-foot-link" href="/guide" target="_blank" rel="noopener">guide complet →</a>
       </footer>
     </aside>
   {/if}
@@ -545,9 +569,23 @@
   }
   .gl-close:hover { color: var(--ink); border-color: var(--ink-40); }
 
+  .gl-section {
+    padding: 4px 0;
+    border-bottom: 1px dashed var(--rule);
+  }
+  .gl-section:last-of-type { border-bottom: 0; }
+  .gl-sec-title {
+    margin: 0;
+    padding: 10px 16px 2px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-40);
+    font-weight: 600;
+  }
   .gl-body {
     margin: 0;
-    padding: 12px 16px;
+    padding: 6px 16px 10px;
     display: grid;
     grid-template-columns: auto 1fr;
     gap: 6px 14px;
@@ -572,15 +610,40 @@
     color: var(--ink);
     font-variant-numeric: tabular-nums;
   }
+  .gl-body dd code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 1px 5px;
+    background: var(--paper-subtle);
+    border: 1px solid var(--rule);
+    color: var(--ink);
+    border-radius: 2px;
+  }
+  .gl-link {
+    color: var(--vermillon);
+    text-decoration: none;
+    border-bottom: 1px dashed var(--vermillon);
+    font-size: 11px;
+    margin-left: 4px;
+    white-space: nowrap;
+  }
+  .gl-link:hover { color: var(--ink); border-bottom-color: var(--ink); }
   .gl-foot {
-    padding: 8px 14px 10px;
-    border-top: 1px dashed var(--rule);
-    font-size: 10px;
-    color: var(--ink-40);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    padding: 10px 14px;
+    border-top: 1px solid var(--rule-strong);
+    background: var(--paper-subtle);
+    font-size: 11px;
     text-align: center;
   }
+  .gl-foot-link {
+    color: var(--vermillon);
+    text-decoration: none;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+    font-size: 10.5px;
+  }
+  .gl-foot-link:hover { color: var(--ink); }
 
   @media (max-width: 768px) {
     .mobile-menu { display: block; }
