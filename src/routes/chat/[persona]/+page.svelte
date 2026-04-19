@@ -35,6 +35,7 @@
 
   let loading = $state(true);
   let sidebarOpen = $state(false);
+  let railOpen = $state(false);  // mobile-only: toggles feedback rail drawer below 900px
   let messagesEl = $state(undefined);
   let scrollAnchor = $state(undefined);
 
@@ -666,6 +667,7 @@
       if (showCommandPalette) showCommandPalette = false;
       else if (feedbackOpen) { feedbackOpen = false; feedbackTarget = null; feedbackMessageId = null; }
       else if (leadOpen) leadOpen = false;
+      else if (railOpen) railOpen = false;
       return;
     }
     if (mod && e.key === "k") {
@@ -754,7 +756,7 @@
         onToggleLead={() => leadOpen = !leadOpen}
       />
 
-      <div class="chat-body">
+      <div class="chat-body" class:rail-open={railOpen}>
         <div class="chat-messages-col">
           <ProspectDossierHeader
             conversation={currentConversation}
@@ -764,6 +766,7 @@
             scenarioType={$currentScenarioType}
             onScenarioChange={handleScenarioChange}
             onUpdate={handleConversationUpdate}
+            onToggleRail={() => railOpen = !railOpen}
           />
 
           <div class="chat-messages" bind:this={messagesEl}>
@@ -795,6 +798,12 @@
           activeRules={[]}
           onHighlightMessage={handleHighlightMessage}
         />
+
+        {#if railOpen}
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="rail-backdrop" onclick={() => (railOpen = false)}></div>
+        {/if}
       </div>
     </div>
   </div>
@@ -845,15 +854,43 @@
   }
 
   .chat-messages-col {
+    flex: 1;
     display: flex;
     flex-direction: column;
     min-height: 0;
+    min-width: 0;
   }
 
-  @media (max-width: 1024px) {
-    .chat-body { flex-direction: column; }
-    /* Feedback rail stacks below or becomes a drawer on narrow screens; the
-       component's own responsive rules decide what renders. */
+  .rail-backdrop {
+    display: none;
+  }
+
+  @media (max-width: 900px) {
+    /* Mobile: rail becomes an overlay drawer. Hidden by default, slides in
+       when the parent gets .rail-open (toggled from the header's correction
+       count button). Backdrop click or ESC closes it. */
+    .chat-body :global(.feedback-rail) {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 30;
+      width: min(320px, 85vw);
+      transform: translateX(100%);
+      transition: transform 0.18s ease-out;
+      box-shadow: -2px 0 12px rgba(20, 20, 26, 0.08);
+    }
+    .chat-body.rail-open :global(.feedback-rail) {
+      transform: translateX(0);
+    }
+    .chat-body.rail-open .rail-backdrop {
+      display: block;
+      position: absolute;
+      inset: 0;
+      z-index: 29;
+      background: color-mix(in srgb, var(--ink) 18%, transparent);
+    }
+    .chat-body { position: relative; }
   }
 
   .chat-messages {
