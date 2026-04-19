@@ -106,7 +106,7 @@
   }
 </script>
 
-<SidePanel {open} title="Analyse prospect" width={380} {onClose}>
+<SidePanel {open} title="Brief prospect" width={380} {onClose}>
   <section class="block">
     <p class="hint">
       Colle un lien LinkedIn. Le pipeline récupère le profil + 3 derniers posts
