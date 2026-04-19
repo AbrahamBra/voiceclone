@@ -191,21 +191,6 @@
     }
   }
 
-  function openPersona(personaEntry) {
-    if (personaEntry.scenarios.length === 1) {
-      openScenario(personaEntry, personaEntry.scenarios[0].key);
-    } else {
-      personaConfig.set(personaEntry.config);
-      currentPersonaId.set(personaEntry.persona.id);
-      applyTheme(personaEntry.config.theme || {});
-      localStorage.setItem("vc_last_persona", JSON.stringify({
-        id: personaEntry.persona.id,
-        name: personaEntry.persona.name,
-        avatar: personaEntry.persona.avatar,
-      }));
-      goto(`/chat/${personaEntry.persona.id}`);
-    }
-  }
 </script>
 
 <div class="hub-page">
@@ -252,7 +237,7 @@
           {@const t = triageOf(entry, fidelityScores[entry.persona.id])}
           <div class="clone-card" data-triage={t.kind} transition:fly={{ y: 12, delay: i * 80, duration: 200 }}>
             <span class="triage-dot" data-kind={t.kind} aria-label={t.label} title={t.label}></span>
-            <button class="clone-header" onclick={() => openPersona(entry)}>
+            <div class="clone-header">
               <div class="clone-avatar">{entry.persona.avatar || "?"}</div>
               {#if fidelityScores[entry.persona.id]?.draft_style}
                 <div class="clone-fingerprint">
@@ -286,18 +271,16 @@
                   <span class="chip-v">{typeof fScore.score_raw === 'number' ? fScore.score_raw.toFixed(2) : '—'}</span>
                 </div>
               {/if}
-            </button>
+            </div>
             <button class="share-btn" onclick={(e) => shareClone(entry.persona.id, e)} title="Partager">Partager</button>
-            {#if entry.scenarios.length > 1}
-              <div class="clone-scenarios">
-                {#each entry.scenarios as scenario}
-                  <button class="scenario-btn" onclick={() => openScenario(entry, scenario.key)}>
-                    <strong>{scenario.label}</strong>
-                    <span>{scenario.description}</span>
-                  </button>
-                {/each}
-              </div>
-            {/if}
+            <div class="clone-scenarios">
+              {#each entry.scenarios as scenario}
+                <button class="scenario-btn" onclick={() => openScenario(entry, scenario.key)}>
+                  <strong>{scenario.label}</strong>
+                  <span>{scenario.description}</span>
+                </button>
+              {/each}
+            </div>
           </div>
         {/each}
       </section>
@@ -310,7 +293,7 @@
           {@const t = triageOf(entry, fidelityScores[entry.persona.id])}
           <div class="clone-card" data-triage={t.kind} transition:fly={{ y: 12, delay: i * 80, duration: 200 }}>
             <span class="triage-dot" data-kind={t.kind} aria-label={t.label} title={t.label}></span>
-            <button class="clone-header" onclick={() => openPersona(entry)}>
+            <div class="clone-header">
               <div class="clone-avatar">{entry.persona.avatar || "?"}</div>
               {#if fidelityScores[entry.persona.id]?.draft_style}
                 <div class="clone-fingerprint">
@@ -346,17 +329,15 @@
                   <span class="chip-v">{typeof fScore.score_raw === 'number' ? fScore.score_raw.toFixed(2) : '—'}</span>
                 </div>
               {/if}
-            </button>
-            {#if entry.scenarios.length > 1}
-              <div class="clone-scenarios">
-                {#each entry.scenarios as scenario}
-                  <button class="scenario-btn" onclick={() => openScenario(entry, scenario.key)}>
-                    <strong>{scenario.label}</strong>
-                    <span>{scenario.description}</span>
-                  </button>
-                {/each}
-              </div>
-            {/if}
+            </div>
+            <div class="clone-scenarios">
+              {#each entry.scenarios as scenario}
+                <button class="scenario-btn" onclick={() => openScenario(entry, scenario.key)}>
+                  <strong>{scenario.label}</strong>
+                  <span>{scenario.description}</span>
+                </button>
+              {/each}
+            </div>
           </div>
         {/each}
       </section>
@@ -570,14 +551,10 @@
     width: 100%;
     padding: 10px 12px;
     background: transparent;
-    border: none;
-    cursor: pointer;
     text-align: left;
     font-family: var(--font-ui);
     color: var(--ink);
-    transition: background var(--dur-fast) var(--ease);
   }
-  .clone-header:hover { background: var(--paper); }
 
   .clone-avatar {
     width: 34px; height: 34px;

@@ -16,7 +16,7 @@
   import { api, authHeaders } from "$lib/api.js";
   import { track } from "$lib/tracking.js";
   import { streamChat } from "$lib/sse.js";
-  import { legacyKeyFor, isScenarioId } from "$lib/scenarios.js";
+  import { legacyKeyFor, isScenarioId, CANONICAL_SCENARIOS } from "$lib/scenarios.js";
   import ChatMessage from "$lib/components/ChatMessage.svelte";
   import ChatInput from "$lib/components/ChatInput.svelte";
   import ScenarioSwitcher from "$lib/components/ScenarioSwitcher.svelte";
@@ -30,6 +30,18 @@
   let personaId = $derived($page.data.personaId);
   let scenario = $derived($page.data.scenario);
   let scenarioTypeFromUrl = $derived($page.data.scenarioType);
+
+  // Lock the switcher to a single kind so a "qualification" entry never
+  // surfaces post scenarios (and vice versa). Prefer the canonical id's
+  // kind; fall back to the legacy key.
+  let scenarioKind = $derived.by(() => {
+    const t = $currentScenarioType;
+    if (t && CANONICAL_SCENARIOS[t]) return CANONICAL_SCENARIOS[t].kind;
+    const s = $currentScenario;
+    if (s === "post") return "post";
+    if (s === "qualification" || s === "dm") return "dm";
+    return null;
+  });
 
   let loading = $state(true);
   let sidebarOpen = $state(false);
@@ -740,6 +752,7 @@
             <ScenarioSwitcher
               persona={$personaConfig}
               value={$currentScenarioType}
+              kind={scenarioKind}
               onchange={handleScenarioChange}
               disabled={$sending}
             />
