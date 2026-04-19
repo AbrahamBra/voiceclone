@@ -203,8 +203,8 @@ export default async function handler(req, res) {
           try {
             await Promise.all([
               supabase.from("messages").insert([
-                { conversation_id: convId, role: "user", content: message },
-                { conversation_id: convId, role: "assistant", content: confirm },
+                { conversation_id: convId, role: "user", content: message, turn_kind: "meta" },
+                { conversation_id: convId, role: "assistant", content: confirm, turn_kind: "meta" },
               ]),
               supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
               supabase.from("conversations")
@@ -244,8 +244,8 @@ export default async function handler(req, res) {
           try {
             await Promise.all([
               supabase.from("messages").insert([
-                { conversation_id: convId, role: "user", content: message },
-                { conversation_id: convId, role: "assistant", content: confirm },
+                { conversation_id: convId, role: "user", content: message, turn_kind: "meta" },
+                { conversation_id: convId, role: "assistant", content: confirm, turn_kind: "meta" },
               ]),
               supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
               supabase.from("conversations")
@@ -296,7 +296,7 @@ export default async function handler(req, res) {
         const [inserted] = await Promise.all([
           supabase.from("messages").insert([
             { conversation_id: convId, role: "user", content: message },
-            { conversation_id: convId, role: "assistant", content: botText },
+            { conversation_id: convId, role: "assistant", content: botText, turn_kind: "clone_draft" },
           ]).select("id, role, created_at"),
           supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
           supabase.from("conversations")
