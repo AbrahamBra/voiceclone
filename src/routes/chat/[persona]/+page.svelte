@@ -16,38 +16,28 @@
   import { api, authHeaders } from "$lib/api.js";
   import { track } from "$lib/tracking.js";
   import { streamChat } from "$lib/sse.js";
-  import { legacyKeyFor, isScenarioId, CANONICAL_SCENARIOS } from "$lib/scenarios.js";
+  import { legacyKeyFor, isScenarioId } from "$lib/scenarios.js";
   import ChatMessage from "$lib/components/ChatMessage.svelte";
-  import ChatInput from "$lib/components/ChatInput.svelte";
-  import ScenarioSwitcher from "$lib/components/ScenarioSwitcher.svelte";
+  import ChatComposer from "$lib/components/ChatComposer.svelte";
+  import ProspectDossierHeader from "$lib/components/ProspectDossierHeader.svelte";
+  import FeedbackRail from "$lib/components/FeedbackRail.svelte";
   import ConversationSidebar from "$lib/components/ConversationSidebar.svelte";
   import ChatCockpit from "$lib/components/ChatCockpit.svelte";
-  import AuditStrip from "$lib/components/AuditStrip.svelte";
-  import HeatThermometer from "$lib/components/HeatThermometer.svelte";
-  import LiveMetricsStrip from "$lib/components/LiveMetricsStrip.svelte";
-  // Secondary panels are lazy-loaded on first open — see $effect blocks below.
+  import FeedbackPanel from "$lib/components/FeedbackPanel.svelte";
+  // SettingsPanel removed from chat — settings now live in /brain/[persona]#reglages.
+  // AuditStrip/HeatThermometer/LiveMetricsStrip removed (Chunk 3 cleanup).
+  import LeadPanel from "$lib/components/LeadPanel.svelte";
+  import CommandPalette from "$lib/components/CommandPalette.svelte";
 
   let personaId = $derived($page.data.personaId);
   let scenario = $derived($page.data.scenario);
   let scenarioTypeFromUrl = $derived($page.data.scenarioType);
 
-  // Lock the switcher to a single kind so a "qualification" entry never
-  // surfaces post scenarios (and vice versa). Prefer the canonical id's
-  // kind; fall back to the legacy key.
-  let scenarioKind = $derived.by(() => {
-    const t = $currentScenarioType;
-    if (t && CANONICAL_SCENARIOS[t]) return CANONICAL_SCENARIOS[t].kind;
-    const s = $currentScenario;
-    if (s === "post") return "post";
-    if (s === "qualification" || s === "dm") return "dm";
-    return null;
-  });
-
   let loading = $state(true);
   let sidebarOpen = $state(false);
+  let railOpen = $state(false);  // mobile-only: toggles feedback rail drawer below 900px
   let messagesEl = $state(undefined);
   let scrollAnchor = $state(undefined);
-  let thermRef = $state(null);
 
   // Panel state (demodalized)
   let feedbackTarget = $state(null);      // bot message to correct
@@ -55,46 +45,6 @@
   let leadOpen = $state(false);
   let showCommandPalette = $state(false);
   let switcherOpen = $state(false);
-  let journalOpen = $state(false);
-  // Unified persona-brain drawer replaces the former standalone RulesPanel +
-  // SettingsPanel slide-overs. initialTab lets a pastille (e.g. the
-  // style-health badge) deep-link directly to `règles` if needed later.
-  let brainOpen = $state(false);
-  let brainInitialTab = $state("règles");
-
-  // Lazy-loaded secondary panels — module is fetched the first time its
-  // open flag flips to true, then kept in memory for subsequent opens.
-  let FeedbackPanel = $state(null);
-  let PersonaBrainDrawer = $state(null);
-  let LeadPanel = $state(null);
-  let CommandPalette = $state(null);
-  let LearningJournal = $state(null);
-
-  $effect(() => {
-    if (feedbackOpen && !FeedbackPanel) {
-      import("$lib/components/FeedbackPanel.svelte").then(m => { FeedbackPanel = m.default; });
-    }
-  });
-  $effect(() => {
-    if (brainOpen && !PersonaBrainDrawer) {
-      import("$lib/components/PersonaBrainDrawer.svelte").then(m => { PersonaBrainDrawer = m.default; });
-    }
-  });
-  $effect(() => {
-    if (leadOpen && !LeadPanel) {
-      import("$lib/components/LeadPanel.svelte").then(m => { LeadPanel = m.default; });
-    }
-  });
-  $effect(() => {
-    if (showCommandPalette && !CommandPalette) {
-      import("$lib/components/CommandPalette.svelte").then(m => { CommandPalette = m.default; });
-    }
-  });
-  $effect(() => {
-    if (journalOpen && !LearningJournal) {
-      import("$lib/components/LearningJournal.svelte").then(m => { LearningJournal = m.default; });
-    }
-  });
 
   // Populate personas list for the inline clone switcher (cockpit dropdown).
   // Non-blocking: chat still renders without it.
@@ -113,12 +63,10 @@
     })();
   });
 
-  // Cockpit live readings — collapseIdx & fidelity from /api/fidelity,
-  // updated after each message via breakdown + rewritten events.
+  // Live readings — collapseIdx & fidelity from /api/fidelity,
+  // refreshed after each assistant message. Consolidated into `styleHealth` below.
   let collapseIdx = $state(null);
   let fidelity = $state(null);
-  let breakdown = $state(null);
-  let sourceStyle = $state(null);
 
   // Rule activation stats for this conversation
   /** @type {Record<string, { count: number, lastFiredAt: number|null, lastDetail: string|null, lastSeverity: string|null }>} */
@@ -127,24 +75,29 @@
     Object.values(ruleStats).reduce((n, s) => n + (s.count > 0 ? 1 : 0), 0)
   );
 
-  // Running totals for AuditStrip — accumulated across the current conversation.
-  let sessionStart = $state(null);
-  let sessionTotals = $state({
-    msgCount: 0,
-    rewriteCount: 0,
-    driftCount: 0,
-    inputTokens: 0,
-    outputTokens: 0,
-    cacheReadTokens: 0,
-    ruleFireCount: 0,
+  // Consolidated style-health state for the cockpit badge (ok | warn | drift | unknown).
+  // Matches the semantics of the tooltip glossary that used to live in cockpit.
+  const FIDELITY_THRESHOLD = 0.72;
+  let styleHealth = $derived.by(() => {
+    const collapseBad = collapseIdx !== null && collapseIdx < 50;
+    const collapseWarn = collapseIdx !== null && collapseIdx >= 50 && collapseIdx < 70;
+    const fidelityDrift = fidelity !== null && fidelity < FIDELITY_THRESHOLD;
+    if (collapseBad || fidelityDrift) return "drift";
+    if (collapseWarn || rulesActiveCount > 0) return "warn";
+    if (collapseIdx !== null && fidelity !== null) return "ok";
+    return "unknown";
   });
-  function resetSessionTotals() {
-    sessionStart = null;
-    sessionTotals = {
-      msgCount: 0, rewriteCount: 0, driftCount: 0,
-      inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, ruleFireCount: 0,
-    };
-  }
+
+  // Session totals removed with AuditStrip — AuditStrip migrated to /admin.
+  // SSE still reports tokens/rewrites; we just don't render them in chat.
+  let sessionStart = $state(null);
+  function resetSessionTotals() { sessionStart = null; }
+
+  // New 2-zone state
+  let currentConversation = $state(null);  // { id, prospect_name, stage, note, last_message_at, ... }
+  let feedbackRailRef = $state(null);
+  let feedbackCount = $state(0);
+  let heatSignal = $state(null);  // { state: 'cold'|'warm'|'hot', delta }
 
   // Bot message sequence number generator (per conversation)
   let botSeq = $state(0);
@@ -161,19 +114,6 @@
     return null;
   }
 
-  // Previous bot message's fidelity — enables Δ display on each marginalia.
-  function prevFidelityFor(msg, allMessages) {
-    if (msg.role !== "bot") return null;
-    let last = null;
-    for (const m of allMessages) {
-      if (m.id === msg.id) return last;
-      if (m.role === "bot" && typeof m.fidelity?.similarity === "number") {
-        last = m.fidelity.similarity;
-      }
-    }
-    return last;
-  }
-
   async function refreshFidelity() {
     if (!personaId) return;
     try {
@@ -188,16 +128,9 @@
         // 0-100 composite — don't mix the two.
         fidelity = typeof s.score_raw === "number" ? s.score_raw : null;
         collapseIdx = typeof s.collapse_index === "number" ? s.collapse_index : null;
-        // draft_style carries ttr / kurtosis / avgSentenceLen / questionRatio
-        // / signaturePresence / forbiddenHits — exactly what the hover tooltip
-        // wants to show.
-        breakdown = s.draft_style || null;
-        sourceStyle = s.source_style || null;
       } else {
         fidelity = null;
         collapseIdx = null;
-        breakdown = null;
-        sourceStyle = null;
       }
     } catch {
       // fidelity is best-effort
@@ -215,18 +148,16 @@
     if (!loading && personaId) refreshFidelity();
   });
 
-  // Scroll to bottom when messages change — coalesced to one rAF tick so
-  // SSE token streams don't pile up concurrent smooth animations (previous
-  // behavior spawned a new 1s smooth-scroll per chunk, visibly choppy).
-  let scrollRaf = null;
+  // Scroll to bottom when messages change
   $effect(() => {
+    // Subscribe to messages store reactively
     const msgs = $messages;
-    if (!scrollAnchor) return;
-    if (scrollRaf) cancelAnimationFrame(scrollRaf);
-    scrollRaf = requestAnimationFrame(() => {
-      scrollAnchor.scrollIntoView({ behavior: "auto", block: "end" });
-      scrollRaf = null;
-    });
+    if (scrollAnchor) {
+      // Small delay so DOM renders first
+      requestAnimationFrame(() => {
+        scrollAnchor.scrollIntoView({ behavior: "smooth", block: "end" });
+      });
+    }
   });
 
   // Initialize on mount / persona change
@@ -485,25 +416,16 @@
           if (evt?.fidelity && typeof evt.fidelity.similarity === "number") {
             fidelity = evt.fidelity.similarity;
           }
-          if (evt?.live_style) {
-            breakdown = evt.live_style;
-          }
 
-          // AuditStrip running totals — accumulate per-message.
-          const drift = (evt?.violations || []).some(v => v.type === "fidelity_drift");
-          const ruleFireDelta = (evt?.violations || []).length;
-          sessionTotals = {
-            msgCount: sessionTotals.msgCount + 1,
-            rewriteCount: sessionTotals.rewriteCount + (evt?.rewritten ? 1 : 0),
-            driftCount: sessionTotals.driftCount + (drift ? 1 : 0),
-            inputTokens: sessionTotals.inputTokens + (evt?.tokens?.input || 0),
-            outputTokens: sessionTotals.outputTokens + (evt?.tokens?.output || 0),
-            cacheReadTokens: sessionTotals.cacheReadTokens + (evt?.tokens?.cache_read || 0),
-            ruleFireCount: sessionTotals.ruleFireCount + ruleFireDelta,
-          };
+          // AuditStrip removed from chat — session totals are no longer tracked here.
+          // Tokens/rewrites/drift metrics remain available via SSE telemetry
+          // and /api/fidelity for the /brain#intelligence view.
         },
         onHeat(evt) {
-          thermRef?.applyHeatEvent(evt);
+          // Heat signal feeds the inline indicator in ProspectDossierHeader.
+          if (evt && typeof evt.state === "string") {
+            heatSignal = { state: evt.state, delta: evt.delta ?? null };
+          }
         },
         onConversation(id) {
           if (id && !$currentConversationId) {
@@ -607,14 +529,145 @@
     handleSend(msg);
   }
 
+  // ── 2-zone layout handlers ──
+
+  // "📥 ajouter prospect" — insert a message as prospect without triggering the LLM.
+  async function handleAddProspect(text) {
+    if (!text || !$currentConversationId) {
+      showToast?.("Commence par envoyer un message pour ouvrir la conversation.");
+      return;
+    }
+    try {
+      const resp = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          conversation_id: $currentConversationId,
+          role: "user",
+          content: text,
+          turn_kind: "prospect",
+        }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      messages.update(msgs => [
+        ...msgs,
+        { id: data.id, role: "user", turn_kind: "prospect", content: text, timestamp: Date.now() },
+      ]);
+    } catch (err) {
+      showToast?.("Ajout prospect échoué");
+    }
+  }
+
+  // "✨ draft la suite" — reuse existing streamChat flow. Optional consigne prefixed.
+  function handleDraftNext({ consigne }) {
+    const text = consigne || "Génère la réponse suivante en tenant compte du thread.";
+    handleSend(text);
+  }
+
+  // ✓ valider : PATCH message turn_kind='toi' + POST feedback-events.
+  // Also fires the legacy /api/feedback validate signal so detect-validate
+  // pipeline (positive feedback loop) keeps working.
+  async function handleValidate(message) {
+    try {
+      // Legacy positive-feedback signal — best effort, non-blocking
+      api("/api/feedback", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "validate",
+          botMessage: message.content,
+          persona: get(currentPersonaId),
+        }),
+      }).catch(() => { /* ignored: secondary signal */ });
+
+      await fetch(`/api/messages?id=${message.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ turn_kind: "toi" }),
+      });
+      const resp = await fetch("/api/feedback-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          conversation_id: $currentConversationId,
+          message_id: message.id,
+          event_type: "validated",
+        }),
+      });
+      if (resp.ok) {
+        const ev = await resp.json();
+        feedbackRailRef?.appendEvent?.({
+          id: ev.id,
+          message_id: message.id,
+          event_type: "validated",
+          created_at: ev.created_at,
+          rules_fired: [],
+        });
+        feedbackCount++;
+      }
+      messages.update(msgs => msgs.map(m =>
+        m.id === message.id ? { ...m, turn_kind: "toi" } : m
+      ));
+    } catch {
+      showToast?.("Validation échouée");
+    }
+  }
+
+  // ↻ regen : mark current draft as rejected, relaunch last send.
+  async function handleRegen(message) {
+    try {
+      await fetch(`/api/messages?id=${message.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ turn_kind: "draft_rejected" }),
+      });
+      messages.update(msgs => msgs.filter(m => m.id !== message.id));
+      handleSend("Regenère la réponse.");
+    } catch {
+      showToast?.("Regen échoué");
+    }
+  }
+
+  // Conversation dossier fields update (name / stage / note) from header
+  async function handleConversationUpdate(patch) {
+    if (!$currentConversationId) return;
+    try {
+      const resp = await fetch(`/api/conversations?id=${$currentConversationId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(patch),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      currentConversation = { ...(currentConversation || {}), ...patch };
+    } catch {
+      showToast?.("Mise à jour dossier échouée");
+    }
+  }
+
+  // Click on a rail entry → scroll + pulse the message in the thread
+  function handleHighlightMessage(msgId) {
+    const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("msg-highlight");
+    setTimeout(() => el.classList.remove("msg-highlight"), 2000);
+  }
+
+  // Keep currentConversation in sync with the conversation store
+  $effect(() => {
+    const convId = $currentConversationId;
+    if (!convId) { currentConversation = null; return; }
+    const conv = ($conversations || []).find(c => c.id === convId);
+    if (conv) currentConversation = conv;
+  });
+
   function handleKeyboard(e) {
     const mod = e.metaKey || e.ctrlKey;
     if (e.key === "Escape") {
       if (showCommandPalette) showCommandPalette = false;
       else if (feedbackOpen) { feedbackOpen = false; feedbackTarget = null; feedbackMessageId = null; }
-      else if (brainOpen) brainOpen = false;
       else if (leadOpen) leadOpen = false;
-      else if (journalOpen) journalOpen = false;
+      else if (railOpen) railOpen = false;
       return;
     }
     if (mod && e.key === "k") {
@@ -693,50 +746,37 @@
       <ChatCockpit
         personaName={$personaConfig?.name || "Clone"}
         personaAvatar={$personaConfig?.avatar || "?"}
-        scenario={$currentScenario || ""}
-        {collapseIdx}
-        {fidelity}
-        {breakdown}
-        {sourceStyle}
+        {styleHealth}
         personasList={$personas}
         currentPersonaId={personaId}
         bind:switcherOpen
         onSwitchClone={handleSwitchToClone}
-        {rulesActiveCount}
-        {leadOpen}
-        {sidebarOpen}
-        {journalOpen}
-        {brainOpen}
         onBack={handleBack}
         onToggleSidebar={() => sidebarOpen = !sidebarOpen}
         onToggleLead={() => leadOpen = !leadOpen}
-        onToggleJournal={() => journalOpen = !journalOpen}
-        onToggleBrain={() => {
-          if (!brainOpen) brainInitialTab = "règles";
-          brainOpen = !brainOpen;
-        }}
       />
 
-      <div class="chat-body">
+      <div class="chat-body" class:rail-open={railOpen}>
         <div class="chat-messages-col">
-          <!-- Section heads mirror the landing's numbered pipeline (01-05) so
-               the mental model formed on the landing carries into the chat:
-               01 PROMPT (composer) → 02 SORTIE (messages) → 03 RÈGLES (drawer)
-               → 04 MÉTRIQUES + 05 FIDÉLITÉ (strip below). Consistency drops
-               cognitive load on first entry — "I've seen this layout before". -->
-          <div class="sec-head mono">
-            <span class="sec-idx">02</span>
-            <span class="sec-name">sortie</span>
-            <span class="sec-ctx">{$currentScenarioType || $currentScenario || "en direct"}</span>
-          </div>
+          <ProspectDossierHeader
+            conversation={currentConversation}
+            {feedbackCount}
+            heat={heatSignal}
+            persona={$personaConfig}
+            scenarioType={$currentScenarioType}
+            onScenarioChange={handleScenarioChange}
+            onUpdate={handleConversationUpdate}
+            onToggleRail={() => railOpen = !railOpen}
+          />
+
           <div class="chat-messages" bind:this={messagesEl}>
             {#each $messages as message (message.id)}
               <ChatMessage
                 {message}
                 seq={seqForMessage(message, $messages)}
-                prevFidelity={prevFidelityFor(message, $messages)}
-                {sourceStyle}
                 onCorrect={handleCorrect}
+                onValidate={handleValidate}
+                onRegen={handleRegen}
                 onSaveRule={handleSaveRule}
                 onCopyBlock={() => {}}
               />
@@ -744,67 +784,44 @@
             <div bind:this={scrollAnchor}></div>
           </div>
 
-          <div class="composer-toolbar">
-            <span class="sec-tag mono">
-              <span class="sec-idx">01</span>
-              <span class="sec-name">prompt</span>
-            </span>
-            <ScenarioSwitcher
-              persona={$personaConfig}
-              value={$currentScenarioType}
-              kind={scenarioKind}
-              onchange={handleScenarioChange}
-              disabled={$sending}
-            />
-          </div>
-          <ChatInput onsend={handleSend} disabled={$sending} scenarioType={$currentScenarioType} />
-          <LiveMetricsStrip {breakdown} {fidelity} {collapseIdx} />
-          <AuditStrip totals={sessionTotals} {sessionStart} />
+          <ChatComposer
+            disabled={$sending}
+            scenarioType={$currentScenarioType}
+            onAddProspect={handleAddProspect}
+            onDraftNext={handleDraftNext}
+          />
         </div>
 
-        {#if ($currentScenarioType ?? '').startsWith('DM')}
-          <HeatThermometer bind:this={thermRef} conversationId={$currentConversationId} />
+        <FeedbackRail
+          bind:this={feedbackRailRef}
+          conversationId={$currentConversationId}
+          activeRules={[]}
+          onHighlightMessage={handleHighlightMessage}
+        />
+
+        {#if railOpen}
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="rail-backdrop" onclick={() => (railOpen = false)}></div>
         {/if}
       </div>
     </div>
   </div>
 
-  {#if PersonaBrainDrawer}
-    <PersonaBrainDrawer
-      open={brainOpen}
-      {personaId}
-      {ruleStats}
-      initialTab={brainInitialTab}
-      onClose={() => brainOpen = false}
-    />
-  {/if}
+  <FeedbackPanel
+    open={feedbackOpen}
+    botMessage={feedbackTarget || ""}
+    onClose={() => { feedbackOpen = false; feedbackTarget = null; feedbackMessageId = null; }}
+    onReplace={handleReplace}
+  />
 
-  {#if FeedbackPanel}
-    <FeedbackPanel
-      open={feedbackOpen}
-      botMessage={feedbackTarget || ""}
-      onClose={() => { feedbackOpen = false; feedbackTarget = null; feedbackMessageId = null; }}
-      onReplace={handleReplace}
-    />
-  {/if}
+  <LeadPanel
+    open={leadOpen}
+    onClose={() => leadOpen = false}
+    onAnalyzed={handleLeadAnalyzed}
+  />
 
-  {#if LeadPanel}
-    <LeadPanel
-      open={leadOpen}
-      onClose={() => leadOpen = false}
-      onAnalyzed={handleLeadAnalyzed}
-    />
-  {/if}
-
-  {#if LearningJournal}
-    <LearningJournal
-      {personaId}
-      open={journalOpen}
-      onClose={() => journalOpen = false}
-    />
-  {/if}
-
-  {#if showCommandPalette && CommandPalette}
+  {#if showCommandPalette}
     <CommandPalette
       conversations={$conversations}
       onselect={(id) => { showCommandPalette = false; handleSelectConversation(id); }}
@@ -830,20 +847,50 @@
 
   .chat-body {
     flex: 1;
-    display: grid;
-    grid-template-columns: 1fr 300px;
+    display: flex;
+    flex-direction: row;
     min-height: 0;
+    overflow: hidden;
   }
 
   .chat-messages-col {
+    flex: 1;
     display: flex;
     flex-direction: column;
     min-height: 0;
+    min-width: 0;
   }
 
-  @media (max-width: 1024px) {
-    .chat-body { grid-template-columns: 1fr; }
-    /* HeatThermometer's own mobile media query renders it as a compact bar below .chat-messages-col */
+  .rail-backdrop {
+    display: none;
+  }
+
+  @media (max-width: 900px) {
+    /* Mobile: rail becomes an overlay drawer. Hidden by default, slides in
+       when the parent gets .rail-open (toggled from the header's correction
+       count button). Backdrop click or ESC closes it. */
+    .chat-body :global(.feedback-rail) {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 30;
+      width: min(320px, 85vw);
+      transform: translateX(100%);
+      transition: transform 0.18s ease-out;
+      box-shadow: -2px 0 12px rgba(20, 20, 26, 0.08);
+    }
+    .chat-body.rail-open :global(.feedback-rail) {
+      transform: translateX(0);
+    }
+    .chat-body.rail-open .rail-backdrop {
+      display: block;
+      position: absolute;
+      inset: 0;
+      z-index: 29;
+      background: color-mix(in srgb, var(--ink) 18%, transparent);
+    }
+    .chat-body { position: relative; }
   }
 
   .chat-messages {
@@ -855,54 +902,7 @@
     gap: 0.625rem;
   }
 
-  /* Composer toolbar — sits above the chat input. Hosts the 01 PROMPT
-     section tag + scenario switcher. */
-  .composer-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 16px 0;
-    background: var(--paper);
-  }
-  @media (max-width: 480px) {
-    .composer-toolbar { padding: 4px 8px 0; gap: 6px; }
-  }
-
-  /* Section heads — mirror landing's 01/02/03/04/05 typographic language.
-     Mono, uppercase, vermillon index, ink label, optional ink-40 context. */
-  .sec-head {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-    padding: 6px 16px;
-    border-bottom: 1px dashed var(--rule);
-    font-size: 10.5px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    background: var(--paper);
-  }
-  .sec-tag {
-    display: inline-flex;
-    gap: 6px;
-    align-items: baseline;
-    font-size: 10.5px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    flex-shrink: 0;
-  }
-  .sec-idx { color: var(--vermillon); font-weight: 600; }
-  .sec-name { color: var(--ink); font-weight: 600; }
-  .sec-ctx {
-    color: var(--ink-40);
-    text-transform: lowercase;
-    letter-spacing: 0.02em;
-    font-size: 10px;
-    margin-left: auto;
-  }
-  @media (max-width: 480px) {
-    .sec-head { padding: 6px 10px; }
-    .sec-ctx { display: none; }
-  }
+  /* ScenarioSwitcher relocated to ProspectDossierHeader; composer-toolbar CSS removed. */
 
   .loading-screen {
     display: flex;

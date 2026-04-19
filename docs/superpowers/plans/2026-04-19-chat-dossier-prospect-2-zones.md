@@ -2245,10 +2245,43 @@ git log --oneline chunk-1-complete..HEAD
 
 ## Execution checklist globale
 
-- [ ] Chunk 1 complet — tag `chunk-1-complete`, déployable indépendamment (pas de changement UI)
-- [ ] Chunk 2 complet — tag `chunk-2-complete`, route `/brain` live, drawer retiré
-- [ ] Chunk 3 complet — tag `chunk-3-complete`, refonte chat visible en prod
+- [x] Chunk 1 complet — tag `chunk-1-complete`, déployable indépendamment (pas de changement UI)
+- [x] Chunk 2 complet — tag `chunk-2-complete`, route `/brain` live, drawer retiré
+- [x] Chunk 3 core : composants + refonte page + /api/messages (commits 2166330, d4c4583)
+- [x] Chunk 3 cleanup : suppression LiveMetricsStrip, AuditStrip, HeatThermometer, MessageMarginalia (commit d58f605)
+- [x] Chunk 3 cockpit allégé (commit c962e91)
+- [x] Chunk 3 responsive mobile drawer (commit 8c0c407)
+- [x] Chunk 3 tag `chunk-3-complete` posé
+- [ ] Merge vers master (cette PR) — E2E DB-gated skippé, couverture API layer existante
+- [ ] Addendum section 4 (journal heat narratif + per-msg audit trail) — à planifier après merge
 
 À chaque fin de chunk : `critic-prod-check.js` avant merge final (cf. pre-merge gate).
+
+---
+
+## Addendum — Critique post-impl (2026-04-19 23:00)
+
+Revue de la vraie refonte contre les décisions des sections 4 et 5 de la spec. Identifie 2 pertes qualitatives non-reconnues dans la spec initiale et 1 réglage UX.
+
+### Section 4 — pertes à corriger
+
+**1. Heat journal narratif — perdu.** Le `HeatThermometer` original (master) portait un journal narratif par-message : citations du texte prospect, polarity pos/neg, delta numérique (ex : *"je regarde" +0.12* ou *"pas le budget" −0.18*). Notre refonte a fusionné le thermo en indicateur scalaire (froid/tiède/chaud) dans `ProspectDossierHeader`, **perdant le pourquoi**. En workflow agence, comprendre pourquoi un prospect refroidit = exactement ce qu'on regarde au retour sur un dossier.
+
+- **Action** : restaurer le journal narratif heat **dans `FeedbackRail`** (section séparée ou entrées intercalées chrono). Composant `api/heat` existant à reconnecter ; composant ex-thermo supprimé, à ré-extraire partiellement depuis `git show master:src/lib/components/HeatThermometer.svelte`.
+
+**2. Per-message audit trail (sources) — promesse non honorée.** La spec disait "`MessageMarginalia` migre dans `/brain#intelligence` comme timeline par-msg". Non fait — `/brain#intelligence` affiche l'`IntelligencePanel` existant (entités/relations persona-global), **pas de timeline par-msg**. L'info perdue : quelles knowledge pages / entités / combien de corrections ont influencé chaque réponse.
+
+- **Action** : deux options non-exclusives :
+  - **(a)** implémenter la timeline par-msg dans `/brain#intelligence` : nouvelle section sous IntelligencePanel qui liste les derniers `clone_draft` avec leurs sources (reuse des colonnes existantes `sources.knowledgePages` / `sources.entities` / `sources.correctionsCount` qui voyagent déjà dans les événements SSE).
+  - **(b)** toggle inline "pourquoi ce draft ?" sous chaque `clone_draft` dans le thread, affichant les sources sans ouvrir une route. Plus léger, daily-friendly.
+- Recommandation : (b) en priorité pour le daily, (a) comme complément panoramique.
+
+### Section 5 — réglage UX
+
+**3. Tab par défaut `/brain`.** Actuellement `#connaissance`. En usage quotidien, un opérateur ira plus souvent voir `#intelligence` (diagnostic) que `#connaissance` (setup ponctuel). Trivial à changer (`activeTab = "intelligence"` par défaut dans `src/routes/brain/[persona]/+page.svelte`).
+
+### Status de la critique
+- Findings ajoutés aux pendings : voir TodoWrite session.
+- Les points (1) et (2) sont tracés post-merge — non-bloquants pour la release core.
 
 

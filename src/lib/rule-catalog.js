@@ -1,7 +1,6 @@
 // Shared rule catalog — one source of truth for rules emitted by
 // lib/checks.js + lib/pipeline.js. The `type` key here MUST match the
-// `violation.type` value on the SSE "done" payload. Consumed by
-// RulesPanel (full list + stats) and MessageMarginalia (per-message labels).
+// `violation.type` value on the SSE "done" payload.
 
 export const RULE_CATALOG = [
   { type: "forbidden_word", severity: "hard",   label: "mot interdit",     desc: "mot banni par le persona" },

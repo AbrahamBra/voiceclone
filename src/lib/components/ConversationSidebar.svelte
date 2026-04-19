@@ -1,7 +1,6 @@
 <script>
   // Sidebar is now conversations-only. Connaissance + Intelligence moved to
-  // PersonaBrainDrawer (⚙ cockpit trigger) as part of the Model A IA collapse:
-  // one drawer for all long-term persona config, one sidebar for navigation.
+  // the /brain/[persona] route as part of the non-daily surface split.
   import { conversations } from "$lib/stores/chat.js";
   import { api, authHeaders } from "$lib/api.js";
   import { showToast } from "$lib/stores/ui.js";

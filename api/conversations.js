@@ -12,14 +12,27 @@ export default async function handler(req, res) {
     return;
   }
 
-  // --- PATCH: rename conversation ---
+  // --- PATCH: update conversation (title or dossier fields) ---
   if (req.method === "PATCH") {
     const { id } = req.query || {};
-    const { title } = req.body || {};
+    const { title, prospect_name, stage, note } = req.body || {};
 
     if (!id) { res.status(400).json({ error: "id query param required" }); return; }
-    if (!title || !title.trim()) { res.status(400).json({ error: "title required" }); return; }
-    const cleanTitle = title.trim().slice(0, 100);
+
+    // Build partial update — only fields actually provided are patched
+    const patch = {};
+    if (typeof title === "string") {
+      if (!title.trim()) { res.status(400).json({ error: "title empty" }); return; }
+      patch.title = title.trim().slice(0, 100);
+    }
+    if (typeof prospect_name === "string") patch.prospect_name = prospect_name.trim().slice(0, 120) || null;
+    if (typeof stage === "string")         patch.stage = stage.trim().slice(0, 60) || null;
+    if (typeof note === "string")          patch.note = note.trim().slice(0, 300) || null;
+
+    if (Object.keys(patch).length === 0) {
+      res.status(400).json({ error: "no updatable fields provided" });
+      return;
+    }
 
     const { data: conv, error: convErr } = await supabase
       .from("conversations").select("id, client_id").eq("id", id).single();
@@ -27,10 +40,10 @@ export default async function handler(req, res) {
     if (!isAdmin && conv.client_id !== client.id) { res.status(403).json({ error: "Forbidden" }); return; }
 
     const { error: updateErr } = await supabase
-      .from("conversations").update({ title: cleanTitle }).eq("id", id);
+      .from("conversations").update(patch).eq("id", id);
     if (updateErr) { res.status(500).json({ error: updateErr.message }); return; }
 
-    res.json({ ok: true, title: cleanTitle });
+    res.json({ ok: true, patch });
     return;
   }
 

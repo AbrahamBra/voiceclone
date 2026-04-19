@@ -1,13 +1,26 @@
 <script>
   import { fly } from "svelte/transition";
   import { renderMarkdown, toLinkedIn } from "$lib/utils.js";
-  import MessageMarginalia from "./MessageMarginalia.svelte";
 
-  let { message, seq = null, prevFidelity = null, sourceStyle = null, onCorrect, onSaveRule, onCopyBlock } = $props();
+  let {
+    message, seq = null,
+    onCorrect, onValidate, onRegen, onSaveRule, onCopyBlock,
+  } = $props();
+
+  // Narrative kind derived from message.turn_kind (new axis from migration 028),
+  // with fallback for legacy rows that still use only role.
+  let kind = $derived(
+    message.turn_kind
+    || (message.role === "user" ? "legacy-user" : "legacy-assistant")
+  );
+  let isDraft = $derived(kind === "clone_draft");
+  let isSent = $derived(kind === "toi");
+  let isProspect = $derived(kind === "prospect");
+  let isLegacy = $derived(kind === "legacy-user" || kind === "legacy-assistant" || kind === "legacy");
 
   let ruleSaved = $state(false);
   let showDiff = $state(false);
-  let margOpen = $state(false);
+  let copyMenuOpen = $state(false);
   let copiedLabel = $state("");
   let copiedTimer;
 
@@ -77,7 +90,11 @@
 <article
   class="msg-row"
   class:msg-row-user={message.role === "user"}
-  class:msg-row-bot={message.role === "bot"}
+  class:msg-row-bot={message.role === "assistant" || message.role === "bot"}
+  class:msg-row-draft={isDraft}
+  class:msg-row-sent={isSent}
+  class:msg-row-prospect={isProspect}
+  data-msg-id={message.id}
   transition:fly={{ y: 4, duration: 120 }}
 >
   <!-- ── Message column ── -->
@@ -119,14 +136,51 @@
 
       {#if message.role === "bot" && !message.typing && message.content}
         <div class="msg-actions">
-          <!-- Single Copier button — uses persisted default (linkedin). Mode
-               switch via a settings preference later, not per-message. -->
-          <button
-            class="action-btn"
-            onclick={copyDefault}
-            title="Copier — format LinkedIn"
-          >{copiedLabel ? `${copiedLabel} ✓` : "Copier"}</button>
-          <button class="action-btn action-btn-primary" onclick={() => onCorrect?.(message)}>Corriger</button>
+          <div class="copy-split">
+            <button
+              class="action-btn copy-main"
+              onclick={copyDefault}
+              title="Copier · {COPY_MODES.find(m => m.id === copyMode)?.label}"
+            >{copiedLabel ? `${copiedLabel} ✓` : (isDraft ? "📋 copier" : "Copier")}</button>
+            <button
+              class="action-btn copy-caret"
+              onclick={() => (copyMenuOpen = !copyMenuOpen)}
+              aria-label="Choisir le format de copie"
+              aria-expanded={copyMenuOpen}
+            >▾</button>
+            {#if copyMenuOpen}
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div class="copy-backdrop" onclick={() => (copyMenuOpen = false)}></div>
+              <div class="copy-menu" role="menu">
+                {#each COPY_MODES as mode}
+                  <button
+                    class="copy-menu-item"
+                    class:is-default={copyMode === mode.id}
+                    role="menuitem"
+                    onclick={() => selectMode(mode.id)}
+                  >
+                    <span class="cm-label">{mode.label}</span>
+                    <span class="cm-hint">{mode.hint}</span>
+                    {#if copyMode === mode.id}<span class="cm-mark">●</span>{/if}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+
+          {#if isDraft}
+            <!-- Draft actions: valider → envoie au prospect ; corriger → FeedbackPanel ;
+                 regen → retry sans signal. -->
+            <button class="action-btn action-btn-primary" onclick={() => onValidate?.(message)} title="Valider et envoyer">✓ valider</button>
+            <button class="action-btn" onclick={() => onCorrect?.(message)} title="Corriger">✎ corriger</button>
+            <button class="action-btn" onclick={() => onRegen?.(message)} title="Regénérer sans correction">↻ regen</button>
+          {:else if isSent}
+            <!-- Sent message (toi): read-only, only copy remains. -->
+          {:else}
+            <!-- Legacy fallback (pre-migration assistant messages or missing turn_kind) -->
+            <button class="action-btn action-btn-primary" onclick={() => onCorrect?.(message)}>Corriger</button>
+          {/if}
         </div>
       {/if}
 
@@ -143,30 +197,6 @@
         <summary class="diff-inline-head mono">pass 1 · original (overridden)</summary>
         <div class="diff-inline-body">{message.original}</div>
       </details>
-    {/if}
-
-    {#if message.role === "bot" && !message.typing && message.content}
-      <button
-        class="marg-toggle mono"
-        aria-expanded={margOpen}
-        aria-controls="marg-{message.id}"
-        onclick={() => margOpen = !margOpen}
-        title="Annotations labo"
-      >
-        {margOpen ? "×" : "⋯"}
-      </button>
-      {#if margOpen}
-        <section id="marg-{message.id}" class="marg-inline">
-          <MessageMarginalia
-            {message}
-            {stamp}
-            {seq}
-            {prevFidelity}
-            {sourceStyle}
-            bind:showDiff
-          />
-        </section>
-      {/if}
     {/if}
 
   </div>
@@ -195,23 +225,22 @@
     align-items: flex-start;
   }
 
-  .marg-toggle {
-    align-self: flex-end;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: var(--ink-30);
-    font-size: 12px;
-    padding: 2px 6px;
-    transition: color 0.2s ease;
+  /* Draft (clone_draft): paper-pâle teinted + ocre border-left — signals "pending". */
+  .msg-row-draft :global(.msg-bot) {
+    background: #f5efe4;
+    border-left-color: #b37e3b;
   }
-  .marg-toggle:hover { color: var(--vermillon); }
-  .marg-toggle:focus-visible { outline: 1px solid var(--vermillon); outline-offset: 2px; }
-
-  .marg-inline {
-    border-top: 1px dashed var(--rule);
-    margin-top: 4px;
-    padding-top: 6px;
+  /* Sent (toi): back to neutral — indistinguishable from a historical sent message. */
+  .msg-row-sent :global(.msg-bot) {
+    background: var(--paper);
+  }
+  /* Highlight animation triggered when rail feedback entry is clicked */
+  :global(.msg-highlight) {
+    animation: highlightPulse 2s ease-out;
+  }
+  @keyframes highlightPulse {
+    0% { background-color: #fffbe6; }
+    100% { background-color: transparent; }
   }
 
   .msg {
@@ -356,9 +385,6 @@
     color: var(--vermillon);
     border-color: var(--vermillon);
   }
-
-  /* Rewrite badges moved into MessageMarginalia — only the inline diff block
-     remains here, still rendered in the message column under the bubble. */
 
   .diff-inline {
     margin-top: 6px;
