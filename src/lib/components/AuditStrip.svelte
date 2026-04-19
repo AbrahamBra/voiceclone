@@ -66,6 +66,17 @@
   );
   let anyActivity = $derived(totals.msgCount > 0 || !!sessionStart);
 
+  // Collapsed by default — opt-in reveal. Persisted per-browser.
+  const STORE_KEY = "audit_strip_open";
+  let open = $state(false);
+  if (typeof window !== "undefined") {
+    try { open = localStorage.getItem(STORE_KEY) === "1"; } catch {}
+  }
+  function toggleOpen() {
+    open = !open;
+    try { localStorage.setItem(STORE_KEY, open ? "1" : "0"); } catch {}
+  }
+
   // Narrative footer: short human-readable sentence that updates live.
   // Describes what the pipeline has done this session in plain French.
   // Screenshot-friendly, onboarding-friendly.
@@ -105,55 +116,62 @@
   }
 </script>
 
-<section class="audit-wrap" class:idle={!anyActivity} aria-label="Totaux de session">
-  <div class="audit-strip mono" role="status">
+<section class="audit-wrap" class:idle={!anyActivity} class:open aria-label="Totaux de session">
+  <button
+    class="audit-summary mono"
+    onclick={toggleOpen}
+    aria-expanded={open}
+    aria-controls="audit-detail"
+    title={open ? "Réduire" : "Développer"}
+  >
     <span class="cell cell-primary">
       <span class="k">session</span>
       <span class="v">{fmtDuration(elapsed)}</span>
     </span>
     <span class="sep">·</span>
-
     <span class="cell">
-      <span class="k">msg</span>
-      <span class="v">{totals.msgCount}</span>
+      <span class="v">{totals.msgCount} msg</span>
     </span>
     <span class="sep">·</span>
-
-    <span class="cell" class:hot={totals.rewriteCount > 0}>
-      <span class="k">réécritures</span>
-      <span class="v">{totals.rewriteCount}</span>
-    </span>
-    <span class="sep">·</span>
-
     <span class="cell" class:hot={totals.driftCount > 0}>
-      <span class="k">dérives</span>
-      <span class="v">{totals.driftCount}</span>
+      <span class="v">{totals.driftCount} dérive{totals.driftCount > 1 ? "s" : ""}</span>
     </span>
-    <span class="sep">·</span>
-
-    <span class="cell">
-      <span class="k">règles</span>
-      <span class="v">{totals.ruleFireCount}</span>
-    </span>
-    <span class="sep">·</span>
-
-    <span class="cell">
-      <span class="k">tokens</span>
-      <span class="v">{fmtTokens(totalTokens)}</span>
-    </span>
-    <span class="sep">·</span>
-
-    <span class="cell">
-      <span class="k">cache</span>
-      <span class="v">{cacheRate === null ? "—" : `${cacheRate}%`}</span>
-    </span>
-
     {#if anyActivity}
       <span class="pulse" aria-hidden="true"></span>
     {/if}
-  </div>
+    <span class="chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
+  </button>
 
-  <p class="audit-narrative" aria-live="polite">{narrative}</p>
+  {#if open}
+    <div id="audit-detail" class="audit-detail">
+      <div class="audit-strip mono" role="status">
+        <span class="cell">
+          <span class="k">réécritures</span>
+          <span class="v">{totals.rewriteCount}</span>
+        </span>
+        <span class="sep">·</span>
+
+        <span class="cell">
+          <span class="k">règles</span>
+          <span class="v">{totals.ruleFireCount}</span>
+        </span>
+        <span class="sep">·</span>
+
+        <span class="cell">
+          <span class="k">tokens</span>
+          <span class="v">{fmtTokens(totalTokens)}</span>
+        </span>
+        <span class="sep">·</span>
+
+        <span class="cell">
+          <span class="k">cache</span>
+          <span class="v">{cacheRate === null ? "—" : `${cacheRate}%`}</span>
+        </span>
+      </div>
+
+      <p class="audit-narrative" aria-live="polite">{narrative}</p>
+    </div>
+  {/if}
 </section>
 
 <style>
@@ -162,6 +180,38 @@
     border-top: 1px solid var(--rule-strong);
     display: flex;
     flex-direction: column;
+  }
+
+  .audit-summary {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 6px 16px;
+    width: 100%;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--ink-40);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    position: relative;
+    transition: background 0.08s linear;
+  }
+  .audit-summary:hover { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+  .audit-summary:focus-visible {
+    outline: 1px solid var(--vermillon);
+    outline-offset: -1px;
+  }
+  .audit-summary .chevron {
+    margin-left: auto;
+    color: var(--ink-40);
+    font-size: 9px;
+    flex-shrink: 0;
+  }
+
+  .audit-detail {
+    border-top: 1px dashed var(--rule);
   }
 
   .audit-strip {
@@ -227,12 +277,15 @@
 
   .pulse {
     margin-left: auto;
+    align-self: center;
     width: 6px;
     height: 6px;
     background: var(--vermillon);
     animation: audit-pulse 1.6s linear infinite;
     flex-shrink: 0;
   }
+  /* When pulse is followed by the chevron, chevron should follow without its own auto-margin */
+  .audit-summary .pulse + .chevron { margin-left: 6px; }
   @keyframes audit-pulse {
     0%, 70%, 100% { opacity: 1; }
     85% { opacity: 0.2; }

@@ -29,6 +29,7 @@
   import LeadPanel from "$lib/components/LeadPanel.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
   import HeatThermometer from "$lib/components/HeatThermometer.svelte";
+  import LiveMetricsStrip from "$lib/components/LiveMetricsStrip.svelte";
 
   let personaId = $derived($page.data.personaId);
   let scenario = $derived($page.data.scenario);
@@ -711,10 +712,13 @@
             />
           </div>
           <ChatInput onsend={handleSend} disabled={$sending} scenarioType={$currentScenarioType} />
+          <LiveMetricsStrip {breakdown} {fidelity} {collapseIdx} />
           <AuditStrip totals={sessionTotals} {sessionStart} />
         </div>
 
-        <HeatThermometer bind:this={thermRef} conversationId={$currentConversationId} />
+        {#if ($currentScenarioType ?? '').startsWith('DM')}
+          <HeatThermometer bind:this={thermRef} conversationId={$currentConversationId} />
+        {/if}
       </div>
     </div>
   </div>

@@ -54,6 +54,21 @@
     collapseIdx >= 50 ? "warn" : "bad"
   );
 
+  // Single "style health" badge consolidating collapse + fidelity + rules.
+  // Priority : drift (collapse<50 or fidelity<seuil) > warn (collapse 50-70 or rules fired) > ok > unknown.
+  let styleHealth = $derived.by(() => {
+    if (collapseState === "bad" || fidelityState === "drift") return "drift";
+    if (collapseState === "warn" || rulesActiveCount > 0) return "warn";
+    if (collapseState === "ok" && fidelityState === "ok") return "ok";
+    return "unknown";
+  });
+  let styleHealthLabel = $derived(
+    styleHealth === "drift" ? "style dérive" :
+    styleHealth === "warn" ? "style alerte" :
+    styleHealth === "ok" ? "style sain" :
+    "style —"
+  );
+
   // Glossaire — visible au clic sur le bouton "?". Persisté en localStorage
   // pour que l'overlay s'ouvre automatiquement à la première visite seulement.
   let glossaryOpen = $state(false);
@@ -108,63 +123,37 @@
     </div>
   </div>
 
-  <!-- Center cluster — lectures en direct -->
-  <div class="gauges" role="group" aria-label="Lectures pipeline en direct">
+  <!-- Center cluster — style health badge (collapse + fidélité + règles consolidés) -->
+  <div class="gauges" role="group" aria-label="Santé du style">
     <div
-      class="gauge"
-      data-state={collapseState}
+      class="gauge style-health"
+      data-state={styleHealth}
       tabindex="0"
-      aria-label="Indice collapse : {fmt(collapseIdx, 1)}"
+      aria-label="{styleHealthLabel} · collapse {fmt(collapseIdx, 1)} · fidélité {fmt(fidelity, 3)} · {rulesActiveCount} règle{rulesActiveCount > 1 ? 's' : ''}"
     >
-      <span class="g-key">collapse</span>
-      <span class="g-val mono">{fmt(collapseIdx, 1)}</span>
+      <span class="dot" aria-hidden="true"></span>
+      <span class="g-val">{styleHealthLabel}</span>
       <div class="tip" role="tooltip">
-        <div class="tip-head">indice collapse</div>
-        <div class="tip-row"><span>score de préservation du style, 0–100</span></div>
-        <div class="tip-row"><span>≥ 70</span><span class="tip-ok">sain</span></div>
-        <div class="tip-row"><span>50–70</span><span class="tip-warn">alerte</span></div>
-        <div class="tip-row"><span>&lt; 50</span><span class="tip-bad">effondré</span></div>
-      </div>
-    </div>
-
-    <div
-      class="gauge"
-      data-state={fidelityState}
-      tabindex="0"
-      aria-label="Fidélité cosinus : {fmt(fidelity, 3)}, seuil {FIDELITY_THRESHOLD}"
-    >
-      <span class="g-key">fidélité</span>
-      <span class="g-val mono">{fmt(fidelity, 3)}</span>
-      <div class="tip" role="tooltip">
-        <div class="tip-head">fidélité · cosinus au corpus source</div>
+        <div class="tip-head">santé du style</div>
+        <div class="tip-row"><span>collapse</span><span class="mono" data-state={collapseState}>{fmt(collapseIdx, 1)}</span></div>
+        <div class="tip-row"><span>fidélité</span><span class="mono" data-state={fidelityState}>{fmt(fidelity, 3)}</span></div>
+        <div class="tip-row"><span>règles actives</span><span class="mono">{rulesActiveCount}</span></div>
         {#if breakdown}
-          <div class="tip-row"><span>ttr</span><span class="mono">{fmt(breakdown.ttr, 2)}</span></div>
+          <div class="tip-row tip-thresh"><span>ttr</span><span class="mono">{fmt(breakdown.ttr, 2)}</span></div>
           <div class="tip-row"><span>kurtosis</span><span class="mono">{fmt(breakdown.kurtosis, 2)}</span></div>
           <div class="tip-row"><span>ratio questions</span><span class="mono">{fmt(breakdown.questionRatio, 2)}</span></div>
           <div class="tip-row"><span>signature</span><span class="mono">{fmt(breakdown.signaturePresence, 2)}</span></div>
           <div class="tip-row"><span>interdits</span><span class="mono">{breakdown.forbiddenHits ?? 0}</span></div>
-          <div class="tip-row"><span>phrase moy.</span><span class="mono">{fmt(breakdown.avgSentenceLen, 0)}</span></div>
-        {:else}
-          <div class="tip-row"><span>aucune décomposition — envoie un message</span></div>
         {/if}
-        <div class="tip-row tip-thresh"><span>seuil</span><span class="mono">{FIDELITY_THRESHOLD.toFixed(3)}</span></div>
+        <div class="tip-row tip-thresh"><span>seuil fidélité</span><span class="mono">{FIDELITY_THRESHOLD.toFixed(3)}</span></div>
       </div>
-    </div>
-
-    <div
-      class="gauge gauge-rules"
-      data-state={rulesActiveCount > 0 ? "fired" : "idle"}
-      aria-label="Règles déclenchées : {rulesActiveCount}"
-    >
-      <span class="g-key">règles</span>
-      <span class="g-val mono">{rulesActiveCount}</span>
     </div>
 
     <button
       class="gauge-help"
       class:pulse={hintPulse}
       onclick={toggleGlossary}
-      aria-label="Qu'est-ce que ces lectures ?"
+      aria-label="Comment lire la santé du style ?"
       aria-expanded={glossaryOpen}
     >?</button>
   </div>
@@ -175,30 +164,30 @@
     <div class="glossary-backdrop" onclick={toggleGlossary}></div>
     <aside class="glossary" role="dialog" aria-label="Glossaire laboratoire">
       <header class="gl-head">
-        <span class="gl-title mono">glossaire · lectures en direct</span>
+        <span class="gl-title mono">glossaire · santé du style</span>
         <button class="gl-close" onclick={toggleGlossary} aria-label="Fermer">×</button>
       </header>
       <dl class="gl-body">
+        <dt class="mono">style sain</dt>
+        <dd>Collapse ≥ 70 <strong>et</strong> fidélité ≥ 0.720 <strong>et</strong> aucune règle d'anti-pattern active. Le clone parle comme votre persona.</dd>
+
+        <dt class="mono">style alerte</dt>
+        <dd>Collapse entre 50 et 70, <strong>ou</strong> des règles d'anti-pattern sont actives. Signal faible — à surveiller.</dd>
+
+        <dt class="mono">style dérive</dt>
+        <dd>Collapse &lt; 50 <strong>ou</strong> fidélité &lt; 0.720. Le style s'effondre vers un LLM générique — une passe de réécriture est déclenchée.</dd>
+
         <dt class="mono">collapse</dt>
-        <dd>Indice 0–100 mesurant la préservation du style du persona. <strong>≥ 70</strong> sain, <strong>50–70</strong> alerte, <strong>&lt; 50</strong> style effondré — le clone parle comme un LLM générique.</dd>
+        <dd>Indice 0–100 de préservation du style du persona.</dd>
 
         <dt class="mono">fidélité</dt>
-        <dd>Similarité cosinus entre la sortie et votre corpus de référence. <strong>1.000</strong> = identique, seuil minimum <strong>0.720</strong>. En dessous, la passe de réécriture se déclenche.</dd>
+        <dd>Similarité cosinus entre la sortie et votre corpus de référence. Seuil 0.720.</dd>
 
         <dt class="mono">règles</dt>
-        <dd>Nombre de règles de style actuellement actives (anti-patterns détectés). Chaque règle bloque ou corrige une signature indésirable.</dd>
-
-        <dt class="mono">ttr</dt>
-        <dd>Type-Token Ratio — diversité du vocabulaire. Plus haut = lexique plus riche.</dd>
-
-        <dt class="mono">kurtosis</dt>
-        <dd>Concentration des phrases courtes/longues. Signature rythmique du persona.</dd>
-
-        <dt class="mono">signature</dt>
-        <dd>Présence de tournures idiomatiques propres au persona (expressions, tics, formules).</dd>
+        <dd>Nombre de règles d'anti-pattern actives (tournures indésirables détectées).</dd>
       </dl>
       <footer class="gl-foot mono">
-        survolez n'importe quelle jauge pour le détail en direct
+        survolez le badge pour le détail en direct
       </footer>
     </aside>
   {/if}
@@ -366,6 +355,46 @@
   .gauge[data-state="unknown"] .g-val,
   .gauge[data-state="idle"] .g-val { color: var(--ink-40); }
 
+  /* Style-health badge: single consolidated indicator */
+  .style-health {
+    padding: 6px 12px;
+    gap: 8px;
+  }
+  .style-health .g-val {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    text-transform: none;
+  }
+  .style-health .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ink-30);
+    flex-shrink: 0;
+    align-self: center;
+  }
+  .style-health[data-state="ok"] .dot { background: #2d7a3e; }
+  .style-health[data-state="warn"] .dot { background: #b87300; }
+  .style-health[data-state="drift"] .dot {
+    background: var(--vermillon);
+    animation: sh-pulse 1.2s linear infinite;
+  }
+  .style-health[data-state="ok"] .g-val { color: var(--ink); }
+  .style-health[data-state="warn"] .g-val { color: #b87300; }
+  .style-health[data-state="drift"] .g-val { color: var(--vermillon); }
+  .style-health[data-state="unknown"] .g-val { color: var(--ink-40); }
+  @keyframes sh-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.3); opacity: 0.6; }
+  }
+
+  /* Tooltip row mini-states (inherited color from main palette) */
+  .tip-row .mono[data-state="drift"],
+  .tip-row .mono[data-state="bad"] { color: #ef7666; }
+  .tip-row .mono[data-state="warn"] { color: #f0b050; }
+  .tip-row .mono[data-state="ok"] { color: #9be38d; }
+
   /* Hover tooltip */
   .tip {
     position: absolute;
@@ -414,9 +443,6 @@
     color: rgba(245, 242, 236, 0.72);
   }
   .tip-row .mono { color: var(--paper); }
-  .tip-ok { color: #9be38d; }
-  .tip-warn { color: #f0b050; }
-  .tip-bad { color: #ef7666; }
   .tip-thresh {
     margin-top: 4px;
     padding-top: 4px;
@@ -440,12 +466,6 @@
     color: var(--paper);
     background: var(--ink);
     border-color: var(--ink);
-  }
-
-  /* Rules gauge: when fired, flash vermillon */
-  .gauge-rules[data-state="fired"] .g-val {
-    color: var(--vermillon);
-    font-weight: 700;
   }
 
   /* ── Help button & glossary ── */

@@ -1,6 +1,6 @@
 <script>
   import { fly } from "svelte/transition";
-  import { renderMarkdown } from "$lib/utils.js";
+  import { renderMarkdown, toLinkedIn } from "$lib/utils.js";
   import MessageMarginalia from "./MessageMarginalia.svelte";
 
   let { message, seq = null, prevFidelity = null, sourceStyle = null, onCorrect, onValidate, onSaveRule, onCopyBlock } = $props();
@@ -8,6 +8,23 @@
   let ruleSaved = $state(false);
   let showDiff = $state(false);
   let margOpen = $state(false);
+  let copyMenuOpen = $state(false);
+  let copiedLabel = $state("");
+  let copiedTimer;
+
+  const COPY_MODE_KEY = "copy_mode_default";
+  const COPY_MODES = [
+    { id: "linkedin", label: "LinkedIn-ready", hint: "Unicode gras/italique, puces •" },
+    { id: "markdown", label: "Markdown", hint: "texte brut avec ** et *" },
+    { id: "plain", label: "Texte brut", hint: "supprime le markdown" },
+  ];
+  let copyMode = $state("linkedin");
+  if (typeof window !== "undefined") {
+    try {
+      const saved = localStorage.getItem(COPY_MODE_KEY);
+      if (saved && COPY_MODES.some((m) => m.id === saved)) copyMode = saved;
+    } catch {}
+  }
 
   let blocks = $derived(
     message.role === "bot" && message.content
@@ -16,12 +33,42 @@
   );
   let isMultiBlock = $derived(blocks.length > 1);
 
-  function copyFull() {
-    navigator.clipboard.writeText(message.content);
+  function stripMarkdown(md) {
+    return md
+      .replace(/\*\*(.+?)\*\*/g, "$1")
+      .replace(/\*(.+?)\*/g, "$1")
+      .replace(/^---+\s*$/gm, "")
+      .replace(/^[-*•]\s+/gm, "")
+      .replace(/^(\d+)[.)]\s+/gm, "$1. ");
+  }
+
+  function formatFor(mode, text) {
+    if (mode === "linkedin") return toLinkedIn(text);
+    if (mode === "plain") return stripMarkdown(text);
+    return text; // markdown
+  }
+
+  function copyAs(mode, text) {
+    navigator.clipboard.writeText(formatFor(mode, text));
+    const modeObj = COPY_MODES.find((m) => m.id === mode);
+    copiedLabel = modeObj?.label ?? "Copié";
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => (copiedLabel = ""), 1400);
+  }
+
+  function copyDefault() {
+    copyAs(copyMode, message.content);
+  }
+
+  function selectMode(mode) {
+    copyMode = mode;
+    try { localStorage.setItem(COPY_MODE_KEY, mode); } catch {}
+    copyMenuOpen = false;
+    copyAs(mode, message.content);
   }
 
   function copyBlock(block, btnEl) {
-    navigator.clipboard.writeText(block);
+    navigator.clipboard.writeText(formatFor(copyMode, block));
     onCopyBlock?.(block);
   }
 
@@ -97,7 +144,38 @@
 
       {#if message.role === "bot" && !message.typing && message.content}
         <div class="msg-actions">
-          <button class="action-btn" onclick={copyFull}>Copier</button>
+          <div class="copy-split">
+            <button
+              class="action-btn copy-main"
+              onclick={copyDefault}
+              title="Copier · {COPY_MODES.find(m => m.id === copyMode)?.label}"
+            >{copiedLabel ? `${copiedLabel} ✓` : "Copier"}</button>
+            <button
+              class="action-btn copy-caret"
+              onclick={() => (copyMenuOpen = !copyMenuOpen)}
+              aria-label="Choisir le format de copie"
+              aria-expanded={copyMenuOpen}
+            >▾</button>
+            {#if copyMenuOpen}
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div class="copy-backdrop" onclick={() => (copyMenuOpen = false)}></div>
+              <div class="copy-menu" role="menu">
+                {#each COPY_MODES as mode}
+                  <button
+                    class="copy-menu-item"
+                    class:is-default={copyMode === mode.id}
+                    role="menuitem"
+                    onclick={() => selectMode(mode.id)}
+                  >
+                    <span class="cm-label">{mode.label}</span>
+                    <span class="cm-hint">{mode.hint}</span>
+                    {#if copyMode === mode.id}<span class="cm-mark">●</span>{/if}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
           <button class="action-btn action-btn-primary" onclick={() => onCorrect?.(message)}>Corriger</button>
         </div>
       {/if}
@@ -294,6 +372,79 @@
   .action-btn:hover {
     color: var(--ink);
     border-color: var(--ink-40);
+  }
+
+  /* Split button copy: Copier | ▾ */
+  .copy-split {
+    position: relative;
+    display: inline-flex;
+  }
+  .copy-split .action-btn { border-radius: 0; }
+  .copy-main { border-right: none; }
+  .copy-caret {
+    padding: 3px 6px;
+    font-size: 9px;
+  }
+  .copy-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 14;
+    background: transparent;
+  }
+  .copy-menu {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0;
+    z-index: 15;
+    min-width: 240px;
+    background: var(--paper);
+    border: 1px solid var(--rule-strong);
+    box-shadow: 0 4px 12px rgba(20, 20, 26, 0.12);
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .copy-menu-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    column-gap: 8px;
+    align-items: baseline;
+    padding: 6px 8px;
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--font-ui);
+  }
+  .copy-menu-item:hover {
+    background: var(--paper-subtle);
+    border-color: var(--rule);
+  }
+  .copy-menu-item .cm-label {
+    grid-column: 1;
+    grid-row: 1;
+    font-size: 12px;
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .copy-menu-item .cm-hint {
+    grid-column: 1;
+    grid-row: 2;
+    font-size: 10.5px;
+    color: var(--ink-40);
+    font-family: var(--font-mono);
+  }
+  .copy-menu-item .cm-mark {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    font-size: 8px;
+    color: var(--vermillon);
+  }
+  .copy-menu-item.is-default .cm-label {
+    color: var(--vermillon);
   }
 
   .action-btn-primary {
