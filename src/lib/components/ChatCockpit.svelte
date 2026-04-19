@@ -205,7 +205,7 @@
       class:active={leadOpen}
       onclick={() => onToggleLead?.()}
       aria-pressed={leadOpen}
-    >prospect</button>
+    >brief</button>
     <button
       class="tab-btn mono"
       class:active={feedbackOpen}
