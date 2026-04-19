@@ -202,9 +202,11 @@ export default async function handler(req, res) {
         if (convId && supabase) {
           try {
             await Promise.all([
+              // message_type='meta': the operator→clone instruction and its
+              // confirmation must not appear in the DM-simulation thread view.
               supabase.from("messages").insert([
-                { conversation_id: convId, role: "user", content: message },
-                { conversation_id: convId, role: "assistant", content: confirm },
+                { conversation_id: convId, role: "user", content: message, message_type: "meta" },
+                { conversation_id: convId, role: "assistant", content: confirm, message_type: "meta" },
               ]),
               supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
               supabase.from("conversations")
@@ -243,9 +245,11 @@ export default async function handler(req, res) {
         if (convId && supabase) {
           try {
             await Promise.all([
+              // message_type='meta': the operator→clone instruction and its
+              // confirmation must not appear in the DM-simulation thread view.
               supabase.from("messages").insert([
-                { conversation_id: convId, role: "user", content: message },
-                { conversation_id: convId, role: "assistant", content: confirm },
+                { conversation_id: convId, role: "user", content: message, message_type: "meta" },
+                { conversation_id: convId, role: "assistant", content: confirm, message_type: "meta" },
               ]),
               supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
               supabase.from("conversations")

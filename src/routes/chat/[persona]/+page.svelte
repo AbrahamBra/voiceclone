@@ -22,14 +22,10 @@
   import ScenarioSwitcher from "$lib/components/ScenarioSwitcher.svelte";
   import ConversationSidebar from "$lib/components/ConversationSidebar.svelte";
   import ChatCockpit from "$lib/components/ChatCockpit.svelte";
-  import RulesPanel from "$lib/components/RulesPanel.svelte";
-  import FeedbackPanel from "$lib/components/FeedbackPanel.svelte";
-  import SettingsPanel from "$lib/components/SettingsPanel.svelte";
   import AuditStrip from "$lib/components/AuditStrip.svelte";
-  import LeadPanel from "$lib/components/LeadPanel.svelte";
-  import CommandPalette from "$lib/components/CommandPalette.svelte";
   import HeatThermometer from "$lib/components/HeatThermometer.svelte";
   import LiveMetricsStrip from "$lib/components/LiveMetricsStrip.svelte";
+  // Secondary panels are lazy-loaded on first open — see $effect blocks below.
 
   let personaId = $derived($page.data.personaId);
   let scenario = $derived($page.data.scenario);
@@ -44,11 +40,49 @@
   // Panel state (demodalized)
   let feedbackTarget = $state(null);      // bot message to correct
   let feedbackOpen = $state(false);
-  let settingsOpen = $state(false);
-  let rulesPanelOpen = $state(false);
   let leadOpen = $state(false);
   let showCommandPalette = $state(false);
   let switcherOpen = $state(false);
+  let journalOpen = $state(false);
+  // Unified persona-brain drawer replaces the former standalone RulesPanel +
+  // SettingsPanel slide-overs. initialTab lets a pastille (e.g. the
+  // style-health badge) deep-link directly to `règles` if needed later.
+  let brainOpen = $state(false);
+  let brainInitialTab = $state("règles");
+
+  // Lazy-loaded secondary panels — module is fetched the first time its
+  // open flag flips to true, then kept in memory for subsequent opens.
+  let FeedbackPanel = $state(null);
+  let PersonaBrainDrawer = $state(null);
+  let LeadPanel = $state(null);
+  let CommandPalette = $state(null);
+  let LearningJournal = $state(null);
+
+  $effect(() => {
+    if (feedbackOpen && !FeedbackPanel) {
+      import("$lib/components/FeedbackPanel.svelte").then(m => { FeedbackPanel = m.default; });
+    }
+  });
+  $effect(() => {
+    if (brainOpen && !PersonaBrainDrawer) {
+      import("$lib/components/PersonaBrainDrawer.svelte").then(m => { PersonaBrainDrawer = m.default; });
+    }
+  });
+  $effect(() => {
+    if (leadOpen && !LeadPanel) {
+      import("$lib/components/LeadPanel.svelte").then(m => { LeadPanel = m.default; });
+    }
+  });
+  $effect(() => {
+    if (showCommandPalette && !CommandPalette) {
+      import("$lib/components/CommandPalette.svelte").then(m => { CommandPalette = m.default; });
+    }
+  });
+  $effect(() => {
+    if (journalOpen && !LearningJournal) {
+      import("$lib/components/LearningJournal.svelte").then(m => { LearningJournal = m.default; });
+    }
+  });
 
   // Populate personas list for the inline clone switcher (cockpit dropdown).
   // Non-blocking: chat still renders without it.
@@ -169,16 +203,18 @@
     if (!loading && personaId) refreshFidelity();
   });
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom when messages change — coalesced to one rAF tick so
+  // SSE token streams don't pile up concurrent smooth animations (previous
+  // behavior spawned a new 1s smooth-scroll per chunk, visibly choppy).
+  let scrollRaf = null;
   $effect(() => {
-    // Subscribe to messages store reactively
     const msgs = $messages;
-    if (scrollAnchor) {
-      // Small delay so DOM renders first
-      requestAnimationFrame(() => {
-        scrollAnchor.scrollIntoView({ behavior: "smooth", block: "end" });
-      });
-    }
+    if (!scrollAnchor) return;
+    if (scrollRaf) cancelAnimationFrame(scrollRaf);
+    scrollRaf = requestAnimationFrame(() => {
+      scrollAnchor.scrollIntoView({ behavior: "auto", block: "end" });
+      scrollRaf = null;
+    });
   });
 
   // Initialize on mount / persona change
@@ -530,20 +566,6 @@
     feedbackOpen = true;
   }
 
-  async function handleValidate(message) {
-    try {
-      await api("/api/feedback", {
-        method: "POST",
-        body: JSON.stringify({
-          type: "validate",
-          botMessage: message.content,
-          persona: get(currentPersonaId),
-        }),
-      });
-      showToast("Noté ✓");
-    } catch {}
-  }
-
   async function handleSaveRule(message) {
     try {
       await api("/api/feedback", {
@@ -578,9 +600,9 @@
     if (e.key === "Escape") {
       if (showCommandPalette) showCommandPalette = false;
       else if (feedbackOpen) { feedbackOpen = false; feedbackTarget = null; feedbackMessageId = null; }
-      else if (settingsOpen) settingsOpen = false;
-      else if (rulesPanelOpen) rulesPanelOpen = false;
+      else if (brainOpen) brainOpen = false;
       else if (leadOpen) leadOpen = false;
+      else if (journalOpen) journalOpen = false;
       return;
     }
     if (mod && e.key === "k") {
@@ -669,24 +691,32 @@
         bind:switcherOpen
         onSwitchClone={handleSwitchToClone}
         {rulesActiveCount}
-        {rulesPanelOpen}
-        {feedbackOpen}
-        {settingsOpen}
         {leadOpen}
         {sidebarOpen}
+        {journalOpen}
+        {brainOpen}
         onBack={handleBack}
         onToggleSidebar={() => sidebarOpen = !sidebarOpen}
-        onToggleRules={() => rulesPanelOpen = !rulesPanelOpen}
-        onToggleFeedback={() => {
-          feedbackOpen = !feedbackOpen;
-          if (!feedbackOpen) { feedbackTarget = null; feedbackMessageId = null; }
-        }}
-        onToggleSettings={() => settingsOpen = !settingsOpen}
         onToggleLead={() => leadOpen = !leadOpen}
+        onToggleJournal={() => journalOpen = !journalOpen}
+        onToggleBrain={() => {
+          if (!brainOpen) brainInitialTab = "règles";
+          brainOpen = !brainOpen;
+        }}
       />
 
       <div class="chat-body">
         <div class="chat-messages-col">
+          <!-- Section heads mirror the landing's numbered pipeline (01-05) so
+               the mental model formed on the landing carries into the chat:
+               01 PROMPT (composer) → 02 SORTIE (messages) → 03 RÈGLES (drawer)
+               → 04 MÉTRIQUES + 05 FIDÉLITÉ (strip below). Consistency drops
+               cognitive load on first entry — "I've seen this layout before". -->
+          <div class="sec-head mono">
+            <span class="sec-idx">02</span>
+            <span class="sec-name">sortie</span>
+            <span class="sec-ctx">{$currentScenarioType || $currentScenario || "en direct"}</span>
+          </div>
           <div class="chat-messages" bind:this={messagesEl}>
             {#each $messages as message (message.id)}
               <ChatMessage
@@ -695,7 +725,6 @@
                 prevFidelity={prevFidelityFor(message, $messages)}
                 {sourceStyle}
                 onCorrect={handleCorrect}
-                onValidate={handleValidate}
                 onSaveRule={handleSaveRule}
                 onCopyBlock={() => {}}
               />
@@ -704,6 +733,10 @@
           </div>
 
           <div class="composer-toolbar">
+            <span class="sec-tag mono">
+              <span class="sec-idx">01</span>
+              <span class="sec-name">prompt</span>
+            </span>
             <ScenarioSwitcher
               persona={$personaConfig}
               value={$currentScenarioType}
@@ -723,32 +756,42 @@
     </div>
   </div>
 
-  <RulesPanel
-    open={rulesPanelOpen}
-    {ruleStats}
-    onClose={() => rulesPanelOpen = false}
-  />
+  {#if PersonaBrainDrawer}
+    <PersonaBrainDrawer
+      open={brainOpen}
+      {personaId}
+      {ruleStats}
+      initialTab={brainInitialTab}
+      onClose={() => brainOpen = false}
+    />
+  {/if}
 
-  <FeedbackPanel
-    open={feedbackOpen}
-    botMessage={feedbackTarget || ""}
-    onClose={() => { feedbackOpen = false; feedbackTarget = null; feedbackMessageId = null; }}
-    onReplace={handleReplace}
-  />
+  {#if FeedbackPanel}
+    <FeedbackPanel
+      open={feedbackOpen}
+      botMessage={feedbackTarget || ""}
+      onClose={() => { feedbackOpen = false; feedbackTarget = null; feedbackMessageId = null; }}
+      onReplace={handleReplace}
+    />
+  {/if}
 
-  <SettingsPanel
-    open={settingsOpen}
-    {personaId}
-    onClose={() => settingsOpen = false}
-  />
+  {#if LeadPanel}
+    <LeadPanel
+      open={leadOpen}
+      onClose={() => leadOpen = false}
+      onAnalyzed={handleLeadAnalyzed}
+    />
+  {/if}
 
-  <LeadPanel
-    open={leadOpen}
-    onClose={() => leadOpen = false}
-    onAnalyzed={handleLeadAnalyzed}
-  />
+  {#if LearningJournal}
+    <LearningJournal
+      {personaId}
+      open={journalOpen}
+      onClose={() => journalOpen = false}
+    />
+  {/if}
 
-  {#if showCommandPalette}
+  {#if showCommandPalette && CommandPalette}
     <CommandPalette
       conversations={$conversations}
       onselect={(id) => { showCommandPalette = false; handleSelectConversation(id); }}
@@ -799,18 +842,53 @@
     gap: 0.625rem;
   }
 
-  /* Composer toolbar — sits above the chat input. Hosts the scenario
-     switcher (Sprint 0.b) and will host future controls (scenario-level
-     contextual help, char counter) alongside it. */
+  /* Composer toolbar — sits above the chat input. Hosts the 01 PROMPT
+     section tag + scenario switcher. */
   .composer-toolbar {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     padding: 6px 16px 0;
     background: var(--paper);
   }
   @media (max-width: 480px) {
-    .composer-toolbar { padding: 4px 8px 0; }
+    .composer-toolbar { padding: 4px 8px 0; gap: 6px; }
+  }
+
+  /* Section heads — mirror landing's 01/02/03/04/05 typographic language.
+     Mono, uppercase, vermillon index, ink label, optional ink-40 context. */
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 6px 16px;
+    border-bottom: 1px dashed var(--rule);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: var(--paper);
+  }
+  .sec-tag {
+    display: inline-flex;
+    gap: 6px;
+    align-items: baseline;
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+  .sec-idx { color: var(--vermillon); font-weight: 600; }
+  .sec-name { color: var(--ink); font-weight: 600; }
+  .sec-ctx {
+    color: var(--ink-40);
+    text-transform: lowercase;
+    letter-spacing: 0.02em;
+    font-size: 10px;
+    margin-left: auto;
+  }
+  @media (max-width: 480px) {
+    .sec-head { padding: 6px 10px; }
+    .sec-ctx { display: none; }
   }
 
   .loading-screen {

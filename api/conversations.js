@@ -56,7 +56,11 @@ export default async function handler(req, res) {
 
   if (req.method !== "GET") { res.status(405).json({ error: "Method not allowed" }); return; }
 
-  const { id, search, persona, before } = req.query || {};
+  const { id, search, persona, before, include_meta } = req.query || {};
+  // include_meta=true opts in to system confirmations (rule added/weakened)
+  // for the "journal d'apprentissage" pane. Default is chat-only so the
+  // main DM thread stays WYSIWYG (what you see = what you copy to LinkedIn).
+  const includeMeta = include_meta === "true" || include_meta === "1";
 
   // --- 1. Load single conversation + messages ---
   if (id) {
@@ -75,10 +79,14 @@ export default async function handler(req, res) {
 
     let msgQuery = supabase
       .from("messages")
-      .select("id, role, content, created_at")
+      .select("id, role, content, created_at, message_type")
       .eq("conversation_id", id)
       .order("created_at", { ascending: true })
       .limit(50);
+
+    if (!includeMeta) {
+      msgQuery = msgQuery.eq("message_type", "chat");
+    }
 
     if (before) {
       msgQuery = msgQuery.lt("created_at", before);
@@ -92,11 +100,14 @@ export default async function handler(req, res) {
   }
 
   // --- 2. Search messages ---
+  // Search targets the DM simulation content only — meta shortcut
+  // confirmations are noise for the user looking for a past draft.
   if (search && persona) {
     let query = supabase
       .from("messages")
       .select("id, conversation_id, content, created_at, conversations!inner(title, client_id, persona_id)")
       .eq("conversations.persona_id", persona)
+      .eq("message_type", "chat")
       .ilike("content", `%${search}%`)
       .order("created_at", { ascending: false })
       .limit(20);

@@ -22,18 +22,16 @@
     onSwitchClone,
     // UI slots
     rulesActiveCount = 0,
-    rulesPanelOpen = false,
-    feedbackOpen = false,
-    settingsOpen = false,
     leadOpen = false,
     sidebarOpen = false,
+    journalOpen = false,
+    brainOpen = false,
     // Callbacks
     onBack,
     onToggleSidebar,
-    onToggleRules,
-    onToggleFeedback,
-    onToggleSettings,
     onToggleLead,
+    onToggleJournal,
+    onToggleBrain,
   } = $props();
 
   function fmt(n, d = 2) {
@@ -134,18 +132,10 @@
       <span class="dot" aria-hidden="true"></span>
       <span class="g-val">{styleHealthLabel}</span>
       <div class="tip" role="tooltip">
-        <div class="tip-head">santé du style</div>
-        <div class="tip-row"><span>collapse</span><span class="mono" data-state={collapseState}>{fmt(collapseIdx, 1)}</span></div>
-        <div class="tip-row"><span>fidélité</span><span class="mono" data-state={fidelityState}>{fmt(fidelity, 3)}</span></div>
-        <div class="tip-row"><span>règles actives</span><span class="mono">{rulesActiveCount}</span></div>
-        {#if breakdown}
-          <div class="tip-row tip-thresh"><span>ttr</span><span class="mono">{fmt(breakdown.ttr, 2)}</span></div>
-          <div class="tip-row"><span>kurtosis</span><span class="mono">{fmt(breakdown.kurtosis, 2)}</span></div>
-          <div class="tip-row"><span>ratio questions</span><span class="mono">{fmt(breakdown.questionRatio, 2)}</span></div>
-          <div class="tip-row"><span>signature</span><span class="mono">{fmt(breakdown.signaturePresence, 2)}</span></div>
-          <div class="tip-row"><span>interdits</span><span class="mono">{breakdown.forbiddenHits ?? 0}</span></div>
-        {/if}
-        <div class="tip-row tip-thresh"><span>seuil fidélité</span><span class="mono">{FIDELITY_THRESHOLD.toFixed(3)}</span></div>
+        <div class="tip-head">{styleHealthLabel}</div>
+        <div class="tip-row"><span>collapse</span><span class="mono" data-state={collapseState}>{fmt(collapseIdx, 1)} / 70</span></div>
+        <div class="tip-row"><span>fidélité</span><span class="mono" data-state={fidelityState}>{fmt(fidelity, 3)} / {FIDELITY_THRESHOLD.toFixed(3)}</span></div>
+        <div class="tip-row"><span>règles</span><span class="mono">{rulesActiveCount}</span></div>
       </div>
     </div>
 
@@ -156,6 +146,15 @@
       aria-label="Aide — lire les métriques, corriger, changer de clone"
       aria-expanded={glossaryOpen}
     >?</button>
+
+    <button
+      class="gauge-help gauge-journal"
+      class:active={journalOpen}
+      onclick={() => onToggleJournal?.()}
+      aria-label="Journal d'apprentissage — règles ajoutées et affaiblies"
+      aria-pressed={journalOpen}
+      title="Journal d'apprentissage"
+    >※</button>
   </div>
 
   {#if glossaryOpen}
@@ -216,32 +215,27 @@
     </aside>
   {/if}
 
-  <!-- Right cluster — actions -->
+  <!-- Right cluster — actions.
+       Model A collapse: règles + réglages (+ sidebar connaissance/intelligence)
+       all live inside the single PersonaBrainDrawer behind ⚙. Only the primary
+       per-conversation action (Brief) stays first-class in the cockpit. The
+       rulesActiveCount still surfaces via the style-health badge in the center. -->
   <div class="right">
     <button
-      class="tab-btn mono"
-      class:active={rulesPanelOpen}
-      onclick={() => onToggleRules?.()}
-      aria-pressed={rulesPanelOpen}
-    >règles</button>
-    <button
-      class="tab-btn mono"
+      class="brief-btn mono"
       class:active={leadOpen}
       onclick={() => onToggleLead?.()}
       aria-pressed={leadOpen}
     >brief</button>
+    <span class="tab-sep" aria-hidden="true"></span>
     <button
-      class="tab-btn mono"
-      class:active={feedbackOpen}
-      onclick={() => onToggleFeedback?.()}
-      aria-pressed={feedbackOpen}
-    >correction</button>
-    <button
-      class="tab-btn mono"
-      class:active={settingsOpen}
-      onclick={() => onToggleSettings?.()}
-      aria-pressed={settingsOpen}
-    >réglages</button>
+      class="brain-btn mono"
+      class:active={brainOpen}
+      onclick={() => onToggleBrain?.()}
+      aria-pressed={brainOpen}
+      aria-label="Cerveau du clone — règles, connaissance, intelligence, réglages"
+      title="Cerveau du clone"
+    >⚙</button>
   </div>
 </header>
 
@@ -473,20 +467,57 @@
     border-top: 1px solid rgba(245, 242, 236, 0.12);
   }
 
-  /* ───── Right tabs ───── */
-  .tab-btn {
+  /* Brief is a primary-ish CTA, not a config tab — heavier border + ink
+     label distinguish it from règles/réglages. Full inversion on active. */
+  .brief-btn {
+    background: transparent;
+    border: 1px solid var(--ink);
+    color: var(--ink);
+    padding: 5px 12px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: color 0.08s linear, background 0.08s linear;
+  }
+  .brief-btn:hover {
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .brief-btn.active {
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .tab-sep {
+    display: inline-block;
+    width: 1px;
+    height: 18px;
+    background: var(--rule-strong);
+    margin: 0 2px;
+    align-self: center;
+  }
+
+  /* Single ⚙ trigger for the PersonaBrainDrawer. Icon-only, lighter than
+     brief-btn so it reads as secondary/config access rather than primary. */
+  .brain-btn {
     background: transparent;
     border: 1px solid var(--rule-strong);
     color: var(--ink-40);
     padding: 5px 10px;
     font-family: var(--font-mono);
-    font-size: 10.5px;
-    letter-spacing: 0.04em;
+    font-size: 14px;
+    line-height: 1;
     cursor: pointer;
     transition: color 0.08s linear, border-color 0.08s linear, background 0.08s linear;
+    min-width: 32px;
+    text-align: center;
   }
-  .tab-btn:hover { color: var(--ink); border-color: var(--ink-40); }
-  .tab-btn.active {
+  .brain-btn:hover {
+    color: var(--ink);
+    border-color: var(--ink-40);
+  }
+  .brain-btn.active {
     color: var(--paper);
     background: var(--ink);
     border-color: var(--ink);
@@ -513,6 +544,15 @@
   .gauge-help:hover {
     color: var(--ink);
     background: var(--paper);
+  }
+  .gauge-help.active {
+    color: var(--paper);
+    background: var(--ink);
+    border-color: var(--ink);
+  }
+  .gauge-journal {
+    font-size: 13px;
+    font-weight: 500;
   }
   .gauge-help.pulse {
     color: var(--vermillon);
@@ -655,12 +695,6 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-    }
-    .tab-btn {
-      padding: 10px 10px;
-      font-size: 10px;
-      min-height: var(--touch-min);
-      min-width: var(--touch-min);
     }
     .gauge {
       padding: 10px 10px;

@@ -9,7 +9,10 @@
 
   import { RULE_CATALOG } from "$lib/rule-catalog.js";
 
-  let { open = false, ruleStats = {}, onClose } = $props();
+  // embedded=true: render only inner content (no aside wrapper, no header/footer),
+  // intended for use inside PersonaBrainDrawer. Default keeps legacy standalone
+  // slide-from-right behavior so external callers (if any) don't break.
+  let { open = false, ruleStats = {}, onClose, embedded = false } = $props();
 
   let now = $state(Date.now());
   let timer;
@@ -33,7 +36,48 @@
   );
 </script>
 
-{#if open}
+{#snippet rulesList()}
+  <ul class="rp-list">
+    {#each RULE_CATALOG as rule}
+      {@const stats = ruleStats[rule.type] || { count: 0, lastFiredAt: null, lastDetail: null, lastSeverity: null }}
+      {@const fired = stats.count > 0}
+      {@const sevLabel = rule.severity === "hard" ? "dur" : rule.severity === "strong" ? "fort" : "léger"}
+      <li class="rp-rule" class:fired>
+        <div class="rp-rule-head">
+          <span class="rp-rule-tick" aria-hidden="true">{fired ? "●" : "○"}</span>
+          <span class="rp-rule-name mono">{rule.label}</span>
+          <span class="rp-rule-sev mono sev-{rule.severity}">{sevLabel}</span>
+          <span class="rp-rule-count mono">{stats.count}</span>
+        </div>
+        <div class="rp-rule-desc">{rule.desc}</div>
+        {#if fired}
+          <div class="rp-rule-last">
+            <span class="rp-rule-when mono">{relTime(stats.lastFiredAt)}</span>
+            {#if stats.lastDetail}
+              <span class="rp-rule-detail mono">{stats.lastDetail}</span>
+            {/if}
+          </div>
+        {/if}
+      </li>
+    {/each}
+  </ul>
+{/snippet}
+
+{#if embedded}
+  <!-- Embedded mode: no aside wrapper — PersonaBrainDrawer owns the shell.
+       Section head aligns with landing's numbered pipeline (03 MOTEUR DE RÈGLES). -->
+  <div class="rp-embedded">
+    <div class="rp-sec-head mono">
+      <span class="rp-sec-idx">03</span>
+      <span class="rp-sec-name">moteur de règles</span>
+      <span class="rp-sec-ctx">{totalFirings} déclenchements · {RULE_CATALOG.length} règles</span>
+    </div>
+    {@render rulesList()}
+    <div class="rp-foot mono rp-foot-embedded">
+      <span>compteurs remis à zéro par conversation</span>
+    </div>
+  </div>
+{:else if open}
   <aside class="rules-panel" aria-label="Règles actives">
     <header class="rp-head">
       <div class="rp-title mono">MOTEUR DE RÈGLES</div>
@@ -45,30 +89,7 @@
       <button class="rp-close mono" onclick={() => onClose?.()} aria-label="Fermer">✕</button>
     </header>
 
-    <ul class="rp-list">
-      {#each RULE_CATALOG as rule}
-        {@const stats = ruleStats[rule.type] || { count: 0, lastFiredAt: null, lastDetail: null, lastSeverity: null }}
-        {@const fired = stats.count > 0}
-        {@const sevLabel = rule.severity === "hard" ? "dur" : rule.severity === "strong" ? "fort" : "léger"}
-        <li class="rp-rule" class:fired>
-          <div class="rp-rule-head">
-            <span class="rp-rule-tick" aria-hidden="true">{fired ? "●" : "○"}</span>
-            <span class="rp-rule-name mono">{rule.label}</span>
-            <span class="rp-rule-sev mono sev-{rule.severity}">{sevLabel}</span>
-            <span class="rp-rule-count mono">{stats.count}</span>
-          </div>
-          <div class="rp-rule-desc">{rule.desc}</div>
-          {#if fired}
-            <div class="rp-rule-last">
-              <span class="rp-rule-when mono">{relTime(stats.lastFiredAt)}</span>
-              {#if stats.lastDetail}
-                <span class="rp-rule-detail mono">{stats.lastDetail}</span>
-              {/if}
-            </div>
-          {/if}
-        </li>
-      {/each}
-    </ul>
+    {@render rulesList()}
 
     <footer class="rp-foot mono">
       <span>compteurs remis à zéro par conversation</span>
@@ -219,5 +240,35 @@
 
   @media (max-width: 560px) {
     .rules-panel { width: 100%; }
+  }
+
+  /* Embedded mode (inside PersonaBrainDrawer): reuse the list styles, skip the
+     aside shell. Section head mirrors landing's 03 MOTEUR DE RÈGLES pattern. */
+  .rp-embedded { display: flex; flex-direction: column; }
+  .rp-sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 2px 16px 8px;
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .rp-sec-idx { color: var(--vermillon); font-weight: 600; }
+  .rp-sec-name { color: var(--ink); font-weight: 600; }
+  .rp-sec-ctx {
+    color: var(--ink-40);
+    text-transform: lowercase;
+    letter-spacing: 0.02em;
+    font-size: 10px;
+    margin-left: auto;
+  }
+  .rp-foot-embedded {
+    padding: 10px 16px 4px;
+    font-size: 10px;
+    color: var(--ink-40);
+    letter-spacing: 0.04em;
+    border-top: 1px dashed var(--rule);
+    margin-top: 6px;
   }
 </style>
