@@ -1,24 +1,31 @@
 # Chat — Dossier prospect à 2 zones — Design Spec
 
 **Date:** 2026-04-19
-**Status:** Draft
+**Status:** Draft v2 (revu après spec-review 2026-04-19)
 **Supersedes partially:** `2026-04-18-thermometre-rail-design.md` (le rail heat est démoli au profit d'un rail feedback ; le signal heat migre en indicateur dans le header dossier)
+**Relation avec migrations existantes :**
+- `supabase/027_message_type.sql` (déjà déployée) introduit `messages.message_type` ∈ {`chat`, `meta`} pour séparer la DM simulation des confirmations système. **Orthogonal à cette spec** — on ne touche pas à 027. Le nouveau champ `turn_kind` (ci-dessous) vit sur l'axe "rôle narratif" (prospect/draft/envoyé) et ne remplace ni ne redéfinit `message_type`.
+- `supabase/021_prospect_heat.sql` calcule la heat sur `role='user'`. Comme on garde `role` intact (user/assistant) et qu'on ajoute `turn_kind` orthogonal, le calcul heat existant reste valide (`role='user' AND turn_kind='prospect'`).
+- `supabase/017_learning_events.sql` (table `learning_events`) est **persona-scoped**, pas conversation-scoped, payload très typé (rule_added/consolidation_run). **Pas adapté** au feedback-rail conversation-scoped : on crée une nouvelle table `feedback_events` conversation-scoped qui référence `learning_events` par FK quand une correction déclenche un rule_added.
+
 **Files:**
 - modified `src/routes/chat/[persona]/+page.svelte` — layout repensé (header dossier pinné + thread + rail feedback)
-- new `src/lib/components/ProspectDossierHeader.svelte` — header pinné (nom, stage, dernier contact, note, chaleur)
+- new `src/lib/components/ProspectDossierHeader.svelte` — header pinné (nom, stage, dernier contact, note, chaleur, ScenarioSwitcher)
 - new `src/lib/components/FeedbackRail.svelte` — zone B (journal feedback + pill règles actives)
 - new `src/lib/components/ChatComposer.svelte` — composer hybride (ajouter prospect / draft la suite) remplace ChatInput
-- modified `src/lib/components/ChatMessage.svelte` — rendu par types `prospect` / `clone_draft` / `toi`, actions ✓/✎/↻/📋 sur drafts uniquement
+- modified `src/lib/components/ChatMessage.svelte` — rendu par `turn_kind` (`prospect`/`clone_draft`/`toi`/legacy fallback), actions ✓/✎/↻/📋 sur drafts uniquement
 - modified `src/lib/components/ChatCockpit.svelte` — allégé (identité + pill style-health + ⚙ brain link), métriques dégagées
+- modified `src/lib/components/FeedbackPanel.svelte` — reste le slide-over pour corrections longues + picker 3 alternatives, triggered par clic ✎ sur un `clone_draft` ; sa soumission crée une entrée `feedback_events` type `corrected`
+- modified `src/lib/components/ScenarioSwitcher.svelte` — déplacé dans `ProspectDossierHeader` (plus dans composer-toolbar)
 - deleted `src/lib/components/LiveMetricsStrip.svelte` — 100% doublon
-- deleted `src/lib/components/AuditStrip.svelte` côté chat (déplacé dans /admin si pas déjà)
-- deleted `src/lib/components/HeatThermometer.svelte` panel → fusionné comme indicateur dans ProspectDossierHeader
-- deleted `src/lib/components/MessageMarginalia.svelte` côté chat (migré dans `/brain/[persona]` onglet intelligence)
-- new route `src/routes/brain/[persona]/+page.svelte` — page plein écran (connaissance + intelligence + réglages)
-- removed `src/lib/components/PersonaBrainDrawer.svelte` (drawer) après migration vers route
-- new migration `supabase/NNN_feedback_events.sql` — table `feedback_events` (ou réutilisation `learning_events` selon shape)
-- new migration `supabase/NNN_message_types.sql` — ajout colonnes/valeurs `role` pour `prospect` / `clone_draft` / `toi`
-- new migration `supabase/NNN_prospect_dossier.sql` — colonnes `prospect_name`, `stage`, `note` sur `conversations`
+- deleted `src/lib/components/AuditStrip.svelte` côté chat (supprimé de `+page.svelte`) ; déplacement vers `/admin` hors scope de cette spec
+- deleted `src/lib/components/HeatThermometer.svelte` panel → logique de signal réutilisée comme indicateur inline dans ProspectDossierHeader (le composant fichier peut être supprimé ou réduit à un indicator-only)
+- deleted `src/lib/components/MessageMarginalia.svelte` côté chat (migré dans `/brain/[persona]` onglet intelligence comme timeline par-msg)
+- new route `src/routes/brain/[persona]/+page.svelte` — page plein écran (connaissance + intelligence + réglages — 3 onglets, PAS de règles ici)
+- deleted `src/lib/components/PersonaBrainDrawer.svelte` après migration vers route
+- new migration `supabase/028_turn_kind.sql` — ajout colonne `messages.turn_kind` orthogonale à `role` et `message_type`
+- new migration `supabase/029_feedback_events.sql` — nouvelle table `feedback_events` conversation-scoped
+- new migration `supabase/030_prospect_dossier.sql` — colonnes `prospect_name`, `stage`, `note` sur `conversations`
 
 ## Problème
 
@@ -34,7 +41,7 @@ En parallèle, l'observabilité actuelle (style metrics, fidelity, collapse_idx)
 
 ## Solution : chat à 2 zones (dossier prospect + journal feedback)
 
-Le chat devient un **dossier prospect** structuré. Layout layout permanent (breakpoint desktop ≥ 900px) :
+Le chat devient un **dossier prospect** structuré. Layout permanent (breakpoint desktop ≥ 900px) :
 
 ```
 ┌──────────────────────────────────────────────────┬──────────────┐
@@ -84,17 +91,26 @@ Le chat devient un **dossier prospect** structuré. Layout layout permanent (bre
 
 ### Section 1 — Message model
 
-3 types de turns dans le thread. Legacy messages (role `user` / `bot`) restent rendus tels quels pour les conversations existantes ; nouvelles conversations utilisent les nouveaux types.
+Clarification du data model actuel (à corriger dans la tête du lecteur) :
+- `messages.role` ∈ {`user`, `assistant`} (pas `bot`)
+- Aujourd'hui `role='user'` est **surchargé** : il désigne à la fois l'opérateur qui tape un prompt et les messages prospect copié-collés (cf. commentaire 021_prospect_heat qui traite `role='user'` comme inbound prospect). Cette surcharge est une source de bugs subtils — cette spec la **résout** en introduisant un axe orthogonal `turn_kind`.
 
-| Type | Source | Rendu visuel | Actions disponibles |
-|------|--------|--------------|---------------------|
-| `prospect` | paste opérateur ou auto-import Breakcold (roadmap) | bulle gauche, couleur neutre | aucune (read-only) |
-| `clone_draft` | génération LLM via `/api/chat` SSE | bulle droite, teinte "en attente" (ex: fond #f5efe4 ou équivalent paper pâle avec bordure left ocre) | **✓ valider** · **✎ corriger** · **↻ regen** · **📋 copier** |
-| `toi` | résultat d'une validation (directe ou après édition) | bulle droite, neutre | aucune (read-only après envoi) |
+**Nouvelle colonne `messages.turn_kind`** (via migration 028) — indépendante de `role` et `message_type` :
 
-**Règle d'état** : au plus un `clone_draft` actif à la fin du thread. Valider → bascule en `toi`. Corriger → nouveau `clone_draft` généré, remplace l'ancien. Les drafts rejetés ne subsistent pas dans A, seulement comme entrées `✎` dans B.
+| `turn_kind` | `role` typique | `message_type` | Rendu visuel | Actions disponibles |
+|-------------|----------------|----------------|--------------|---------------------|
+| `prospect` | `user` | `chat` | bulle gauche, couleur neutre | aucune (read-only) |
+| `clone_draft` | `assistant` | `chat` | bulle droite, teinte "en attente" (fond paper pâle + bordure-left ocre) | **✓ valider** · **✎ corriger** · **↻ regen** · **📋 copier** |
+| `toi` | `assistant` | `chat` | bulle droite, neutre | aucune (read-only après envoi) |
+| `draft_rejected` | `assistant` | `chat` | masqué du thread par défaut (reste pour audit) | — |
+| `legacy` | `user` ou `assistant` | `chat` | rendu par compatibilité selon `role` (user → gauche neutre, assistant → droite neutre) | aucune action nouvelle |
+| `meta` (hérité de 027) | `assistant`/`user` | `meta` | filtré hors du thread principal (cf. comportement actuel 027) | — |
 
-**Edition manuelle avant validation** : si l'opérateur édite le texte d'un `clone_draft` puis clique ✓, l'entrée feedback est marquée `✓ validé (édité)` avec le diff conservé. Distingue la validation pure du tweak pre-envoi (utile pour l'intelligence).
+**Règle d'état** : au plus un `turn_kind='clone_draft'` actif (le dernier) par conversation. Valider → UPDATE le message vers `turn_kind='toi'` (optionnellement `content` édité + flag). Corriger → INSERT nouveau `clone_draft`, l'ancien est marqué `turn_kind='draft_rejected'` (soft-delete, reste pour audit mais n'est pas affiché dans le thread par défaut).
+
+**Edition manuelle avant validation** : si l'opérateur édite le texte d'un `clone_draft` puis clique ✓, le message bascule en `turn_kind='toi'` avec flag `edited_before_send=TRUE` et `draft_original` conservé. L'entrée feedback correspondante est marquée `validated_edited` avec diff (utile pour l'intelligence qui apprend la patte opérateur).
+
+**Legacy fallback** : messages existants avant déploiement reçoivent `turn_kind='legacy'` via backfill. `ChatMessage.svelte` détecte `turn_kind='legacy'` et garde le rendu simple actuel (pas d'actions ✓/✎/↻, pas de bulle teintée). Les nouvelles conversations créées après migration utilisent les 3 types fins dès le premier message.
 
 ### Section 2 — Zone A : ProspectDossierHeader + thread + ChatComposer
 
@@ -181,7 +197,7 @@ Champs :
 - Pill "règles actives (N)" → expand/collapse de la liste des règles actives pour ce dossier
 - Entrées non supprimables (log immuable)
 
-**Persistence** : table `feedback_events` (ou `learning_events` existante si shape compatible — vérifier au plan).
+**Persistence** : table `feedback_events` (nouvelle, migration 029 — schema complet ci-dessous).
 
 ### Section 4 — Cleanup des surfaces existantes
 
@@ -217,56 +233,90 @@ Les composants `KnowledgePanel`, `IntelligencePanel`, `SettingsPanel` ont déjà
 1. **`/hub`** — sur chaque `.clone-card`, lien discret "⚙ cerveau" à côté de la `fidelity-chip` existante
 2. **`/chat/[persona]`** — icône ⚙ dans la chrome du cockpit (à droite du nom persona), redirect vers `/brain/[persona]`
 3. **Clic sur pastille style-health** dans cockpit → `/brain/[persona]#intelligence`
-4. **Clic sur règle firing** dans rail feedback → `/brain/[persona]#règles` (si règles restent aussi navigables ici, sinon on route vers le scroll de la pill du rail)
+4. **Clic sur règle firing** dans entrée feedback rail → scroll + highlight de la règle dans la **pill "règles actives"** en haut du rail (pas de navigation vers `/brain` ; les règles n'existent que dans le rail chat dans cette nouvelle architecture)
 
 **Sortie** : bouton back standard → retour vers la provenance (hub ou chat).
 
 **Composant `PersonaBrainDrawer.svelte`** supprimé après migration. Les tests qui le référencent sont migrés vers des tests de la nouvelle route.
 
+### Unités et interfaces
+
+Les unités définies par cette spec et leurs responsabilités isolées :
+
+| Unité | Responsabilité | Interface publique | Dépendances |
+|-------|----------------|--------------------|-------------|
+| `ProspectDossierHeader.svelte` | Afficher + éditer la meta du dossier | props: `{conversation, onUpdate}`. Emit: `update` (partial patch sur conversation) | `ScenarioSwitcher` (slot), icône heat (interne) |
+| `FeedbackRail.svelte` | Afficher + filtrer le journal feedback, gérer pill règles | props: `{conversationId, activeRules, onHighlightMessage}`. Emit: `highlightMessage(msgId)` | API: `GET /api/feedback-events?conv=X` |
+| `ChatComposer.svelte` | Capter saisie + déclencher "ajouter prospect" ou "draft la suite" | props: `{disabled, scenarioType}`. Emit: `addProspect(text)` + `draftNext({consigne})` | aucune (contrôleur = `+page.svelte`) |
+| `ChatMessage.svelte` (modifié) | Rendu d'un message selon `turn_kind`, actions sur drafts | props: `{message, onValidate, onCorrect, onRegen, onCopy, onSaveRule}` | aucune directe |
+| Route `/brain/[persona]` | Shell 3-onglets pour surfaces non-daily | URL: `/brain/[persona]#<tab>` avec tab ∈ {connaissance, intelligence, réglages} | Composants `KnowledgePanel`, `IntelligencePanel`, `SettingsPanel` en mode `embedded` |
+| Table `feedback_events` | Persister les événements feedback conversation-scoped | Schema ci-dessous. Accès via `GET /api/feedback-events?conv=X`, `POST /api/feedback-events` | Réf FK `conversations`, `messages`, `learning_events` (optionnel) |
+
+Chaque unité peut être comprise sans lire les internes des autres et testée isolément.
+
 ## Data model impact
 
-### `conversations` (table existante)
-Ajouter colonnes :
+*(Bloc `conversations` déplacé sous la section migration 030 pour éviter la duplication — voir plus bas.)*
+
+### `messages` (table existante, migration 028)
+`role` et `message_type` restent tels quels. On ajoute :
+- `turn_kind TEXT NOT NULL DEFAULT 'legacy' CHECK (turn_kind IN ('prospect','clone_draft','toi','draft_rejected','legacy','meta'))`
+- `draft_of_message_id UUID NULL REFERENCES messages(id)` — pointe vers le `prospect` auquel le draft répond
+- `edited_before_send BOOLEAN NOT NULL DEFAULT FALSE`
+- `draft_original TEXT NULL` — contenu brut du draft si `edited_before_send=TRUE`
+
+Backfill : tous les messages existants reçoivent `turn_kind='legacy'` (déjà le défaut). Les messages avec `message_type='meta'` reçoivent `turn_kind='meta'` pour cohérence.
+
+Index : `CREATE INDEX idx_messages_conv_turn_kind ON messages(conversation_id, turn_kind, created_at)` pour accélérer le filtre "dernier clone_draft actif par conv".
+
+### `feedback_events` (nouvelle table, migration 029)
+Conversation-scoped, distincte de `learning_events` (persona-scoped).
+
+```sql
+CREATE TABLE feedback_events (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  persona_id UUID NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
+  event_type TEXT NOT NULL CHECK (event_type IN ('validated','validated_edited','corrected','saved_rule')),
+  correction_text TEXT,           -- pour 'corrected' et 'saved_rule'
+  diff_before TEXT,               -- pour 'validated_edited'
+  diff_after TEXT,                -- pour 'validated_edited'
+  rules_fired JSONB DEFAULT '[]'::jsonb,  -- [rule_id, ...]
+  learning_event_id UUID REFERENCES learning_events(id), -- FK quand saved_rule déclenche un learning_events
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_feedback_events_conv_created ON feedback_events(conversation_id, created_at DESC);
+CREATE INDEX idx_feedback_events_persona_created ON feedback_events(persona_id, created_at DESC);
+```
+
+**API endpoints** (nouveaux) :
+- `GET /api/feedback-events?conversation=<uuid>` — liste chrono-inverse des events pour une conv (rail)
+- `POST /api/feedback-events` — body `{conversation_id, message_id, event_type, correction_text?, diff_before?, diff_after?}` — crée une entrée, et si `event_type='saved_rule'` insert aussi dans `learning_events` et retourne le `learning_event_id`
+- (existant) `POST /api/feedback` reste pour les corrections longues via `FeedbackPanel` ; sa soumission produit un `feedback_events` côté serveur
+
+### `conversations` (table existante, migration 030)
+Ajouter :
 - `prospect_name TEXT NULL` — nom du prospect (éditable dans header)
 - `stage TEXT NULL` — tag freeform (éditable dans header)
 - `note TEXT NULL` — note 1-ligne (éditable dans header)
 
 *Les conversations existantes conservent `prospect_name = NULL` ; le header affiche alors "prospect sans nom" ou le `name` legacy si présent. Édition inline au premier clic.*
 
-### `messages` (table existante)
-Colonne `role` existe aujourd'hui avec valeurs `user` / `bot`. Étendre à `prospect` / `clone_draft` / `toi`. Valeurs `user` / `bot` conservées pour compatibilité legacy (rendues telles quelles dans `ChatMessage`).
-
-Ajouter colonne :
-- `draft_of_message_id UUID NULL` — pointe vers le `prospect` auquel le draft répond (pour traçabilité, utile pour l'intelligence)
-- `edited_before_send BOOLEAN DEFAULT FALSE` — pour distinguer `toi` pur vs `toi` édité
-
-### `feedback_events` (nouvelle ou réuse `learning_events`)
-Shape minimum :
-```
-id UUID
-conversation_id UUID → conversations
-message_id UUID → messages (le draft ciblé)
-persona_id UUID
-type TEXT  -- 'validated' | 'validated_edited' | 'corrected' | 'saved_rule'
-correction_text TEXT NULL  -- pour 'corrected' / 'saved_rule'
-diff_before TEXT NULL  -- pour 'validated_edited'
-diff_after TEXT NULL
-rules_fired JSONB  -- array de rule_ids
-created_at TIMESTAMPTZ
-```
-
-Au plan d'implémentation, vérifier si `learning_events` (supabase/017) couvre déjà ces besoins ; sinon créer `feedback_events`.
-
 ## Migration
 
-**Pas de backfill destructif** :
-- Conversations existantes : `prospect_name/stage/note` = NULL, rendus avec fallback
-- Messages existants (role `user`/`bot`) : rendus tels quels, pas de remapping
-- Les nouveaux types `prospect`/`clone_draft`/`toi` ne s'appliquent qu'aux conversations créées après la migration (ou aux nouveaux messages de conversations existantes si on décide de flipper le flag par-conv)
+**Décision : "flip all" unique layout, fallback par `turn_kind='legacy'`.** Pas de double rendu, pas de `ChatLegacy.svelte`, pas de flag `layout_v2`. Rationale : la complexité de maintenir deux renderers en parallèle dépasse le coût d'une transition où les convs legacy sont un peu moins lisibles pendant quelques jours.
 
-**Flag de migration par conversation** : ajouter `conversations.layout_v2 BOOLEAN DEFAULT FALSE`. Conversations créées après deploy = `TRUE`, rendues avec la nouvelle UI. Conversations legacy = `FALSE`, rendues avec l'ancienne UI (à garder temporairement dans un composant `ChatLegacy.svelte` splitté de `+page.svelte`). Au bout de N semaines sans accès legacy, on supprime le legacy renderer.
+**Étapes** :
+1. Migration 028 (turn_kind) déployée, backfill tous messages existants → `turn_kind='legacy'` sauf `message_type='meta'` → `turn_kind='meta'`
+2. Migration 029 (feedback_events) déployée
+3. Migration 030 (prospect_dossier sur conversations) déployée, `prospect_name/stage/note = NULL` partout
+4. Déploiement front : nouveau layout 2-zones, route `/brain/[persona]`, suppression des composants obsolètes
+5. **Conversations legacy** : ouvrable, messages rendus avec rendu simple (prospect/clone_draft indistinguables → s'affichent selon `role` comme aujourd'hui), pas d'actions ✓/✎. Header prospect affiche "prospect sans nom" éditable. Rail feedback vide au départ (historique legacy non rétro-tagué).
+6. **Conversations nouvelles** (après migration front) : tous les nouveaux messages créés avec `turn_kind` correct. `/api/chat` est modifié pour taguer les output assistant → `clone_draft` ; l'utilisateur tague → `prospect` via le bouton "ajouter prospect" du composer.
 
-**Alternative plus simple** : tout flip. Les conversations legacy s'affichent "cassées" (messages `user`/`bot` rendus comme `toi`/`clone_draft` sans typologie fine) mais fonctionnelles. À décider au plan (dépend du volume de convs legacy actives).
+**Pas de rétro-tagging automatique** : les conversations legacy ne sont pas backportées en `prospect/clone_draft/toi` (ambigu, coûteux, pas essentiel pour la reprise). Elles vivent avec `turn_kind='legacy'`.
 
 ## Non-goals
 
@@ -280,16 +330,20 @@ Au plan d'implémentation, vérifier si `learning_events` (supabase/017) couvre 
 
 ## Open questions pour le plan d'implémentation
 
-1. **Table feedback_events vs learning_events** : vérifier shape de `learning_events` (supabase/017) ; si compatible, étendre avec colonnes manquantes ; sinon créer nouvelle table
-2. **Flag `layout_v2` ou migration "tout flip"** : arbitrage au début du plan selon volume de convs actives
-3. **Transition `FeedbackPanel` actuel → entrée directe dans rail** : garder le slide-over pour les corrections longues, ou inline input dans le rail ? Arbitrage UX à valider en prototype
-4. **Heat indicator design** : copie directe de l'état actuel (ok/warn/bad en icône+couleur) suffit, ou on design un traitement spécifique pour le header ?
-5. **Breakpoint responsive** : confirmer 900px comme bascule drawer-mode pour zone B, ou aller plus bas (700px) pour garder le rail sur tablette landscape
+Les décisions majeures (feedback table, migration strategy, FeedbackPanel fate) sont **résolues dans cette spec**. Restent quelques détails d'implémentation à arbitrer au plan :
+
+1. **Heat indicator design dans le header** : copie directe de l'état actuel (ok/warn/bad en icône+couleur) suffit, ou on design un traitement visuel spécifique ? (esthétique uniquement, pas de blocage fonctionnel)
+2. **Breakpoint responsive** : confirmer 900px comme bascule drawer-mode pour zone B, ou aller plus bas (700px) pour garder le rail sur tablette landscape (test sur devices réels au plan)
+3. **Suppression vs réduction de `HeatThermometer.svelte`** : supprimer complètement et refaire l'indicator dans le header, ou garder le composant en mode `inline-indicator` plus compact et l'embed dans `ProspectDossierHeader` ? (choix d'implémentation, ne change pas la fonctionnalité)
+4. **Séquencement de déploiement** : `/brain/[persona]` extraction et `/chat/[persona]` refonte peuvent être shippés séparément (la route /brain est self-contained). Le plan devrait les découper en 2 phases pour permettre un rollback partiel
 
 ## Testing strategy
 
-- **Unit** : nouveau composants (`ProspectDossierHeader`, `FeedbackRail`, `ChatComposer`) avec vitest
-- **Intégration** : flow complet "paste prospect → draft → corriger → valider édité → save rule" via test E2E existant (Playwright si en place)
-- **Visual regression** : snapshots avant/après pour chat page (voir si outil en place dans le projet)
-- **Smoke test API** : test node sur `api/chat.js` + nouveaux endpoints feedback (per mémoire `project_voiceclone_stack` : "vite dev ne sert pas api/", utiliser vercel dev ou node tests)
-- **Critic prod usage** : avant merge, vérifier `critic_commit_date vs last_prod_message_date` pour ce chemin (per mémoire `feedback_critic_verify_prod_usage`) — si zéro trafic sur chat depuis N jours, pas la peine de planifier cette refonte, générer du trafic d'abord
+- **Unit** : nouveaux composants (`ProspectDossierHeader`, `FeedbackRail`, `ChatComposer`) avec vitest — rendu conditionnel par `turn_kind`, actions émises, états edit inline
+- **Intégration** : flow complet "paste prospect → draft → corriger → valider édité → save rule" via test E2E (Playwright si en place, sinon node-based)
+- **Visual regression** : snapshots avant/après pour `/chat/[persona]` et `/brain/[persona]` (voir si outil en place dans le projet)
+- **Smoke test API** : test node sur `api/chat.js` (taggage `turn_kind='clone_draft'` en sortie) + nouveaux endpoints `/api/feedback-events` — per mémoire `project_voiceclone_stack` "vite dev ne sert pas api/", utiliser vercel dev ou node tests
+
+## Pre-merge gate
+
+Avant merge, vérifier `critic_commit_date vs last_prod_message_date` sur le chemin `/chat/[persona]` (per mémoire `feedback_critic_verify_prod_usage`) — si zéro trafic prod sur chat depuis N jours, pas la peine de planifier cette refonte, générer du trafic d'abord. Le script existant `scripts/critic-prod-check.js` (déjà présent en untracked) peut servir.
