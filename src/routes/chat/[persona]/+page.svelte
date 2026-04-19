@@ -613,6 +613,54 @@
     }
   }
 
+  // ✓ c'est ça : explicit client approval. Flips turn_kind to 'toi' like
+  // validate, but fires /api/feedback type=client_validate (stronger entity
+  // boost) and logs feedback_events as 'client_validated'.
+  async function handleClientValidate(message) {
+    try {
+      api("/api/feedback", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "client_validate",
+          botMessage: message.content,
+          persona: get(currentPersonaId),
+        }),
+      }).catch(() => { /* secondary signal; non-blocking */ });
+
+      await fetch(`/api/messages?id=${message.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ turn_kind: "toi" }),
+      });
+
+      const resp = await fetch("/api/feedback-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          conversation_id: $currentConversationId,
+          message_id: message.id,
+          event_type: "client_validated",
+        }),
+      });
+      if (resp.ok) {
+        const ev = await resp.json();
+        feedbackRailRef?.appendEvent?.({
+          id: ev.id,
+          message_id: message.id,
+          event_type: "client_validated",
+          created_at: ev.created_at,
+          rules_fired: [],
+        });
+        feedbackCount++;
+      }
+      messages.update(msgs => msgs.map(m =>
+        m.id === message.id ? { ...m, turn_kind: "toi" } : m
+      ));
+    } catch {
+      showToast?.("Validation échouée");
+    }
+  }
+
   // ↻ regen : mark current draft as rejected, relaunch last send.
   async function handleRegen(message) {
     try {
@@ -776,6 +824,7 @@
                 seq={seqForMessage(message, $messages)}
                 onCorrect={handleCorrect}
                 onValidate={handleValidate}
+                onClientValidate={handleClientValidate}
                 onRegen={handleRegen}
                 onSaveRule={handleSaveRule}
                 onCopyBlock={() => {}}
