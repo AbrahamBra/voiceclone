@@ -1,8 +1,24 @@
 <script>
-  let { onsend, disabled = false } = $props();
+  let { onsend, disabled = false, scenarioType = null } = $props();
 
   let text = $state("");
   let textareaEl = $state(undefined);
+
+  const POST_RANGE = { min: 1200, max: 1500 };
+  const DM_RANGE = { min: 150, max: 280 };
+
+  let target = $derived(
+    !scenarioType ? null :
+    scenarioType.startsWith("DM") ? DM_RANGE :
+    scenarioType.startsWith("post") ? POST_RANGE :
+    null
+  );
+  let chars = $derived(text.length);
+  let countState = $derived(
+    !target || chars === 0 ? "idle" :
+    chars < target.min ? "under" :
+    chars > target.max ? "over" : "ok"
+  );
 
   $effect(() => {
     if (textareaEl) textareaEl.focus();
@@ -33,6 +49,14 @@
     onsend?.(msg);
   }
 </script>
+
+{#if target}
+  <div class="char-counter mono" data-state={countState} aria-live="polite">
+    <span class="count">{chars}</span>
+    <span class="sep"> · </span>
+    <span class="target">🎯 {target.min}–{target.max}</span>
+  </div>
+{/if}
 
 <div class="chat-input-bar">
   <textarea
@@ -94,6 +118,20 @@
     border-color: var(--vermillon);
   }
   .chat-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .char-counter {
+    padding: 2px 16px 0;
+    font-size: var(--fs-nano);
+    color: var(--ink-40);
+    font-variant-numeric: tabular-nums;
+    display: flex;
+    gap: 2px;
+    align-items: baseline;
+  }
+  .char-counter[data-state="ok"] .count { color: #2d7a3e; }
+  .char-counter[data-state="over"] .count { color: var(--vermillon); }
+  .char-counter[data-state="under"] .count { color: var(--ink-40); }
+  .char-counter .target { color: var(--ink-40); }
 
   @media (max-width: 768px) {
     .chat-input-bar {

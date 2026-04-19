@@ -710,7 +710,7 @@
               disabled={$sending}
             />
           </div>
-          <ChatInput onsend={handleSend} disabled={$sending} />
+          <ChatInput onsend={handleSend} disabled={$sending} scenarioType={$currentScenarioType} />
           <AuditStrip totals={sessionTotals} {sessionStart} />
         </div>
 
