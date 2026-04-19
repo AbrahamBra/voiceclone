@@ -27,6 +27,7 @@
   let personaName = $state("");
   let personaTitle = $state("");
   let profileText = $state("");
+  let clientLabel = $state("");
 
   // Step 2: Posts LinkedIn
   let postsText = $state("");
@@ -147,6 +148,7 @@
           dms: dms.length > 0 ? dms : undefined,
           name: personaName.trim() || undefined,
           cloneType,
+          client_label: clientLabel.trim() || undefined,
         }),
       });
       persona = data.persona;
@@ -307,6 +309,9 @@
             <label>Titre & entreprise</label>
             <input type="text" placeholder="Ex: CEO @Offbound · GTM LinkedIn" bind:value={personaTitle} />
 
+            <label>Client <span class="label-optional">(optionnel)</span></label>
+            <input type="text" placeholder="Ex: Marie Dupont — BeautyCorp" bind:value={clientLabel} maxlength="120" />
+
             <label>Bio & positionnement</label>
             <textarea rows="4" bind:value={profileText} placeholder="Expertise, thèmes abordés, valeur ajoutée..."></textarea>
 
@@ -434,6 +439,12 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
                 <span class="recap-label">Infos</span>
                 <span>{personaName || "—"}{personaTitle ? ` · ${personaTitle}` : ""}</span>
               </div>
+              {#if clientLabel.trim()}
+                <div class="recap-item">
+                  <span class="recap-label">Client</span>
+                  <span>{clientLabel.trim()}</span>
+                </div>
+              {/if}
               {#if cloneType !== 'dm'}
                 <div class="recap-item">
                   <span class="recap-label">Posts</span>
@@ -565,6 +576,12 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
     color: var(--text-tertiary);
     margin-bottom: 0.375rem;
     font-weight: 500;
+  }
+
+  .label-optional {
+    color: var(--text-tertiary);
+    opacity: 0.65;
+    font-weight: 400;
   }
 
   .create-step textarea,

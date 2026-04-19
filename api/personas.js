@@ -15,7 +15,7 @@ export default async function handler(req, res) {
       // Admin sees all personas and can always create
       const { data } = await supabase
         .from("personas")
-        .select("id, slug, client_id, name, title, avatar")
+        .select("id, slug, client_id, name, title, avatar, client_label")
         .eq("is_active", true)
         .order("created_at", { ascending: true });
       personas = data || [];
@@ -24,7 +24,7 @@ export default async function handler(req, res) {
       // Client sees only their own personas
       const { data } = await supabase
         .from("personas")
-        .select("id, slug, client_id, name, title, avatar")
+        .select("id, slug, client_id, name, title, avatar, client_label")
         .eq("client_id", client.id)
         .eq("is_active", true)
         .order("created_at", { ascending: true });
@@ -36,7 +36,7 @@ export default async function handler(req, res) {
       // Also fetch shared personas
       const { data: shared } = await supabase
         .from("persona_shares")
-        .select("persona_id, personas!inner(id, slug, client_id, name, title, avatar)")
+        .select("persona_id, personas!inner(id, slug, client_id, name, title, avatar, client_label)")
         .eq("client_id", client.id)
         .eq("personas.is_active", true);
 
