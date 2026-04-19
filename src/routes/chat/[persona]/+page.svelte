@@ -3,7 +3,7 @@
   import { goto } from "$app/navigation";
   import { get } from "svelte/store";
   import { accessCode } from "$lib/stores/auth.js";
-  import { personaConfig, currentPersonaId } from "$lib/stores/persona.js";
+  import { personaConfig, currentPersonaId, personas } from "$lib/stores/persona.js";
   import {
     messages,
     currentConversationId,
@@ -47,6 +47,24 @@
   let rulesPanelOpen = $state(false);
   let leadOpen = $state(false);
   let showCommandPalette = $state(false);
+  let switcherOpen = $state(false);
+
+  // Populate personas list for the inline clone switcher (cockpit dropdown).
+  // Non-blocking: chat still renders without it.
+  $effect(() => {
+    if (typeof window === "undefined") return;
+    if ($personas && $personas.length > 0) return;
+    (async () => {
+      try {
+        const resp = await fetch("/api/personas", { headers: authHeaders() });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (Array.isArray(data.personas)) personas.set(data.personas);
+      } catch {
+        // best-effort
+      }
+    })();
+  });
 
   // Cockpit live readings — collapseIdx & fidelity from /api/fidelity,
   // updated after each message via breakdown + rewritten events.
@@ -572,6 +590,10 @@
       e.preventDefault();
       handleNewConversation();
     }
+    if (mod && e.shiftKey && (e.key === "c" || e.key === "C")) {
+      e.preventDefault();
+      switcherOpen = !switcherOpen;
+    }
   }
 
   function handleNewConversation() {
@@ -591,6 +613,14 @@
     currentScenario.set("");
     messages.set([]);
     goto("/");
+  }
+
+  function handleSwitchToClone(newId) {
+    if (!newId || newId === personaId) return;
+    currentConversationId.set(null);
+    currentScenario.set("");
+    messages.set([]);
+    goto(`/chat/${newId}`);
   }
 
   function handleBack() {
@@ -633,6 +663,10 @@
         {fidelity}
         {breakdown}
         {sourceStyle}
+        personasList={$personas}
+        currentPersonaId={personaId}
+        bind:switcherOpen
+        onSwitchClone={handleSwitchToClone}
         {rulesActiveCount}
         {rulesPanelOpen}
         {feedbackOpen}

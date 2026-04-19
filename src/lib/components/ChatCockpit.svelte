@@ -4,6 +4,7 @@
   // Hover on any metric reveals its mini-decomposition.
 
   import StyleFingerprint from "./StyleFingerprint.svelte";
+  import ClonesDropdown from "./ClonesDropdown.svelte";
 
   let {
     personaName = "",
@@ -14,6 +15,11 @@
     fidelity = null,        // number 0..1 or null
     breakdown = null,       // { ttr, kurtosis, questionRatio, signaturePresence, forbiddenHits, avgSentenceLen }
     sourceStyle = null,     // baseline source_style for fingerprint ghost layer
+    // Clone switcher
+    personasList = [],      // Array of { id, name, avatar } for inline switcher
+    currentPersonaId = null,
+    switcherOpen = $bindable(false),
+    onSwitchClone,
     // UI slots
     rulesActiveCount = 0,
     rulesPanelOpen = false,
@@ -71,17 +77,34 @@
   <div class="left">
     <button class="icon-btn mobile-menu" onclick={() => onToggleSidebar?.()} aria-label="Conversations">☰</button>
     <button class="icon-btn back" onclick={() => onBack?.()} aria-label="Retour à l'accueil">←</button>
-    <div class="id">
-      <span class="avatar">{personaAvatar}</span>
-      <div class="fp-slot">
-        <StyleFingerprint draft={breakdown} source={sourceStyle} size={32} strokeWidth={1} tooltip />
-      </div>
-      <div class="id-text">
-        <span class="pname">{personaName}</span>
-        {#if scenario}
-          <span class="scenario mono">{scenario}</span>
-        {/if}
-      </div>
+    <div class="id-wrap">
+      <button
+        class="id id-btn"
+        onclick={() => (switcherOpen = !switcherOpen)}
+        aria-haspopup="listbox"
+        aria-expanded={switcherOpen}
+        aria-label="Changer de clone (Cmd+Shift+C)"
+        title="Changer de clone · Cmd+Shift+C"
+      >
+        <span class="avatar">{personaAvatar}</span>
+        <div class="fp-slot">
+          <StyleFingerprint draft={breakdown} source={sourceStyle} size={32} strokeWidth={1} tooltip />
+        </div>
+        <div class="id-text">
+          <span class="pname">{personaName}</span>
+          {#if scenario}
+            <span class="scenario mono">{scenario}</span>
+          {/if}
+        </div>
+        <span class="chevron" aria-hidden="true">▾</span>
+      </button>
+      <ClonesDropdown
+        personas={personasList}
+        {currentPersonaId}
+        open={switcherOpen}
+        onSelect={(id) => onSwitchClone?.(id)}
+        onClose={() => (switcherOpen = false)}
+      />
     </div>
   </div>
 
@@ -238,7 +261,41 @@
   .icon-btn:hover { color: var(--ink); }
   .mobile-menu { display: none; }
 
+  .id-wrap { position: relative; min-width: 0; }
   .id { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .id-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+    padding: 2px 6px;
+    margin: -2px -6px;
+    transition: border-color 0.08s linear, background 0.08s linear;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+  }
+  .id-btn:hover {
+    border-color: var(--rule-strong);
+    background: var(--paper-subtle);
+  }
+  .id-btn[aria-expanded="true"] {
+    border-color: var(--rule-strong);
+    background: var(--paper-subtle);
+  }
+  .id-btn:focus-visible {
+    outline: 1px solid var(--vermillon);
+    outline-offset: 2px;
+  }
+  .chevron {
+    font-size: 10px;
+    color: var(--ink-40);
+    margin-left: 2px;
+    flex-shrink: 0;
+    transition: transform 0.12s ease;
+  }
+  .id-btn[aria-expanded="true"] .chevron {
+    transform: rotate(180deg);
+  }
   .avatar {
     width: 22px; height: 22px;
     background: var(--paper-subtle);
