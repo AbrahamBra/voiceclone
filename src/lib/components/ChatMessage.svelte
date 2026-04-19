@@ -223,9 +223,6 @@
       </details>
     {/if}
 
-    <!-- MessageMarginalia (lab metrics per message) moved to /brain#intelligence.
-         showDiff still toggles the inline pass1 comparison above. -->
-
   </div>
 </article>
 
@@ -510,9 +507,6 @@
     color: var(--vermillon);
     border-color: var(--vermillon);
   }
-
-  /* Rewrite badges moved into MessageMarginalia — only the inline diff block
-     remains here, still rendered in the message column under the bubble. */
 
   .diff-inline {
     margin-top: 6px;
