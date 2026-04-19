@@ -24,7 +24,7 @@
   import ChatCockpit from "$lib/components/ChatCockpit.svelte";
   import RulesPanel from "$lib/components/RulesPanel.svelte";
   import FeedbackPanel from "$lib/components/FeedbackPanel.svelte";
-  import SettingsPanel from "$lib/components/SettingsPanel.svelte";
+  // SettingsPanel removed from chat — settings now live in /brain/[persona]#reglages.
   import AuditStrip from "$lib/components/AuditStrip.svelte";
   import LeadPanel from "$lib/components/LeadPanel.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
@@ -44,7 +44,6 @@
   // Panel state (demodalized)
   let feedbackTarget = $state(null);      // bot message to correct
   let feedbackOpen = $state(false);
-  let settingsOpen = $state(false);
   let rulesPanelOpen = $state(false);
   let leadOpen = $state(false);
   let showCommandPalette = $state(false);
@@ -578,7 +577,6 @@
     if (e.key === "Escape") {
       if (showCommandPalette) showCommandPalette = false;
       else if (feedbackOpen) { feedbackOpen = false; feedbackTarget = null; feedbackMessageId = null; }
-      else if (settingsOpen) settingsOpen = false;
       else if (rulesPanelOpen) rulesPanelOpen = false;
       else if (leadOpen) leadOpen = false;
       return;
@@ -671,7 +669,6 @@
         {rulesActiveCount}
         {rulesPanelOpen}
         {feedbackOpen}
-        {settingsOpen}
         {leadOpen}
         {sidebarOpen}
         onBack={handleBack}
@@ -681,7 +678,6 @@
           feedbackOpen = !feedbackOpen;
           if (!feedbackOpen) { feedbackTarget = null; feedbackMessageId = null; }
         }}
-        onToggleSettings={() => settingsOpen = !settingsOpen}
         onToggleLead={() => leadOpen = !leadOpen}
       />
 
@@ -734,12 +730,6 @@
     botMessage={feedbackTarget || ""}
     onClose={() => { feedbackOpen = false; feedbackTarget = null; feedbackMessageId = null; }}
     onReplace={handleReplace}
-  />
-
-  <SettingsPanel
-    open={settingsOpen}
-    {personaId}
-    onClose={() => settingsOpen = false}
   />
 
   <LeadPanel

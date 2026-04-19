@@ -2,7 +2,10 @@
   // Cockpit header for the chat page.
   // Always-on readings: collapse_idx, fidelity, session-level rule count.
   // Hover on any metric reveals its mini-decomposition.
+  // The style-health badge deep-links to /brain#intelligence for full diagnostic;
+  // the settings tab deep-links to /brain#reglages (non-daily surface route).
 
+  import { goto } from "$app/navigation";
   import StyleFingerprint from "./StyleFingerprint.svelte";
   import ClonesDropdown from "./ClonesDropdown.svelte";
 
@@ -123,13 +126,20 @@
     </div>
   </div>
 
-  <!-- Center cluster — style health badge (collapse + fidélité + règles consolidés) -->
+  <!-- Center cluster — style health badge (collapse + fidélité + règles consolidés).
+       Click routes to /brain#intelligence for the full diagnostic view.
+       Kept as div (not button) because it contains a tooltip div child, which
+       isn't valid phrasing content inside <button>. role="button" + tabindex + keydown
+       preserves keyboard a11y. -->
   <div class="gauges" role="group" aria-label="Santé du style">
     <div
       class="gauge style-health"
-      data-state={styleHealth}
+      role="button"
       tabindex="0"
-      aria-label="{styleHealthLabel} · collapse {fmt(collapseIdx, 1)} · fidélité {fmt(fidelity, 3)} · {rulesActiveCount} règle{rulesActiveCount > 1 ? 's' : ''}"
+      data-state={styleHealth}
+      onclick={() => currentPersonaId && goto(`/brain/${currentPersonaId}#intelligence`)}
+      onkeydown={(e) => { if ((e.key === "Enter" || e.key === " ") && currentPersonaId) { e.preventDefault(); goto(`/brain/${currentPersonaId}#intelligence`); } }}
+      aria-label="{styleHealthLabel} · collapse {fmt(collapseIdx, 1)} · fidélité {fmt(fidelity, 3)} · {rulesActiveCount} règle{rulesActiveCount > 1 ? 's' : ''}. Clic : diagnostic complet."
     >
       <span class="dot" aria-hidden="true"></span>
       <span class="g-val">{styleHealthLabel}</span>
@@ -238,10 +248,9 @@
     >correction</button>
     <button
       class="tab-btn mono"
-      class:active={settingsOpen}
-      onclick={() => onToggleSettings?.()}
-      aria-pressed={settingsOpen}
-    >réglages</button>
+      onclick={() => currentPersonaId && goto(`/brain/${currentPersonaId}#reglages`)}
+      aria-label="Ouvrir le cerveau du clone"
+    >cerveau</button>
   </div>
 </header>
 

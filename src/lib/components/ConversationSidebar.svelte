@@ -1,22 +1,10 @@
 <script>
+  // Sidebar is now conversations-only. Connaissance + Intelligence moved to
+  // the /brain/[persona] route as part of the non-daily surface split.
   import { conversations } from "$lib/stores/chat.js";
   import { api, authHeaders } from "$lib/api.js";
   import { showToast } from "$lib/stores/ui.js";
   import { groupByDate, getRelativeTime } from "$lib/utils.js";
-  import IntelligencePanel from "./IntelligencePanel.svelte";
-  import KnowledgePanel from "./KnowledgePanel.svelte";
-
-  let activeTab = $state("conversations");
-  let intelligenceExtracting = $state(false);
-  let extractingTimeout = $state(null);
-
-  function handleKnowledgeUpload() {
-    intelligenceExtracting = true;
-    if (extractingTimeout) clearTimeout(extractingTimeout);
-    extractingTimeout = setTimeout(() => {
-      intelligenceExtracting = false;
-    }, 15000);
-  }
 
   let {
     personaId,
@@ -150,33 +138,6 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <aside class="conv-sidebar" class:open>
-  <div class="sidebar-tabs">
-    <button
-      class="sidebar-tab"
-      class:active={activeTab === "knowledge"}
-      onclick={() => activeTab = "knowledge"}
-    >Connaissance</button>
-    <button
-      class="sidebar-tab"
-      class:active={activeTab === "intelligence"}
-      onclick={() => activeTab = "intelligence"}
-    >Intelligence{#if intelligenceExtracting && activeTab !== "intelligence"}<span class="tab-dot"></span>{/if}</button>
-    <button
-      class="sidebar-tab"
-      class:active={activeTab === "conversations"}
-      onclick={() => activeTab = "conversations"}
-    >Conversations</button>
-  </div>
-
-  {#if activeTab === "intelligence"}
-    <div class="sidebar-content">
-      <IntelligencePanel {personaId} extracting={intelligenceExtracting} />
-    </div>
-  {:else if activeTab === "knowledge"}
-    <div class="sidebar-content">
-      <KnowledgePanel {personaId} onupload={handleKnowledgeUpload} />
-    </div>
-  {:else}
   <div class="conv-sidebar-header">
     <button class="conv-switch-btn" onclick={onswitchclone}>
       &larr; Changer de clone
@@ -266,7 +227,6 @@
       {/each}
     {/if}
   </div>
-  {/if}
 </aside>
 
 <style>
@@ -280,49 +240,6 @@
     flex-direction: column;
     overflow: hidden;
     font-family: var(--font-ui);
-  }
-
-  .sidebar-tabs {
-    display: flex;
-    border-bottom: 1px solid var(--rule-strong);
-    background: var(--paper);
-  }
-  .sidebar-tab {
-    flex: 1;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--ink-40);
-    font-family: var(--font-mono);
-    font-size: var(--fs-nano);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-weight: var(--fw-semi);
-    padding: 10px 0;
-    cursor: pointer;
-    transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
-  }
-  .sidebar-tab:hover { color: var(--ink); }
-  .sidebar-tab.active {
-    color: var(--ink);
-    border-bottom-color: var(--vermillon);
-  }
-  .tab-dot {
-    display: inline-block;
-    width: 4px;
-    height: 4px;
-    background: var(--vermillon);
-    margin-left: 4px;
-    vertical-align: middle;
-    animation: tab-pulse 1.5s linear infinite;
-  }
-  @keyframes tab-pulse {
-    0%, 100% { opacity: 0.4; }
-    50% { opacity: 1; }
-  }
-  .sidebar-content {
-    flex: 1;
-    overflow-y: auto;
   }
 
   .conv-sidebar-header {

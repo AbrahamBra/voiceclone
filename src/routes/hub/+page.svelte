@@ -188,6 +188,13 @@
               {/if}
             </button>
             <button class="share-btn" onclick={(e) => shareClone(entry.persona.id, e)} title="Partager">Partager</button>
+            <a
+              class="brain-link mono"
+              href="/brain/{entry.persona.id}"
+              onclick={(e) => e.stopPropagation()}
+              title="Cerveau du clone — connaissance, intelligence, réglages"
+              aria-label="Cerveau de {entry.persona.name}"
+            >⚙ cerveau</a>
             {#if entry.scenarios.length > 1}
               <div class="clone-scenarios">
                 {#each entry.scenarios as scenario}
@@ -448,6 +455,22 @@
     z-index: 1;
   }
   .share-btn:hover { color: var(--text); border-color: var(--text-tertiary); }
+
+  .brain-link {
+    position: absolute;
+    top: 0.75rem; right: 6rem;
+    padding: 0.25rem 0.625rem;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    color: var(--text-tertiary);
+    background: transparent;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    text-decoration: none;
+    transition: color 0.08s linear, border-color 0.08s linear;
+    z-index: 1;
+  }
+  .brain-link:hover { color: var(--text); border-color: var(--text-tertiary); }
 
   .clone-scenarios {
     border-top: 1px solid var(--border);
