@@ -170,6 +170,42 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Type "client_validate": strong positive signal — agency-client confirmed
+  // the clone captured their voice. Applies a larger confidence boost than
+  // passive "validated" and marks the correction row distinctly. ──
+  if (type === "client_validate") {
+    if (!botMessage) { res.status(400).json({ error: "botMessage required" }); return; }
+
+    await supabase.from("corrections").insert({
+      persona_id: intellId,
+      correction: "[CLIENT_VALIDATED] Réponse confirmée par le client",
+      bot_message: botMessage.slice(0, 300),
+      user_message: userMessage?.slice(0, 200) || null,
+      contributed_by: client?.id || null,
+    });
+
+    const { data: entities } = await supabase
+      .from("knowledge_entities")
+      .select("id, name, confidence")
+      .eq("persona_id", intellId);
+
+    if (entities?.length > 0) {
+      const msgLower = botMessage.toLowerCase();
+      const matched = entities.filter(e => msgLower.includes(e.name.toLowerCase()));
+      for (const e of matched) {
+        // +0.12 vs +0.05 on passive 'validate' — explicit client approval weighs more.
+        const newConf = Math.min(1.0, (e.confidence || 0.8) + 0.12);
+        await supabase.from("knowledge_entities")
+          .update({ confidence: newConf, last_matched_at: new Date().toISOString() })
+          .eq("id", e.id);
+      }
+    }
+
+    clearIntelligenceCache(intellId);
+    res.json({ ok: true, signal: "client_validated" });
+    return;
+  }
+
   // ── Type "reject": negative reinforcement — demote specific entities/corrections ──
   // Frontend sends entityIds[] and/or correctionIds[] to demote explicitly.
   if (type === "reject") {
