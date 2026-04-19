@@ -4,7 +4,7 @@
 
   let {
     message, seq = null,
-    onCorrect, onValidate, onRegen, onSaveRule, onCopyBlock,
+    onCorrect, onValidate, onClientValidate, onRegen, onSaveRule, onCopyBlock,
   } = $props();
 
   // Narrative kind derived from message.turn_kind (new axis from migration 028),
@@ -170,9 +170,11 @@
           </div>
 
           {#if isDraft}
-            <!-- Draft actions: valider → envoie au prospect ; corriger → FeedbackPanel ;
-                 regen → retry sans signal. -->
+            <!-- Draft actions: valider → envoie au prospect ; c'est ça →
+                 validation client explicite (signal fort) ; corriger →
+                 FeedbackPanel ; regen → retry sans signal. -->
             <button class="action-btn action-btn-primary" onclick={() => onValidate?.(message)} title="Valider et envoyer">✓ valider</button>
+            <button class="action-btn action-btn-strong" onclick={() => onClientValidate?.(message)} title="C'est ça, je valide — signal d'apprentissage positif">✓ c'est ça</button>
             <button class="action-btn" onclick={() => onCorrect?.(message)} title="Corriger">✎ corriger</button>
             <button class="action-btn" onclick={() => onRegen?.(message)} title="Regénérer sans correction">↻ regen</button>
           {:else if isSent}
@@ -336,6 +338,16 @@
   .action-btn-primary:hover {
     background: color-mix(in srgb, var(--vermillon) 88%, black);
     border-color: color-mix(in srgb, var(--vermillon) 88%, black);
+    color: var(--paper);
+  }
+
+  .action-btn-strong {
+    border-color: var(--vermillon);
+    color: var(--vermillon);
+    font-weight: 600;
+  }
+  .action-btn-strong:hover {
+    background: var(--vermillon);
     color: var(--paper);
   }
 
