@@ -86,9 +86,12 @@
   function summarize(evt) {
     const p = evt.payload || {};
     if (evt.event_type === "rule_added") {
-      const src = p.source_message || "";
-      const n = p.count || 1;
-      const trimmed = src.length > 80 ? src.slice(0, 80) + "…" : src;
+      const rules = Array.isArray(p.rules) ? p.rules : [];
+      const n = p.count || rules.length || 1;
+      // Prefer the synthesized rule text; fall back to source_message for legacy events
+      // written before the payload included { rules } (pre-2026-04-20).
+      const first = rules[0] || p.source_message || "";
+      const trimmed = first.length > 80 ? first.slice(0, 80) + "…" : first;
       return n > 1 ? `${n} règles — "${trimmed}"` : `"${trimmed}"`;
     }
     if (evt.event_type === "rule_weakened") {

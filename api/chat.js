@@ -230,7 +230,7 @@ export default async function handler(req, res) {
   // Short-circuit: direct instruction — save rule and confirm without calling Claude
   if (msgIntent === "INSTRUCTION") {
     try {
-      const saved = await detectDirectInstruction(intellId, message, messages, client);
+      const { count: saved, rules: savedRules } = await detectDirectInstruction(intellId, message, messages, client);
       if (saved > 0) {
         const confirm = saved === 1
           ? "Règle ajoutée. Elle sera active dès ton prochain message."
@@ -239,6 +239,7 @@ export default async function handler(req, res) {
         sse("done", {});
         logLearningEvent(personaId, "rule_added", {
           count: saved,
+          rules: savedRules,
           source_message: message.slice(0, 200),
         });
 

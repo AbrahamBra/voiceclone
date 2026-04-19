@@ -34,8 +34,11 @@
     const p = ev.payload || {};
     switch (ev.event_type) {
       case "rule_added": {
-        const n = p.count || 1;
-        return { icon: "✨", title: n === 1 ? "Règle ajoutée" : `${n} règles ajoutées`, detail: p.source_message };
+        const rules = Array.isArray(p.rules) ? p.rules : [];
+        const n = p.count || rules.length || 1;
+        // Legacy events (pre-2026-04-20) only stored source_message
+        const detail = rules[0] || p.source_message;
+        return { icon: "✨", title: n === 1 ? "Règle ajoutée" : `${n} règles ajoutées`, detail };
       }
       case "rule_weakened": {
         const first = (p.corrections || [])[0] || "";
