@@ -72,13 +72,6 @@
     copyAs(copyMode, message.content);
   }
 
-  function selectMode(mode) {
-    copyMode = mode;
-    try { localStorage.setItem(COPY_MODE_KEY, mode); } catch {}
-    copyMenuOpen = false;
-    copyAs(mode, message.content);
-  }
-
   function copyBlock(block, btnEl) {
     navigator.clipboard.writeText(formatFor(copyMode, block));
     onCopyBlock?.(block);
@@ -91,13 +84,7 @@
     const pad = (n) => String(n).padStart(2, "0");
     return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   }
-  function fmtSeq(n) {
-    if (n === null || n === undefined) return "";
-    return String(n).padStart(3, "0");
-  }
-
   let stamp = $derived(fmtClock(message.timestamp));
-  let seqStr = $derived(fmtSeq(seq));
 </script>
 
 <article
@@ -111,20 +98,9 @@
   transition:fly={{ y: 4, duration: 120 }}
 >
   <!-- ── Message column ── -->
+  <!-- msg-stamp (bot:001 14:42:17 sonnet) moved to marginalia (⋯ toggle).
+       Keeps the DM thread clean for copy-paste — lab-notebook data on demand. -->
   <div class="msg-col">
-    {#if seqStr && message.role === "bot"}
-      <header class="msg-stamp mono narrow-only">
-        <span class="stamp-tag">bot:{seqStr}</span>
-        {#if stamp}<span class="stamp-time">{stamp}</span>{/if}
-        {#if message.model}<span class="stamp-model">{message.model.replace(/^claude-/, "").replace(/-\d{8}$/, "")}</span>{/if}
-      </header>
-    {:else if seqStr && message.role === "user"}
-      <header class="msg-stamp mono stamp-user narrow-only">
-        <span class="stamp-tag">usr:{seqStr}</span>
-        {#if stamp}<span class="stamp-time">{stamp}</span>{/if}
-      </header>
-    {/if}
-
     <div
       class="msg"
       class:msg-user={message.role === "user"}
@@ -267,31 +243,6 @@
     100% { background-color: transparent; }
   }
 
-  .msg-stamp {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 8px;
-    padding: 0 2px 4px;
-    font-size: 9.5px;
-    color: var(--ink-40);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-  .msg-stamp.stamp-user { color: var(--ink-40); }
-  .stamp-tag {
-    font-weight: 600;
-    color: var(--ink);
-  }
-  .stamp-time {
-    color: var(--ink-40);
-    font-variant-numeric: tabular-nums;
-  }
-  .stamp-model {
-    color: var(--ink-30);
-    font-size: 10px;
-  }
-  .msg-row-user .stamp-tag { color: var(--vermillon); }
-
   .msg {
     padding: 10px 14px;
     font-size: var(--fs-standout);
@@ -375,79 +326,6 @@
   .action-btn:hover {
     color: var(--ink);
     border-color: var(--ink-40);
-  }
-
-  /* Split button copy: Copier | ▾ */
-  .copy-split {
-    position: relative;
-    display: inline-flex;
-  }
-  .copy-split .action-btn { border-radius: 0; }
-  .copy-main { border-right: none; }
-  .copy-caret {
-    padding: 3px 6px;
-    font-size: 9px;
-  }
-  .copy-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 14;
-    background: transparent;
-  }
-  .copy-menu {
-    position: absolute;
-    bottom: calc(100% + 4px);
-    left: 0;
-    z-index: 15;
-    min-width: 240px;
-    background: var(--paper);
-    border: 1px solid var(--rule-strong);
-    box-shadow: 0 4px 12px rgba(20, 20, 26, 0.12);
-    padding: 4px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .copy-menu-item {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    grid-template-rows: auto auto;
-    column-gap: 8px;
-    align-items: baseline;
-    padding: 6px 8px;
-    background: transparent;
-    border: 1px solid transparent;
-    cursor: pointer;
-    text-align: left;
-    font-family: var(--font-ui);
-  }
-  .copy-menu-item:hover {
-    background: var(--paper-subtle);
-    border-color: var(--rule);
-  }
-  .copy-menu-item .cm-label {
-    grid-column: 1;
-    grid-row: 1;
-    font-size: 12px;
-    color: var(--ink);
-    font-weight: 500;
-  }
-  .copy-menu-item .cm-hint {
-    grid-column: 1;
-    grid-row: 2;
-    font-size: 10.5px;
-    color: var(--ink-40);
-    font-family: var(--font-mono);
-  }
-  .copy-menu-item .cm-mark {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-    align-self: center;
-    font-size: 8px;
-    color: var(--vermillon);
-  }
-  .copy-menu-item.is-default .cm-label {
-    color: var(--vermillon);
   }
 
   .action-btn-primary {

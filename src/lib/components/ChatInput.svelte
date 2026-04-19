@@ -54,7 +54,7 @@
   <div class="char-counter mono" data-state={countState} aria-live="polite">
     <span class="count">{chars}</span>
     <span class="sep"> · </span>
-    <span class="target">🎯 {target.min}–{target.max}</span>
+    <span class="target">cible {target.min}–{target.max}</span>
   </div>
 {/if}
 

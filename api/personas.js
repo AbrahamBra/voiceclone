@@ -56,6 +56,30 @@ export default async function handler(req, res) {
       }
     }
 
+    // Optional triage signals for the hub agency view: last_message_at per
+    // persona (so the hub can sort by activity debt and surface inactive
+    // clones). Opt-in with ?triage=true — base call stays cheap.
+    if (personas.length > 0 && req.query?.triage === "true") {
+      const ids = personas.map(p => p.id);
+      const { data: convs } = await supabase
+        .from("conversations")
+        .select("persona_id, last_message_at")
+        .in("persona_id", ids)
+        .order("last_message_at", { ascending: false, nullsLast: true });
+
+      // Take the first (most recent) row per persona. Since we ordered DESC,
+      // a simple Map-first-seen pattern picks the newest per group.
+      const lastByPersona = new Map();
+      for (const c of convs || []) {
+        if (!lastByPersona.has(c.persona_id) && c.last_message_at) {
+          lastByPersona.set(c.persona_id, c.last_message_at);
+        }
+      }
+      for (const p of personas) {
+        p.last_message_at = lastByPersona.get(p.id) || null;
+      }
+    }
+
     // Issue session token on login (if client)
     let session = null;
     if (client) {

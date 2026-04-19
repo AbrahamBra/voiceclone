@@ -4,7 +4,9 @@
   import { showToast } from "$lib/stores/ui.js";
   import SidePanel from "./SidePanel.svelte";
 
-  let { open = false, personaId = null, onClose } = $props();
+  // embedded=true: render content directly without SidePanel wrap, for use
+  // inside PersonaBrainDrawer. Default preserves legacy standalone behavior.
+  let { open = false, personaId = null, onClose, embedded = false } = $props();
 
   let apiKey = $state("");
   let saving = $state(false);
@@ -35,7 +37,10 @@
 
   async function save() {
     const key = apiKey.trim();
-    if (!key) { onClose?.(); return; }
+    // When embedded in PersonaBrainDrawer, never auto-close — the drawer may
+    // host other tabs the user wants to keep consulting. Standalone mode
+    // keeps the legacy close-on-save UX.
+    if (!key) { if (!embedded) onClose?.(); return; }
     saving = true;
     try {
       await api("/api/settings", {
@@ -43,7 +48,8 @@
         body: JSON.stringify({ anthropic_api_key: key }),
       });
       showToast("Clé API sauvegardée");
-      onClose?.();
+      apiKey = "";
+      if (!embedded) onClose?.();
     } catch {
       saving = false;
     }
@@ -56,7 +62,7 @@
   );
 </script>
 
-<SidePanel {open} title="Réglages" width={380} {onClose}>
+{#snippet content()}
   <section class="block">
     <div class="kv-line">
       <span class="kv-k mono">budget</span>
@@ -111,12 +117,24 @@
   {/if}
 
   <section class="actions">
-    <button class="btn-ghost mono" onclick={() => onClose?.()}>Fermer</button>
+    {#if !embedded}
+      <button class="btn-ghost mono" onclick={() => onClose?.()}>Fermer</button>
+    {/if}
     <button class="btn-solid mono" disabled={saving} onclick={save}>
       {saving ? "Sauvegarde…" : "Sauvegarder"}
     </button>
   </section>
-</SidePanel>
+{/snippet}
+
+{#if embedded}
+  <div class="sp-embedded">
+    {@render content()}
+  </div>
+{:else}
+  <SidePanel {open} title="Réglages" width={380} {onClose}>
+    {@render content()}
+  </SidePanel>
+{/if}
 
 <style>
   .block {
@@ -223,4 +241,8 @@
   .btn-solid { background: var(--ink); color: var(--paper); border-color: var(--ink); }
   .btn-solid:hover:not(:disabled) { background: var(--vermillon); border-color: var(--vermillon); }
   .btn-solid:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Embedded (inside PersonaBrainDrawer): no surrounding shell — inherits
+     drawer's padding. Scope everything with a parent class. */
+  .sp-embedded { padding: 0 16px; }
 </style>

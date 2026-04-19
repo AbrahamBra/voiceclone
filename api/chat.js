@@ -202,9 +202,11 @@ export default async function handler(req, res) {
         if (convId && supabase) {
           try {
             await Promise.all([
+              // message_type='meta': the operator→clone instruction and its
+              // confirmation must not appear in the DM-simulation thread view.
               supabase.from("messages").insert([
-                { conversation_id: convId, role: "user", content: message, turn_kind: "meta" },
-                { conversation_id: convId, role: "assistant", content: confirm, turn_kind: "meta" },
+                { conversation_id: convId, role: "user", content: message, message_type: "meta", turn_kind: "meta" },
+                { conversation_id: convId, role: "assistant", content: confirm, message_type: "meta", turn_kind: "meta" },
               ]),
               supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
               supabase.from("conversations")
@@ -228,7 +230,7 @@ export default async function handler(req, res) {
   // Short-circuit: direct instruction — save rule and confirm without calling Claude
   if (msgIntent === "INSTRUCTION") {
     try {
-      const saved = await detectDirectInstruction(intellId, message, messages, client);
+      const { count: saved, rules: savedRules } = await detectDirectInstruction(intellId, message, messages, client);
       if (saved > 0) {
         const confirm = saved === 1
           ? "Règle ajoutée. Elle sera active dès ton prochain message."
@@ -237,15 +239,18 @@ export default async function handler(req, res) {
         sse("done", {});
         logLearningEvent(personaId, "rule_added", {
           count: saved,
+          rules: savedRules,
           source_message: message.slice(0, 200),
         });
 
         if (convId && supabase) {
           try {
             await Promise.all([
+              // message_type='meta': the operator→clone instruction and its
+              // confirmation must not appear in the DM-simulation thread view.
               supabase.from("messages").insert([
-                { conversation_id: convId, role: "user", content: message, turn_kind: "meta" },
-                { conversation_id: convId, role: "assistant", content: confirm, turn_kind: "meta" },
+                { conversation_id: convId, role: "user", content: message, message_type: "meta", turn_kind: "meta" },
+                { conversation_id: convId, role: "assistant", content: confirm, message_type: "meta", turn_kind: "meta" },
               ]),
               supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
               supabase.from("conversations")

@@ -2250,9 +2250,10 @@ git log --oneline chunk-1-complete..HEAD
 - [x] Chunk 3 core : composants + refonte page + /api/messages (commits 2166330, d4c4583)
 - [x] Chunk 3 cleanup : suppression LiveMetricsStrip, AuditStrip, HeatThermometer, MessageMarginalia (commit d58f605)
 - [x] Chunk 3 cockpit allégé (commit c962e91)
-- [ ] Chunk 3 responsive mobile drawer (uncommitted WIP sur /chat/[persona]/+page.svelte)
-- [ ] Chunk 3 E2E flow + final verification
-- [ ] 3 PRs stackés : [#21 Part 1](https://github.com/AbrahamBra/voiceclone/pull/21), [#22 Part 2](https://github.com/AbrahamBra/voiceclone/pull/22), [#23 Part 3 WIP](https://github.com/AbrahamBra/voiceclone/pull/23)
+- [x] Chunk 3 responsive mobile drawer (commit 8c0c407)
+- [x] Chunk 3 tag `chunk-3-complete` posé
+- [ ] Merge vers master (cette PR) — E2E DB-gated skippé, couverture API layer existante
+- [ ] Addendum section 4 (journal heat narratif + per-msg audit trail) — à planifier après merge
 
 À chaque fin de chunk : `critic-prod-check.js` avant merge final (cf. pre-merge gate).
 
@@ -2281,6 +2282,6 @@ Revue de la vraie refonte contre les décisions des sections 4 et 5 de la spec. 
 
 ### Status de la critique
 - Findings ajoutés aux pendings : voir TodoWrite session.
-- Ne pas merger PR#3 tant que (1) et (2) ne sont pas adressées OU explicitement assumées comme non-goals.
+- Les points (1) et (2) sont tracés post-merge — non-bloquants pour la release core.
 
 

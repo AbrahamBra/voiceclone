@@ -28,6 +28,8 @@
     /** Fired with the picked ScenarioId. */
     onchange = (/** @type {ScenarioId} */ _id) => {},
     disabled = false,
+    /** Restrict the list to a single kind ("post" or "dm"). Null = all supported. */
+    kind = null,
   } = $props();
 
   let open = $state(false);
@@ -35,9 +37,12 @@
   let listEl = $state(/** @type {HTMLDivElement | null} */ (null));
   let activeIndex = $state(-1);
 
-  let supportedIds = $derived(
-    persona ? supportedCanonicalScenarios(persona) : []
-  );
+  let supportedIds = $derived.by(() => {
+    if (!persona) return [];
+    const ids = supportedCanonicalScenarios(persona);
+    if (!kind) return ids;
+    return ids.filter((id) => CANONICAL_SCENARIOS[id].kind === kind);
+  });
 
   let currentLabel = $derived(
     value && CANONICAL_SCENARIOS[value]
