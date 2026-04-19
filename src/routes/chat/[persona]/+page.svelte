@@ -18,18 +18,17 @@
   import { streamChat } from "$lib/sse.js";
   import { legacyKeyFor, isScenarioId } from "$lib/scenarios.js";
   import ChatMessage from "$lib/components/ChatMessage.svelte";
-  import ChatInput from "$lib/components/ChatInput.svelte";
-  import ScenarioSwitcher from "$lib/components/ScenarioSwitcher.svelte";
+  import ChatComposer from "$lib/components/ChatComposer.svelte";
+  import ProspectDossierHeader from "$lib/components/ProspectDossierHeader.svelte";
+  import FeedbackRail from "$lib/components/FeedbackRail.svelte";
   import ConversationSidebar from "$lib/components/ConversationSidebar.svelte";
   import ChatCockpit from "$lib/components/ChatCockpit.svelte";
   import RulesPanel from "$lib/components/RulesPanel.svelte";
   import FeedbackPanel from "$lib/components/FeedbackPanel.svelte";
   // SettingsPanel removed from chat — settings now live in /brain/[persona]#reglages.
-  import AuditStrip from "$lib/components/AuditStrip.svelte";
+  // AuditStrip/HeatThermometer/LiveMetricsStrip removed (Chunk 3 cleanup).
   import LeadPanel from "$lib/components/LeadPanel.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
-  import HeatThermometer from "$lib/components/HeatThermometer.svelte";
-  import LiveMetricsStrip from "$lib/components/LiveMetricsStrip.svelte";
 
   let personaId = $derived($page.data.personaId);
   let scenario = $derived($page.data.scenario);
@@ -39,7 +38,6 @@
   let sidebarOpen = $state(false);
   let messagesEl = $state(undefined);
   let scrollAnchor = $state(undefined);
-  let thermRef = $state(null);
 
   // Panel state (demodalized)
   let feedbackTarget = $state(null);      // bot message to correct
@@ -80,24 +78,16 @@
     Object.values(ruleStats).reduce((n, s) => n + (s.count > 0 ? 1 : 0), 0)
   );
 
-  // Running totals for AuditStrip — accumulated across the current conversation.
+  // Session totals removed with AuditStrip — AuditStrip migrated to /admin.
+  // SSE still reports tokens/rewrites; we just don't render them in chat.
   let sessionStart = $state(null);
-  let sessionTotals = $state({
-    msgCount: 0,
-    rewriteCount: 0,
-    driftCount: 0,
-    inputTokens: 0,
-    outputTokens: 0,
-    cacheReadTokens: 0,
-    ruleFireCount: 0,
-  });
-  function resetSessionTotals() {
-    sessionStart = null;
-    sessionTotals = {
-      msgCount: 0, rewriteCount: 0, driftCount: 0,
-      inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, ruleFireCount: 0,
-    };
-  }
+  function resetSessionTotals() { sessionStart = null; }
+
+  // New 2-zone state
+  let currentConversation = $state(null);  // { id, prospect_name, stage, note, last_message_at, ... }
+  let feedbackRailRef = $state(null);
+  let feedbackCount = $state(0);
+  let heatSignal = $state(null);  // { state: 'cold'|'warm'|'hot', delta }
 
   // Bot message sequence number generator (per conversation)
   let botSeq = $state(0);
@@ -440,21 +430,15 @@
             breakdown = evt.live_style;
           }
 
-          // AuditStrip running totals — accumulate per-message.
-          const drift = (evt?.violations || []).some(v => v.type === "fidelity_drift");
-          const ruleFireDelta = (evt?.violations || []).length;
-          sessionTotals = {
-            msgCount: sessionTotals.msgCount + 1,
-            rewriteCount: sessionTotals.rewriteCount + (evt?.rewritten ? 1 : 0),
-            driftCount: sessionTotals.driftCount + (drift ? 1 : 0),
-            inputTokens: sessionTotals.inputTokens + (evt?.tokens?.input || 0),
-            outputTokens: sessionTotals.outputTokens + (evt?.tokens?.output || 0),
-            cacheReadTokens: sessionTotals.cacheReadTokens + (evt?.tokens?.cache_read || 0),
-            ruleFireCount: sessionTotals.ruleFireCount + ruleFireDelta,
-          };
+          // AuditStrip removed from chat — session totals are no longer tracked here.
+          // Tokens/rewrites/drift metrics remain available via SSE telemetry
+          // and /api/fidelity for the /brain#intelligence view.
         },
         onHeat(evt) {
-          thermRef?.applyHeatEvent(evt);
+          // Heat signal feeds the inline indicator in ProspectDossierHeader.
+          if (evt && typeof evt.state === "string") {
+            heatSignal = { state: evt.state, delta: evt.delta ?? null };
+          }
         },
         onConversation(id) {
           if (id && !$currentConversationId) {
@@ -529,20 +513,6 @@
     feedbackOpen = true;
   }
 
-  async function handleValidate(message) {
-    try {
-      await api("/api/feedback", {
-        method: "POST",
-        body: JSON.stringify({
-          type: "validate",
-          botMessage: message.content,
-          persona: get(currentPersonaId),
-        }),
-      });
-      showToast("Noté ✓");
-    } catch {}
-  }
-
   async function handleSaveRule(message) {
     try {
       await api("/api/feedback", {
@@ -571,6 +541,138 @@
   function handleLeadAnalyzed(msg) {
     handleSend(msg);
   }
+
+  // ── 2-zone layout handlers ──
+
+  // "📥 ajouter prospect" — insert a message as prospect without triggering the LLM.
+  async function handleAddProspect(text) {
+    if (!text || !$currentConversationId) {
+      showToast?.("Commence par envoyer un message pour ouvrir la conversation.");
+      return;
+    }
+    try {
+      const resp = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          conversation_id: $currentConversationId,
+          role: "user",
+          content: text,
+          turn_kind: "prospect",
+        }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      messages.update(msgs => [
+        ...msgs,
+        { id: data.id, role: "user", turn_kind: "prospect", content: text, timestamp: Date.now() },
+      ]);
+    } catch (err) {
+      showToast?.("Ajout prospect échoué");
+    }
+  }
+
+  // "✨ draft la suite" — reuse existing streamChat flow. Optional consigne prefixed.
+  function handleDraftNext({ consigne }) {
+    const text = consigne || "Génère la réponse suivante en tenant compte du thread.";
+    handleSend(text);
+  }
+
+  // ✓ valider : PATCH message turn_kind='toi' + POST feedback-events.
+  // Also fires the legacy /api/feedback validate signal so detect-validate
+  // pipeline (positive feedback loop) keeps working.
+  async function handleValidate(message) {
+    try {
+      // Legacy positive-feedback signal — best effort, non-blocking
+      api("/api/feedback", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "validate",
+          botMessage: message.content,
+          persona: get(currentPersonaId),
+        }),
+      }).catch(() => { /* ignored: secondary signal */ });
+
+      await fetch(`/api/messages?id=${message.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ turn_kind: "toi" }),
+      });
+      const resp = await fetch("/api/feedback-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          conversation_id: $currentConversationId,
+          message_id: message.id,
+          event_type: "validated",
+        }),
+      });
+      if (resp.ok) {
+        const ev = await resp.json();
+        feedbackRailRef?.appendEvent?.({
+          id: ev.id,
+          message_id: message.id,
+          event_type: "validated",
+          created_at: ev.created_at,
+          rules_fired: [],
+        });
+        feedbackCount++;
+      }
+      messages.update(msgs => msgs.map(m =>
+        m.id === message.id ? { ...m, turn_kind: "toi" } : m
+      ));
+    } catch {
+      showToast?.("Validation échouée");
+    }
+  }
+
+  // ↻ regen : mark current draft as rejected, relaunch last send.
+  async function handleRegen(message) {
+    try {
+      await fetch(`/api/messages?id=${message.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ turn_kind: "draft_rejected" }),
+      });
+      messages.update(msgs => msgs.filter(m => m.id !== message.id));
+      handleSend("Regenère la réponse.");
+    } catch {
+      showToast?.("Regen échoué");
+    }
+  }
+
+  // Conversation dossier fields update (name / stage / note) from header
+  async function handleConversationUpdate(patch) {
+    if (!$currentConversationId) return;
+    try {
+      const resp = await fetch(`/api/conversations?id=${$currentConversationId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(patch),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      currentConversation = { ...(currentConversation || {}), ...patch };
+    } catch {
+      showToast?.("Mise à jour dossier échouée");
+    }
+  }
+
+  // Click on a rail entry → scroll + pulse the message in the thread
+  function handleHighlightMessage(msgId) {
+    const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("msg-highlight");
+    setTimeout(() => el.classList.remove("msg-highlight"), 2000);
+  }
+
+  // Keep currentConversation in sync with the conversation store
+  $effect(() => {
+    const convId = $currentConversationId;
+    if (!convId) { currentConversation = null; return; }
+    const conv = ($conversations || []).find(c => c.id === convId);
+    if (conv) currentConversation = conv;
+  });
 
   function handleKeyboard(e) {
     const mod = e.metaKey || e.ctrlKey;
@@ -683,6 +785,16 @@
 
       <div class="chat-body">
         <div class="chat-messages-col">
+          <ProspectDossierHeader
+            conversation={currentConversation}
+            {feedbackCount}
+            heat={heatSignal}
+            persona={$personaConfig}
+            scenarioType={$currentScenarioType}
+            onScenarioChange={handleScenarioChange}
+            onUpdate={handleConversationUpdate}
+          />
+
           <div class="chat-messages" bind:this={messagesEl}>
             {#each $messages as message (message.id)}
               <ChatMessage
@@ -692,6 +804,7 @@
                 {sourceStyle}
                 onCorrect={handleCorrect}
                 onValidate={handleValidate}
+                onRegen={handleRegen}
                 onSaveRule={handleSaveRule}
                 onCopyBlock={() => {}}
               />
@@ -699,22 +812,20 @@
             <div bind:this={scrollAnchor}></div>
           </div>
 
-          <div class="composer-toolbar">
-            <ScenarioSwitcher
-              persona={$personaConfig}
-              value={$currentScenarioType}
-              onchange={handleScenarioChange}
-              disabled={$sending}
-            />
-          </div>
-          <ChatInput onsend={handleSend} disabled={$sending} scenarioType={$currentScenarioType} />
-          <LiveMetricsStrip {breakdown} {fidelity} {collapseIdx} />
-          <AuditStrip totals={sessionTotals} {sessionStart} />
+          <ChatComposer
+            disabled={$sending}
+            scenarioType={$currentScenarioType}
+            onAddProspect={handleAddProspect}
+            onDraftNext={handleDraftNext}
+          />
         </div>
 
-        {#if ($currentScenarioType ?? '').startsWith('DM')}
-          <HeatThermometer bind:this={thermRef} conversationId={$currentConversationId} />
-        {/if}
+        <FeedbackRail
+          bind:this={feedbackRailRef}
+          conversationId={$currentConversationId}
+          activeRules={[]}
+          onHighlightMessage={handleHighlightMessage}
+        />
       </div>
     </div>
   </div>
@@ -764,9 +875,10 @@
 
   .chat-body {
     flex: 1;
-    display: grid;
-    grid-template-columns: 1fr 300px;
+    display: flex;
+    flex-direction: row;
     min-height: 0;
+    overflow: hidden;
   }
 
   .chat-messages-col {
@@ -776,8 +888,9 @@
   }
 
   @media (max-width: 1024px) {
-    .chat-body { grid-template-columns: 1fr; }
-    /* HeatThermometer's own mobile media query renders it as a compact bar below .chat-messages-col */
+    .chat-body { flex-direction: column; }
+    /* Feedback rail stacks below or becomes a drawer on narrow screens; the
+       component's own responsive rules decide what renders. */
   }
 
   .chat-messages {
@@ -789,19 +902,7 @@
     gap: 0.625rem;
   }
 
-  /* Composer toolbar — sits above the chat input. Hosts the scenario
-     switcher (Sprint 0.b) and will host future controls (scenario-level
-     contextual help, char counter) alongside it. */
-  .composer-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 16px 0;
-    background: var(--paper);
-  }
-  @media (max-width: 480px) {
-    .composer-toolbar { padding: 4px 8px 0; }
-  }
+  /* ScenarioSwitcher relocated to ProspectDossierHeader; composer-toolbar CSS removed. */
 
   .loading-screen {
     display: flex;
