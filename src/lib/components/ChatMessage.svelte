@@ -3,7 +3,7 @@
   import { renderMarkdown, toLinkedIn } from "$lib/utils.js";
 
   let {
-    message, seq = null, prevFidelity = null, sourceStyle = null,
+    message, seq = null,
     onCorrect, onValidate, onRegen, onSaveRule, onCopyBlock,
   } = $props();
 

@@ -23,7 +23,6 @@
   import FeedbackRail from "$lib/components/FeedbackRail.svelte";
   import ConversationSidebar from "$lib/components/ConversationSidebar.svelte";
   import ChatCockpit from "$lib/components/ChatCockpit.svelte";
-  import RulesPanel from "$lib/components/RulesPanel.svelte";
   import FeedbackPanel from "$lib/components/FeedbackPanel.svelte";
   // SettingsPanel removed from chat — settings now live in /brain/[persona]#reglages.
   // AuditStrip/HeatThermometer/LiveMetricsStrip removed (Chunk 3 cleanup).
@@ -42,7 +41,6 @@
   // Panel state (demodalized)
   let feedbackTarget = $state(null);      // bot message to correct
   let feedbackOpen = $state(false);
-  let rulesPanelOpen = $state(false);
   let leadOpen = $state(false);
   let showCommandPalette = $state(false);
   let switcherOpen = $state(false);
@@ -64,12 +62,10 @@
     })();
   });
 
-  // Cockpit live readings — collapseIdx & fidelity from /api/fidelity,
-  // updated after each message via breakdown + rewritten events.
+  // Live readings — collapseIdx & fidelity from /api/fidelity,
+  // refreshed after each assistant message. Consolidated into `styleHealth` below.
   let collapseIdx = $state(null);
   let fidelity = $state(null);
-  let breakdown = $state(null);
-  let sourceStyle = $state(null);
 
   // Rule activation stats for this conversation
   /** @type {Record<string, { count: number, lastFiredAt: number|null, lastDetail: string|null, lastSeverity: string|null }>} */
@@ -77,6 +73,19 @@
   let rulesActiveCount = $derived(
     Object.values(ruleStats).reduce((n, s) => n + (s.count > 0 ? 1 : 0), 0)
   );
+
+  // Consolidated style-health state for the cockpit badge (ok | warn | drift | unknown).
+  // Matches the semantics of the tooltip glossary that used to live in cockpit.
+  const FIDELITY_THRESHOLD = 0.72;
+  let styleHealth = $derived.by(() => {
+    const collapseBad = collapseIdx !== null && collapseIdx < 50;
+    const collapseWarn = collapseIdx !== null && collapseIdx >= 50 && collapseIdx < 70;
+    const fidelityDrift = fidelity !== null && fidelity < FIDELITY_THRESHOLD;
+    if (collapseBad || fidelityDrift) return "drift";
+    if (collapseWarn || rulesActiveCount > 0) return "warn";
+    if (collapseIdx !== null && fidelity !== null) return "ok";
+    return "unknown";
+  });
 
   // Session totals removed with AuditStrip — AuditStrip migrated to /admin.
   // SSE still reports tokens/rewrites; we just don't render them in chat.
@@ -104,19 +113,6 @@
     return null;
   }
 
-  // Previous bot message's fidelity — enables Δ display on each marginalia.
-  function prevFidelityFor(msg, allMessages) {
-    if (msg.role !== "bot") return null;
-    let last = null;
-    for (const m of allMessages) {
-      if (m.id === msg.id) return last;
-      if (m.role === "bot" && typeof m.fidelity?.similarity === "number") {
-        last = m.fidelity.similarity;
-      }
-    }
-    return last;
-  }
-
   async function refreshFidelity() {
     if (!personaId) return;
     try {
@@ -131,16 +127,9 @@
         // 0-100 composite — don't mix the two.
         fidelity = typeof s.score_raw === "number" ? s.score_raw : null;
         collapseIdx = typeof s.collapse_index === "number" ? s.collapse_index : null;
-        // draft_style carries ttr / kurtosis / avgSentenceLen / questionRatio
-        // / signaturePresence / forbiddenHits — exactly what the hover tooltip
-        // wants to show.
-        breakdown = s.draft_style || null;
-        sourceStyle = s.source_style || null;
       } else {
         fidelity = null;
         collapseIdx = null;
-        breakdown = null;
-        sourceStyle = null;
       }
     } catch {
       // fidelity is best-effort
@@ -426,9 +415,6 @@
           if (evt?.fidelity && typeof evt.fidelity.similarity === "number") {
             fidelity = evt.fidelity.similarity;
           }
-          if (evt?.live_style) {
-            breakdown = evt.live_style;
-          }
 
           // AuditStrip removed from chat — session totals are no longer tracked here.
           // Tokens/rewrites/drift metrics remain available via SSE telemetry
@@ -679,7 +665,6 @@
     if (e.key === "Escape") {
       if (showCommandPalette) showCommandPalette = false;
       else if (feedbackOpen) { feedbackOpen = false; feedbackTarget = null; feedbackMessageId = null; }
-      else if (rulesPanelOpen) rulesPanelOpen = false;
       else if (leadOpen) leadOpen = false;
       return;
     }
@@ -759,27 +744,13 @@
       <ChatCockpit
         personaName={$personaConfig?.name || "Clone"}
         personaAvatar={$personaConfig?.avatar || "?"}
-        scenario={$currentScenario || ""}
-        {collapseIdx}
-        {fidelity}
-        {breakdown}
-        {sourceStyle}
+        {styleHealth}
         personasList={$personas}
         currentPersonaId={personaId}
         bind:switcherOpen
         onSwitchClone={handleSwitchToClone}
-        {rulesActiveCount}
-        {rulesPanelOpen}
-        {feedbackOpen}
-        {leadOpen}
-        {sidebarOpen}
         onBack={handleBack}
         onToggleSidebar={() => sidebarOpen = !sidebarOpen}
-        onToggleRules={() => rulesPanelOpen = !rulesPanelOpen}
-        onToggleFeedback={() => {
-          feedbackOpen = !feedbackOpen;
-          if (!feedbackOpen) { feedbackTarget = null; feedbackMessageId = null; }
-        }}
         onToggleLead={() => leadOpen = !leadOpen}
       />
 
@@ -800,8 +771,6 @@
               <ChatMessage
                 {message}
                 seq={seqForMessage(message, $messages)}
-                prevFidelity={prevFidelityFor(message, $messages)}
-                {sourceStyle}
                 onCorrect={handleCorrect}
                 onValidate={handleValidate}
                 onRegen={handleRegen}
@@ -829,12 +798,6 @@
       </div>
     </div>
   </div>
-
-  <RulesPanel
-    open={rulesPanelOpen}
-    {ruleStats}
-    onClose={() => rulesPanelOpen = false}
-  />
 
   <FeedbackPanel
     open={feedbackOpen}
