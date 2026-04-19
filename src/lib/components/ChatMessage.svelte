@@ -98,7 +98,7 @@
       {#if message.role === "bot" && !message.typing && message.content}
         <div class="msg-actions">
           <button class="action-btn" onclick={copyFull}>Copier</button>
-          <button class="action-btn" onclick={() => onCorrect?.(message)}>Corriger</button>
+          <button class="action-btn action-btn-primary" onclick={() => onCorrect?.(message)}>Corriger</button>
         </div>
       {/if}
 
@@ -294,6 +294,17 @@
   .action-btn:hover {
     color: var(--ink);
     border-color: var(--ink-40);
+  }
+
+  .action-btn-primary {
+    background: var(--vermillon);
+    border-color: var(--vermillon);
+    color: var(--paper);
+  }
+  .action-btn-primary:hover {
+    background: color-mix(in srgb, var(--vermillon) 88%, black);
+    border-color: color-mix(in srgb, var(--vermillon) 88%, black);
+    color: var(--paper);
   }
 
   .action-validated {
