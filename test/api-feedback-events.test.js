@@ -56,4 +56,19 @@ describe("POST /api/feedback-events", { skip: !HAS_DB && "no DB env vars" }, () 
     assert.equal(res.statusCode, 400);
     assert.match(res.body.error, /event_type/i);
   });
+
+  it("accepts event_type='client_validated' (passes validation)", async () => {
+    const handler = (await import("../api/feedback-events.js")).default;
+    const req = {
+      method: "POST",
+      query: {},
+      headers: { "x-access-code": process.env.ADMIN_ACCESS_CODE || "admin" },
+      body: { conversation_id: "00000000-0000-0000-0000-000000000000", message_id: "00000000-0000-0000-0000-000000000000", event_type: "client_validated" },
+    };
+    const res = makeRes();
+    await handler(req, res);
+    // Valid event_type → conversation lookup fails (fake UUID) → 404, not 400.
+    assert.notEqual(res.statusCode, 400, "client_validated should not be rejected by validation");
+    assert.equal(res.statusCode, 404);
+  });
 });
