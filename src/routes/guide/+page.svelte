@@ -141,7 +141,7 @@
     </header>
 
     <!-- SECTION 1: Process d'onboarding -->
-    <section class="guide-section">
+    <section class="guide-section" id="onboarding">
       <h2 class="section-title">
         <span class="section-num">01</span>
         Le process d'onboarding
@@ -167,7 +167,7 @@
     </section>
 
     <!-- SECTION 2: Base de connaissances -->
-    <section class="guide-section">
+    <section class="guide-section" id="knowledge">
       <h2 class="section-title">
         <span class="section-num">02</span>
         Quoi mettre dans la base de connaissances
@@ -208,7 +208,7 @@
     </section>
 
     <!-- SECTION 3: Boucle de feedback -->
-    <section class="guide-section">
+    <section class="guide-section" id="feedback">
       <h2 class="section-title">
         <span class="section-num">03</span>
         La boucle de feedback
@@ -309,6 +309,7 @@
   /* Sections */
   .guide-section {
     margin-bottom: 3rem;
+    scroll-margin-top: 80px;
   }
 
   .section-title {
