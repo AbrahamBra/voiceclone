@@ -55,5 +55,9 @@ export function logout() {
   isAdmin.set(false);
   if (typeof localStorage !== "undefined") {
     localStorage.removeItem(STORAGE_KEY);
+    // Mémorisation du dernier clone visité : purge au logout pour éviter
+    // qu'un autre compte partageant le navigateur reroute sur un clone
+    // auquel il n'a pas accès.
+    localStorage.removeItem("vc_last_persona");
   }
 }
