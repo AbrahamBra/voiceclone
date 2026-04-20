@@ -191,7 +191,7 @@
         });
         pendingFiles[idx] = { ...f, status: "done" };
       } catch (err) {
-        pendingFiles[idx] = { ...f, status: "error", error: err?.message || "upload" };
+        pendingFiles[idx] = { ...f, status: "error", error: err?.data?.detail || err?.message || "upload" };
       }
       pendingFiles = [...pendingFiles];
       ingestProgress = { current: i + 1, total: toUpload.length };
