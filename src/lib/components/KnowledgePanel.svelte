@@ -104,31 +104,37 @@
     }
   }
 
+  const BLOCK_SIZE = 20_000;
+
   async function processAndUpload(filename, content) {
-    // Enforce 200k limit client-side before POST
     if (content.length > 200_000) {
       content = content.slice(0, 200_000);
       showToast("Document tronqué à 200 000 caractères");
-    } else if (content.length > 50_000) {
-      showToast("Document volumineux — l'extraction intelligence peut être partielle");
+    }
+
+    // Split into blocks of ~20K chars
+    const blocks = [];
+    for (let i = 0; i < content.length; i += BLOCK_SIZE) {
+      blocks.push(content.slice(i, i + BLOCK_SIZE));
     }
 
     uploading = true;
     startFakeProgress(content.length);
 
     try {
-      const data = await api("/api/knowledge", {
-        method: "POST",
-        body: JSON.stringify({ personaId, filename, content }),
-      });
+      let firstFile = null;
+      for (let i = 0; i < blocks.length; i++) {
+        const blockName = blocks.length > 1 ? `${filename} (${i + 1}/${blocks.length})` : filename;
+        const data = await api("/api/knowledge", {
+          method: "POST",
+          body: JSON.stringify({ personaId, filename: blockName, content: blocks[i] }),
+        });
+        if (i === 0) firstFile = data.file;
+      }
       stopFakeProgress();
       await new Promise(r => setTimeout(r, 600));
-      // Store original filename alongside server path for display
-      files = [{ ...data.file, displayName: filename }, ...files];
-      const entitiesMsg = data.entities_added > 0
-        ? ` · ${data.entities_added} entités extraites`
-        : data._debug ? ` · Intelligence: ${data._debug}` : "";
-      showToast(`Document ajouté${entitiesMsg}`);
+      files = [{ ...firstFile, displayName: filename }, ...files];
+      showToast(`Document ajouté (${blocks.length} bloc${blocks.length > 1 ? "s" : ""})`);
       onupload?.();
     } catch (e) {
       for (const t of stepTimers) clearTimeout(t);
