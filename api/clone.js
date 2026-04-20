@@ -158,75 +158,42 @@ export default async function handler(req, res) {
   if (dms) dms = dms.slice(0, 15).map(d => d.slice(0, 4000));
   if (documents) documents = documents.slice(0, 20000);
 
-  // K-means sampling: cluster all posts by embedding, pick representatives per cluster
-  // so bimodal voices (short punchlines + long stories) are both captured.
-  if (posts && posts.length > 9) {
-    const truncated = posts.map(p => p.slice(0, 3000));
-    const embeddings = await embed(truncated).catch(() => null);
-    posts = kmeansSelectRepresentatives(embeddings, truncated, { k: 3, repsPerCluster: 3 });
-  } else if (posts) {
-    posts = posts.slice(0, 30).map(p => p.slice(0, 3000));
+  // Select representative posts — skip k-means embed (too slow in sync path)
+  if (posts) {
+    posts = posts.slice(0, 9).map(p => p.slice(0, 3000));
   }
 
   const apiKey = getApiKey(client);
   const anthropic = new Anthropic({ apiKey });
-  const CLONE_TIMEOUT = 45000; // 45s per Claude call
 
   try {
     const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514";
-
-    const userContent = [
-      "PROFIL LINKEDIN :",
-      linkedin_text,
-    ];
 
     const postsContentForStyle = posts?.length > 0
       ? posts.map((p, i) => `--- POST ${i + 1} ---\n${p}`).join("\n\n")
       : null;
 
-    if (postsContentForStyle) {
-      userContent.push("", "POSTS LINKEDIN (" + posts.length + " posts) :", postsContentForStyle);
-    }
-
     const dmsContent = dms?.length > 0
       ? dms.map((d, i) => `--- CONVERSATION ${i + 1} ---\n${d}`).join("\n\n")
       : null;
 
-    if (dmsContent) {
-      userContent.push("", "DMs LINKEDIN :", dmsContent);
-    }
-    if (documents) {
-      userContent.push("", "DOCUMENTATION CLIENT :", documents);
-    }
+    const userContent = [
+      "PROFIL LINKEDIN :",
+      linkedin_text,
+      ...(postsContentForStyle ? ["", "POSTS LINKEDIN (" + posts.length + " posts) :", postsContentForStyle] : []),
+      ...(dmsContent ? ["", "DMs LINKEDIN :", dmsContent] : []),
+      ...(documents ? ["", "DOCUMENTATION CLIENT :", documents] : []),
+    ];
 
-    const withTimeout = (promise) => Promise.race([
-      promise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), CLONE_TIMEOUT)),
+    // Only the config call is synchronous — style/DM run in background after response
+    const configResult = await Promise.race([
+      anthropic.messages.create({
+        model: MODEL, max_tokens: 2048,
+        system: CLONE_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userContent.join("\n") }],
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 45000)),
     ]);
-
-    const configPromise = withTimeout(anthropic.messages.create({
-      model: MODEL, max_tokens: 2048,
-      system: CLONE_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: userContent.join("\n") }],
-    }));
-
-    const stylePromise = cloneType !== 'dm' && postsContentForStyle
-      ? withTimeout(anthropic.messages.create({
-          model: MODEL, max_tokens: 2048,
-          system: STYLE_ANALYSIS_PROMPT,
-          messages: [{ role: "user", content: postsContentForStyle }],
-        }))
-      : Promise.resolve(null);
-
-    const dmPromise = dmsContent
-      ? withTimeout(anthropic.messages.create({
-          model: MODEL, max_tokens: 2048,
-          system: DM_ANALYSIS_PROMPT,
-          messages: [{ role: "user", content: dmsContent }],
-        }))
-      : Promise.resolve(null);
-
-    const [configResult, styleResult, dmResult] = await Promise.all([configPromise, stylePromise, dmPromise]);
 
     const configRaw = configResult.content[0].text.trim();
     const jsonMatch = configRaw.match(/\{[\s\S]*\}/);
@@ -241,12 +208,7 @@ export default async function handler(req, res) {
 
     if (name) personaConfig.name = name;
 
-    // styleBody declared here so the post-response fire-and-forget can reference it
-    let styleBody = null;
-
-    // Step 4: Save to Supabase
     const slug = personaConfig.name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
-
     const cleanLabel = typeof client_label === "string" ? client_label.trim().slice(0, 120) : null;
 
     const { data: persona, error: insertErr } = await supabase
@@ -268,62 +230,6 @@ export default async function handler(req, res) {
       .single();
 
     if (insertErr) throw new Error("Failed to save persona: " + insertErr.message);
-
-    if (styleResult) {
-      const styleContent = styleResult.content[0].text.trim();
-      const fmMatch = styleContent.match(/^---\n([\s\S]*?)\n---/);
-      let keywords = ["post", "poster", "ecrire", "rediger", "contenu", "linkedin"];
-      if (fmMatch) {
-        const kwMatch = fmMatch[1].match(/keywords:\s*\[(.*?)\]/);
-        if (kwMatch) {
-          keywords = kwMatch[1].split(",").map(k => k.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
-        }
-      }
-      styleBody = fmMatch ? styleContent.slice(fmMatch[0].length).trim() : styleContent;
-
-      const { error: styleInsertErr } = await supabase.from("knowledge_files").insert({
-        persona_id: persona.id,
-        path: "topics/style-posts-linkedin.md",
-        keywords,
-        content: styleBody,
-        source_type: "auto",
-      });
-      if (styleInsertErr) console.log(JSON.stringify({ event: "style_knowledge_insert_error", persona: persona.id, error: styleInsertErr.message }));
-    }
-
-    // Insert DM style knowledge file if DMs were provided
-    if (dmResult) {
-      const dmContent = dmResult.content[0].text.trim();
-      const dmFmMatch = dmContent.match(/^---\n([\s\S]*?)\n---/);
-      let dmKeywords = ["dm", "message", "conversation", "qualification", "prospection", "relance", "rdv"];
-      if (dmFmMatch) {
-        const kwMatch = dmFmMatch[1].match(/keywords:\s*\[(.*?)\]/);
-        if (kwMatch) {
-          dmKeywords = kwMatch[1].split(",").map(k => k.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
-        }
-      }
-      const dmBody = dmFmMatch ? dmContent.slice(dmFmMatch[0].length).trim() : dmContent;
-      const { error: dmInsertErr } = await supabase.from("knowledge_files").insert({
-        persona_id: persona.id,
-        path: "topics/style-conversations.md",
-        keywords: dmKeywords,
-        content: dmBody,
-        source_type: "auto",
-      });
-      if (dmInsertErr) console.log(JSON.stringify({ event: "dm_knowledge_insert_error", persona: persona.id, error: dmInsertErr.message }));
-    }
-
-    // Insert document knowledge file if provided
-    if (documents && documents.length > 50) {
-      const { error: docInsertErr } = await supabase.from("knowledge_files").insert({
-        persona_id: persona.id,
-        path: "documents/client-docs.md",
-        keywords: ["document", "doc", "methode", "offre", "service", "client"],
-        content: documents,
-        source_type: "document",
-      });
-      if (docInsertErr) console.log(JSON.stringify({ event: "doc_knowledge_insert_error", persona: persona.id, error: docInsertErr.message }));
-    }
 
     // Insert default scenario files
     const defaultScenario = `# Scenario : Conversation\n\nTu es ${personaConfig.name}.\n\n${personaConfig.voice.writingRules.map(r => `- ${r}`).join("\n")}\n`;
@@ -430,21 +336,89 @@ ${neverDoes}
     const { error: scenarioErr } = await supabase.from("scenario_files").insert(scenarioRows);
     if (scenarioErr) console.log(JSON.stringify({ event: "scenario_insert_error", persona: persona.id, error: scenarioErr.message }));
 
-    // Log usage
-    const finalInput = (configResult.usage?.input_tokens || 0) + (styleResult?.usage?.input_tokens || 0) + (dmResult?.usage?.input_tokens || 0);
-    const finalOutput = (configResult.usage?.output_tokens || 0) + (styleResult?.usage?.output_tokens || 0) + (dmResult?.usage?.output_tokens || 0);
+    // Log config usage immediately; style/DM tokens logged in background
     if (client) {
-      await logUsage(client.id, persona.id, finalInput, finalOutput);
+      await logUsage(client.id, persona.id, configResult.usage?.input_tokens || 0, configResult.usage?.output_tokens || 0);
     }
 
-    // Respond immediately — ontology, embeddings, entity extraction run fire-and-forget
+    // Respond — style/DM analysis, knowledge files, ontology, embeddings all run in background
     res.json({
       ok: true,
       persona: { id: persona.id, slug: persona.slug, name: persona.name, title: persona.title, avatar: persona.avatar },
     });
 
-    // Background: ontology extraction, embeddings, entity extraction
+    // Background: style analysis, DM analysis, knowledge inserts, ontology, embeddings
     (async () => {
+      let styleBody = null;
+
+      // Style analysis
+      if (cloneType !== 'dm' && postsContentForStyle) {
+        try {
+          const styleResult = await Promise.race([
+            anthropic.messages.create({
+              model: MODEL, max_tokens: 2048,
+              system: STYLE_ANALYSIS_PROMPT,
+              messages: [{ role: "user", content: postsContentForStyle }],
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 50000)),
+          ]);
+          const styleContent = styleResult.content[0].text.trim();
+          const fmMatch = styleContent.match(/^---\n([\s\S]*?)\n---/);
+          let keywords = ["post", "poster", "ecrire", "rediger", "contenu", "linkedin"];
+          if (fmMatch) {
+            const kwMatch = fmMatch[1].match(/keywords:\s*\[(.*?)\]/);
+            if (kwMatch) keywords = kwMatch[1].split(",").map(k => k.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+          }
+          styleBody = fmMatch ? styleContent.slice(fmMatch[0].length).trim() : styleContent;
+          await supabase.from("knowledge_files").insert({
+            persona_id: persona.id, path: "topics/style-posts-linkedin.md",
+            keywords, content: styleBody, source_type: "auto",
+          });
+          if (client) await logUsage(client.id, persona.id, styleResult.usage?.input_tokens || 0, styleResult.usage?.output_tokens || 0);
+        } catch (e) {
+          console.log(JSON.stringify({ event: "style_error", persona: persona.id, error: e.message }));
+        }
+      }
+
+      // DM analysis
+      let dmBody = null;
+      if (dmsContent) {
+        try {
+          const dmResult = await Promise.race([
+            anthropic.messages.create({
+              model: MODEL, max_tokens: 2048,
+              system: DM_ANALYSIS_PROMPT,
+              messages: [{ role: "user", content: dmsContent }],
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 50000)),
+          ]);
+          const dmContent = dmResult.content[0].text.trim();
+          const dmFmMatch = dmContent.match(/^---\n([\s\S]*?)\n---/);
+          let dmKeywords = ["dm", "message", "conversation", "qualification", "prospection", "relance", "rdv"];
+          if (dmFmMatch) {
+            const kwMatch = dmFmMatch[1].match(/keywords:\s*\[(.*?)\]/);
+            if (kwMatch) dmKeywords = kwMatch[1].split(",").map(k => k.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+          }
+          dmBody = dmFmMatch ? dmContent.slice(dmFmMatch[0].length).trim() : dmContent;
+          await supabase.from("knowledge_files").insert({
+            persona_id: persona.id, path: "topics/style-conversations.md",
+            keywords: dmKeywords, content: dmBody, source_type: "auto",
+          });
+          if (client) await logUsage(client.id, persona.id, dmResult.usage?.input_tokens || 0, dmResult.usage?.output_tokens || 0);
+        } catch (e) {
+          console.log(JSON.stringify({ event: "dm_analysis_error", persona: persona.id, error: e.message }));
+        }
+      }
+
+      // Document knowledge file
+      if (documents && documents.length > 50) {
+        await supabase.from("knowledge_files").insert({
+          persona_id: persona.id, path: "documents/client-docs.md",
+          keywords: ["document", "doc", "methode", "offre", "service", "client"],
+          content: documents, source_type: "document",
+        }).catch(() => {});
+      }
+
       // Ontology — retry once on failure
       try {
         for (let attempt = 1; attempt <= 2; attempt++) {
@@ -523,16 +497,9 @@ ${neverDoes}
       // Entity extraction from knowledge files
       try {
         const extractionPromises = [];
-        if (styleBody) {
-          extractionPromises.push(extractEntitiesFromContent(persona.id, styleBody, "topics/style-posts-linkedin.md", client));
-        }
-        if (dmResult) {
-          const dmBody = dmResult.content[0].text.trim().replace(/^---\n[\s\S]*?\n---\n?/, "");
-          extractionPromises.push(extractEntitiesFromContent(persona.id, dmBody, "topics/style-conversations.md", client));
-        }
-        if (documents && documents.length > 50) {
-          extractionPromises.push(extractEntitiesFromContent(persona.id, documents, "documents/client-docs.md", client));
-        }
+        if (styleBody) extractionPromises.push(extractEntitiesFromContent(persona.id, styleBody, "topics/style-posts-linkedin.md", client));
+        if (dmBody) extractionPromises.push(extractEntitiesFromContent(persona.id, dmBody, "topics/style-conversations.md", client));
+        if (documents && documents.length > 50) extractionPromises.push(extractEntitiesFromContent(persona.id, documents, "documents/client-docs.md", client));
         if (extractionPromises.length > 0) await Promise.all(extractionPromises);
       } catch (e) {
         console.log(JSON.stringify({ event: "auto_extraction_error", persona: persona.id, error: e.message }));
