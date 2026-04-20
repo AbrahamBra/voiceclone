@@ -229,20 +229,27 @@
       }
 
       // Load conversations
+      let convList = [];
       try {
         const convResp = await fetch(`/api/conversations?persona=${pid}`, {
           headers: authHeaders(),
         });
         if (convResp.ok) {
           const d = await convResp.json();
-          conversations.set(d.conversations || []);
+          convList = d.conversations || [];
+          conversations.set(convList);
         }
       } catch {}
 
-      // Check for saved conversation
+      // Reprise de fil : d'abord le pointeur localStorage (dernière conv
+      // consultée sur CE device), sinon fallback sur la conv la plus récente
+      // de l'historique DB. Évite le "j'ai plus rien en revenant" quand le
+      // localStorage a été perdu (autre device, nettoyage navigateur, logout).
       const savedConvId = localStorage.getItem("conv_" + pid);
-      if (savedConvId) {
-        await loadConversation(savedConvId);
+      const fallbackConvId = convList[0]?.id || null;  // list ordered by last_message_at DESC
+      const targetConvId = savedConvId || fallbackConvId;
+      if (targetConvId) {
+        await loadConversation(targetConvId);
       } else {
         showWelcome();
       }
