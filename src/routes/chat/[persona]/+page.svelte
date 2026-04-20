@@ -212,6 +212,10 @@
     currentScenario.set(scn);
     currentScenarioType.set(scnType || null);
 
+    // Mémorise le dernier clone visité pour rerouter ici au prochain login.
+    // Si le clone n'existe plus, pickPersona() côté landing nettoie l'id.
+    try { localStorage.setItem("vc_last_persona", pid); } catch {}
+
     try {
       // Load config if not already loaded
       if (!$personaConfig || $personaConfig.id !== pid) {

@@ -152,8 +152,24 @@
   })));
   const liveFidelity = $derived(lerp(current.fidelity_before, current.fidelity_after, fidelityProgress));
 
-  // Resolve the post-auth destination: first persona → /chat/<id>, or /create
-  // if the account has no clone yet. Hub is gone — chat is the new home.
+  // Pick the landing persona: last-used if still accessible, else first.
+  // Stale ids (clone supprimé entre sessions) sont nettoyés du localStorage.
+  function pickPersona(personas) {
+    if (!Array.isArray(personas) || personas.length === 0) return null;
+    try {
+      const lastId = localStorage.getItem("vc_last_persona");
+      if (lastId) {
+        const match = personas.find((p) => p.id === lastId);
+        if (match) return match;
+        // Id périmé : on nettoie pour éviter d'y revenir au prochain login.
+        localStorage.removeItem("vc_last_persona");
+      }
+    } catch {}
+    return personas[0];
+  }
+
+  // Resolve the post-auth destination: last/first persona → /chat/<id>, or
+  // /create if the account has no clone yet. Hub is gone — chat is the new home.
   async function resolveHome(codeOverride) {
     try {
       const headers = codeOverride ? { "x-access-code": codeOverride } : {};
@@ -166,8 +182,8 @@
       const resp = await fetch("/api/personas", { headers });
       if (!resp.ok) return "/create";
       const data = await resp.json();
-      const first = Array.isArray(data.personas) && data.personas[0];
-      return first ? `/chat/${first.id}` : "/create";
+      const target = pickPersona(data.personas);
+      return target ? `/chat/${target.id}` : "/create";
     } catch {
       return "/create";
     }
@@ -213,8 +229,8 @@
       const data = await resp.json();
       accessCode.set(code);
       if (data.session?.token) sessionToken.set(data.session.token);
-      const first = Array.isArray(data.personas) && data.personas[0];
-      goto(first ? `/chat/${first.id}` : "/create");
+      const target = pickPersona(data.personas);
+      goto(target ? `/chat/${target.id}` : "/create");
     } catch {
       authError = "erreur réseau";
       authLoading = false;
