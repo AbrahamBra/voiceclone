@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from "svelte";
   import { goto } from "$app/navigation";
-  import { accessCode, sessionToken } from "$lib/stores/auth.js";
+  import { accessCode, sessionToken, isAdmin } from "$lib/stores/auth.js";
   import { SCENARIOS, TYPE_SPEED_OUTPUT, PHASE_DELAYS } from "$lib/landing-demo.js";
 
   // ───────── Live chrome ─────────
@@ -182,6 +182,7 @@
       const resp = await fetch("/api/personas", { headers });
       if (!resp.ok) return "/create";
       const data = await resp.json();
+      isAdmin.set(!!data.isAdmin);
       const target = pickPersona(data.personas);
       return target ? `/chat/${target.id}` : "/create";
     } catch {
@@ -229,6 +230,7 @@
       const data = await resp.json();
       accessCode.set(code);
       if (data.session?.token) sessionToken.set(data.session.token);
+      isAdmin.set(!!data.isAdmin);
       const target = pickPersona(data.personas);
       goto(target ? `/chat/${target.id}` : "/create");
     } catch {

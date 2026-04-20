@@ -16,6 +16,7 @@ if (typeof localStorage !== "undefined") {
       const saved = JSON.parse(raw);
       if (saved.accessCode) accessCode.set(saved.accessCode);
       if (saved.sessionToken) sessionToken.set(saved.sessionToken);
+      if (saved.isAdmin) isAdmin.set(true);
     }
   } catch {
     // ignore corrupt data
@@ -41,6 +42,17 @@ if (typeof localStorage !== "undefined") {
       const raw = localStorage.getItem(STORAGE_KEY);
       const saved = raw ? JSON.parse(raw) : {};
       saved.sessionToken = token;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    } catch {
+      // ignore
+    }
+  });
+
+  isAdmin.subscribe((val) => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const saved = raw ? JSON.parse(raw) : {};
+      saved.isAdmin = !!val;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
     } catch {
       // ignore
