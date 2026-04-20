@@ -53,6 +53,7 @@
     switch (type) {
       case "validated": return "✓";
       case "validated_edited": return "✓*";
+      case "client_validated": return "✓✓";
       case "excellent": return "★";
       case "corrected": return "✎";
       case "saved_rule": return "📏";
@@ -62,8 +63,9 @@
 
   function labelFor(type) {
     switch (type) {
-      case "validated": return "c'est ça";
+      case "validated": return "validé";
       case "validated_edited": return "validé (édité)";
+      case "client_validated": return "c'est ça";
       case "excellent": return "excellent";
       case "corrected": return "corrigé";
       case "saved_rule": return "règle enregistrée";
@@ -106,7 +108,7 @@
     {:else}
       <ul class="event-list">
         {#each events as ev (ev.id)}
-          <li class="event" class:event-excellent={ev.event_type === "excellent"}>
+          <li class="event" class:event-excellent={ev.event_type === "excellent"} class:event-client-validated={ev.event_type === "client_validated"}>
             <div class="event-head">
               <span class="event-icon">{iconFor(ev.event_type)}</span>
               <span class="event-time mono">{fmtTime(ev.created_at)}</span>
@@ -208,6 +210,11 @@
     border-left: 2px solid var(--rule);
     padding: 4px 8px;
   }
+  /* Client-validated event: vermillon left-border — signal fort "c'est ça". */
+  .event-client-validated {
+    border-left-color: var(--vermillon);
+  }
+  .event-client-validated .event-icon { color: var(--vermillon); }
   /* Excellent event: gold left-border + gold icon — signals "pattern à multiplier". */
   .event-excellent {
     border-left-color: #b37e3b;

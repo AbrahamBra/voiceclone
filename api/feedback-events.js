@@ -1,6 +1,6 @@
 import { authenticateRequest, supabase, setCors, hasPersonaAccess } from "../lib/supabase.js";
 
-const VALID_TYPES = new Set(["validated", "validated_edited", "corrected", "saved_rule", "excellent"]);
+const VALID_TYPES = new Set(["validated", "validated_edited", "corrected", "saved_rule", "excellent", "client_validated"]);
 
 export default async function handler(req, res) {
   setCors(res, "GET, POST, OPTIONS");

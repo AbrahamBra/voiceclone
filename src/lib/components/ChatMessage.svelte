@@ -4,7 +4,7 @@
 
   let {
     message, seq = null,
-    onCorrect, onValidate, onExcellent, onRegen, onSaveRule, onCopyBlock,
+    onCorrect, onValidate, onClientValidate, onExcellent, onRegen, onSaveRule, onCopyBlock,
   } = $props();
 
   // Narrative kind derived from message.turn_kind (new axis from migration 028),
@@ -170,10 +170,10 @@
           </div>
 
           {#if isDraft}
-            <!-- Draft actions: c'est ça (passable) / excellent (pattern à multiplier) →
-                 split volontaire pour enrichir le signal de feedback.
+            <!-- Draft actions: c'est ça (validation client explicite, signal fort
+                 → +0.12 entity boost) / excellent (pattern à multiplier).
                  corriger → FeedbackPanel ; regen → retry sans signal. -->
-            <button class="action-btn action-btn-primary" onclick={() => onValidate?.(message)} title="C'est ça — envoie tel quel">✓ c'est ça</button>
+            <button class="action-btn action-btn-primary" onclick={() => onClientValidate?.(message)} title="C'est ça — signal d'apprentissage fort">✓ c'est ça</button>
             <button class="action-btn action-btn-excellent" onclick={() => onExcellent?.(message)} title="Excellent — pattern à multiplier">★ excellent</button>
             <button class="action-btn" onclick={() => onCorrect?.(message)} title="Corriger">✎ corriger</button>
             <button class="action-btn" onclick={() => onRegen?.(message)} title="Regénérer sans correction">↻ regen</button>
