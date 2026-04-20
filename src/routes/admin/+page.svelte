@@ -77,7 +77,7 @@
 
 <div class="admin">
   <header class="admin-header">
-    <a href="/" class="back-link">&larr; Hub</a>
+    <a href="/" class="back-link">&larr; Retour</a>
     <h1>Admin</h1>
     {#if !loading}
       <button class="refresh-btn" onclick={loadData}>Rafraichir</button>
