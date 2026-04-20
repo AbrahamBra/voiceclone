@@ -53,6 +53,7 @@
     switch (type) {
       case "validated": return "✓";
       case "validated_edited": return "✓*";
+      case "excellent": return "★";
       case "corrected": return "✎";
       case "saved_rule": return "📏";
       default: return "·";
@@ -61,8 +62,9 @@
 
   function labelFor(type) {
     switch (type) {
-      case "validated": return "validé";
+      case "validated": return "c'est ça";
       case "validated_edited": return "validé (édité)";
+      case "excellent": return "excellent";
       case "corrected": return "corrigé";
       case "saved_rule": return "règle enregistrée";
       default: return type;
@@ -104,7 +106,7 @@
     {:else}
       <ul class="event-list">
         {#each events as ev (ev.id)}
-          <li class="event">
+          <li class="event" class:event-excellent={ev.event_type === "excellent"}>
             <div class="event-head">
               <span class="event-icon">{iconFor(ev.event_type)}</span>
               <span class="event-time mono">{fmtTime(ev.created_at)}</span>
@@ -206,6 +208,11 @@
     border-left: 2px solid var(--rule);
     padding: 4px 8px;
   }
+  /* Excellent event: gold left-border + gold icon — signals "pattern à multiplier". */
+  .event-excellent {
+    border-left-color: #b37e3b;
+  }
+  .event-excellent .event-icon { color: #b37e3b; }
   .event-head {
     display: flex;
     gap: 6px;

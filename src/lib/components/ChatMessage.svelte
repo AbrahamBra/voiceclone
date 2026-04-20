@@ -4,7 +4,7 @@
 
   let {
     message, seq = null,
-    onCorrect, onValidate, onRegen, onSaveRule, onCopyBlock,
+    onCorrect, onValidate, onExcellent, onRegen, onSaveRule, onCopyBlock,
   } = $props();
 
   // Narrative kind derived from message.turn_kind (new axis from migration 028),
@@ -170,9 +170,11 @@
           </div>
 
           {#if isDraft}
-            <!-- Draft actions: valider → envoie au prospect ; corriger → FeedbackPanel ;
-                 regen → retry sans signal. -->
-            <button class="action-btn action-btn-primary" onclick={() => onValidate?.(message)} title="Valider et envoyer">✓ valider</button>
+            <!-- Draft actions: c'est ça (passable) / excellent (pattern à multiplier) →
+                 split volontaire pour enrichir le signal de feedback.
+                 corriger → FeedbackPanel ; regen → retry sans signal. -->
+            <button class="action-btn action-btn-primary" onclick={() => onValidate?.(message)} title="C'est ça — envoie tel quel">✓ c'est ça</button>
+            <button class="action-btn action-btn-excellent" onclick={() => onExcellent?.(message)} title="Excellent — pattern à multiplier">★ excellent</button>
             <button class="action-btn" onclick={() => onCorrect?.(message)} title="Corriger">✎ corriger</button>
             <button class="action-btn" onclick={() => onRegen?.(message)} title="Regénérer sans correction">↻ regen</button>
           {:else if isSent}
@@ -337,6 +339,17 @@
     background: color-mix(in srgb, var(--vermillon) 88%, black);
     border-color: color-mix(in srgb, var(--vermillon) 88%, black);
     color: var(--paper);
+  }
+
+  /* Excellent: gold outline, asymmetric from primary — signals "pattern" not "default". */
+  .action-btn-excellent {
+    border-color: #b37e3b;
+    color: #8a5f2b;
+  }
+  .action-btn-excellent:hover {
+    background: #f5efe4;
+    border-color: #8a5f2b;
+    color: #8a5f2b;
   }
 
   .action-validated {

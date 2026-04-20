@@ -22,7 +22,7 @@
   import ProspectDossierHeader from "$lib/components/ProspectDossierHeader.svelte";
   import FeedbackRail from "$lib/components/FeedbackRail.svelte";
   import ConversationSidebar from "$lib/components/ConversationSidebar.svelte";
-  import ChatCockpit from "$lib/components/ChatCockpit.svelte";
+  import ChatTopBar from "$lib/components/ChatTopBar.svelte";
   import FeedbackPanel from "$lib/components/FeedbackPanel.svelte";
   // SettingsPanel removed from chat — settings now live in /brain/[persona]#reglages.
   // AuditStrip/HeatThermometer/LiveMetricsStrip removed (Chunk 3 cleanup).
@@ -46,14 +46,15 @@
   let showCommandPalette = $state(false);
   let switcherOpen = $state(false);
 
-  // Populate personas list for the inline clone switcher (cockpit dropdown).
+  // Populate personas list for the inline clone switcher (top-bar dropdown).
+  // triage=true attache last_message_at → point de triage par clone dans le menu.
   // Non-blocking: chat still renders without it.
   $effect(() => {
     if (typeof window === "undefined") return;
     if ($personas && $personas.length > 0) return;
     (async () => {
       try {
-        const resp = await fetch("/api/personas", { headers: authHeaders() });
+        const resp = await fetch("/api/personas?triage=true", { headers: authHeaders() });
         if (!resp.ok) return;
         const data = await resp.json();
         if (Array.isArray(data.personas)) personas.set(data.personas);
@@ -62,6 +63,44 @@
       }
     })();
   });
+
+  // Fidelity scores for the triage dot (drift = rouge). Batch appel une fois
+  // la liste de personas disponible — best-effort, mute silencieusement.
+  let fidelityByPersona = $state(/** @type {Record<string, any>} */ ({}));
+  $effect(() => {
+    if (typeof window === "undefined") return;
+    const list = $personas;
+    if (!list || list.length === 0) return;
+    const ids = list.map((p) => p.id).filter(Boolean);
+    if (ids.length === 0) return;
+    (async () => {
+      try {
+        const data = await api(`/api/fidelity?personas=${ids.join(",")}`);
+        fidelityByPersona = data?.scores || {};
+      } catch {
+        // best-effort
+      }
+    })();
+  });
+
+  // Clone list enrichie avec triage pour le dropdown (drift / stale / never / warn / ok).
+  // Même logique que hub/triageOf : dette d'abord (score < 50 = drift, >3j = stale…).
+  function triageFor(p) {
+    const scoreGlobal = fidelityByPersona[p.id]?.score_global;
+    const lastAt = p.last_message_at;
+    const daysSince = lastAt ? Math.floor((Date.now() - new Date(lastAt).getTime()) / 86_400_000) : null;
+    if (typeof scoreGlobal === "number" && scoreGlobal < 50) return { kind: "drift", label: "en dérive" };
+    if (daysSince === null) return { kind: "never", label: "jamais utilisé" };
+    if (daysSince >= 3) return { kind: "stale", label: `${daysSince}j d'absence` };
+    if (typeof scoreGlobal === "number" && scoreGlobal < 75) return { kind: "warn", label: "alerte" };
+    return { kind: "ok", label: "actif" };
+  }
+  let personasListEnriched = $derived(
+    ($personas || []).map((p) => {
+      const t = triageFor(p);
+      return { ...p, triage: t.kind, triageLabel: t.label };
+    })
+  );
 
   // Live readings — collapseIdx & fidelity from /api/fidelity,
   // refreshed after each assistant message. Consolidated into `styleHealth` below.
@@ -531,34 +570,6 @@
 
   // ── 2-zone layout handlers ──
 
-  // "📥 ajouter prospect" — insert a message as prospect without triggering the LLM.
-  async function handleAddProspect(text) {
-    if (!text || !$currentConversationId) {
-      showToast?.("Commence par envoyer un message pour ouvrir la conversation.");
-      return;
-    }
-    try {
-      const resp = await fetch("/api/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({
-          conversation_id: $currentConversationId,
-          role: "user",
-          content: text,
-          turn_kind: "prospect",
-        }),
-      });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      messages.update(msgs => [
-        ...msgs,
-        { id: data.id, role: "user", turn_kind: "prospect", content: text, timestamp: Date.now() },
-      ]);
-    } catch (err) {
-      showToast?.("Ajout prospect échoué");
-    }
-  }
-
   // "✨ draft la suite" — reuse existing streamChat flow. Optional consigne prefixed.
   function handleDraftNext({ consigne }) {
     const text = consigne || "Génère la réponse suivante en tenant compte du thread.";
@@ -610,6 +621,53 @@
       ));
     } catch {
       showToast?.("Validation échouée");
+    }
+  }
+
+  // ★ excellent : même flow que validate mais event_type='excellent' —
+  // split du signal pour distinguer "passable" (validated) vs "pattern à
+  // multiplier" (excellent). Voir migration 031_feedback_excellent.sql.
+  async function handleExcellent(message) {
+    try {
+      api("/api/feedback", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "validate",
+          botMessage: message.content,
+          persona: get(currentPersonaId),
+        }),
+      }).catch(() => { /* ignored: secondary signal */ });
+
+      await fetch(`/api/messages?id=${message.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ turn_kind: "toi" }),
+      });
+      const resp = await fetch("/api/feedback-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          conversation_id: $currentConversationId,
+          message_id: message.id,
+          event_type: "excellent",
+        }),
+      });
+      if (resp.ok) {
+        const ev = await resp.json();
+        feedbackRailRef?.appendEvent?.({
+          id: ev.id,
+          message_id: message.id,
+          event_type: "excellent",
+          created_at: ev.created_at,
+          rules_fired: [],
+        });
+        feedbackCount++;
+      }
+      messages.update(msgs => msgs.map(m =>
+        m.id === message.id ? { ...m, turn_kind: "toi" } : m
+      ));
+    } catch {
+      showToast?.("Marquage excellent échoué");
     }
   }
 
@@ -696,26 +754,12 @@
     sidebarOpen = false;
   }
 
-  function handleSwitchClone() {
-    currentConversationId.set(null);
-    currentScenario.set("");
-    messages.set([]);
-    goto("/");
-  }
-
   function handleSwitchToClone(newId) {
     if (!newId || newId === personaId) return;
     currentConversationId.set(null);
     currentScenario.set("");
     messages.set([]);
     goto(`/chat/${newId}`);
-  }
-
-  function handleBack() {
-    currentConversationId.set(null);
-    currentScenario.set("");
-    messages.set([]);
-    goto("/");
   }
 </script>
 
@@ -732,7 +776,7 @@
       currentConvId={$currentConversationId}
       onselectconversation={handleSelectConversation}
       onnewconversation={handleNewConversation}
-      onswitchclone={handleSwitchClone}
+      onanalyseprospect={() => { leadOpen = true; sidebarOpen = false; }}
       open={sidebarOpen}
     />
 
@@ -743,17 +787,18 @@
     {/if}
 
     <div class="chat-main">
-      <ChatCockpit
+      <ChatTopBar
         personaName={$personaConfig?.name || "Clone"}
         personaAvatar={$personaConfig?.avatar || "?"}
         {styleHealth}
-        personasList={$personas}
+        personasList={personasListEnriched}
         currentPersonaId={personaId}
-        bind:switcherOpen
+        persona={$personaConfig}
+        scenarioType={$currentScenarioType}
+        onScenarioChange={handleScenarioChange}
         onSwitchClone={handleSwitchToClone}
-        onBack={handleBack}
         onToggleSidebar={() => sidebarOpen = !sidebarOpen}
-        onToggleLead={() => leadOpen = !leadOpen}
+        bind:switcherOpen
       />
 
       <div class="chat-body" class:rail-open={railOpen}>
@@ -762,9 +807,6 @@
             conversation={currentConversation}
             {feedbackCount}
             heat={heatSignal}
-            persona={$personaConfig}
-            scenarioType={$currentScenarioType}
-            onScenarioChange={handleScenarioChange}
             onUpdate={handleConversationUpdate}
             onToggleRail={() => railOpen = !railOpen}
           />
@@ -776,6 +818,7 @@
                 seq={seqForMessage(message, $messages)}
                 onCorrect={handleCorrect}
                 onValidate={handleValidate}
+                onExcellent={handleExcellent}
                 onRegen={handleRegen}
                 onSaveRule={handleSaveRule}
                 onCopyBlock={() => {}}
@@ -787,7 +830,6 @@
           <ChatComposer
             disabled={$sending}
             scenarioType={$currentScenarioType}
-            onAddProspect={handleAddProspect}
             onDraftNext={handleDraftNext}
           />
         </div>

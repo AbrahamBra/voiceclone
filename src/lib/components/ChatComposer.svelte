@@ -5,7 +5,6 @@
   let {
     disabled = false,
     scenarioType = null,
-    onAddProspect,   // (text) => void
     onDraftNext,     // ({ consigne }) => void
   } = $props();
 
@@ -35,14 +34,6 @@
     if (!textareaEl) return;
     textareaEl.style.height = "auto";
     textareaEl.style.height = Math.min(textareaEl.scrollHeight, 180) + "px";
-  }
-
-  function addProspect() {
-    const msg = text.trim();
-    if (!msg || disabled) return;
-    text = "";
-    if (textareaEl) textareaEl.style.height = "auto";
-    onAddProspect?.(msg);
   }
 
   function draftNext() {
@@ -77,15 +68,12 @@
     bind:value={text}
     oninput={autoResize}
     onkeydown={handleKeydown}
-    placeholder="Paste le prochain msg prospect, ou tape une consigne de draft (Cmd+Enter = draft)"
+    placeholder="Consigne optionnelle pour le draft (Cmd+Enter = draft la suite)"
     rows="2"
     {disabled}
   ></textarea>
 
   <div class="actions">
-    <button class="btn-ghost" type="button" onclick={addProspect} {disabled} title="Ajoute le texte comme message prospect (pas de draft auto)">
-      📥 ajouter prospect
-    </button>
     <button class="btn-primary" type="button" onclick={draftNext} {disabled} title="Génère un clone_draft (textarea = consigne optionnelle). Cmd+Enter">
       ✨ draft la suite
     </button>
@@ -123,23 +111,15 @@
   textarea:focus { outline: none; border-color: var(--ink); }
 
   .actions { display: flex; gap: 8px; justify-content: flex-end; }
-  .btn-ghost,
   .btn-primary {
     font-family: var(--font-mono);
     font-size: 11px;
     padding: 6px 12px;
     cursor: pointer;
-    border: 1px solid var(--rule-strong);
-    background: var(--paper);
-    color: var(--ink);
-  }
-  .btn-primary {
+    border: 1px solid var(--vermillon);
     background: var(--vermillon);
     color: var(--paper);
-    border-color: var(--vermillon);
   }
-  .btn-ghost:hover { background: var(--paper-subtle); }
   .btn-primary:hover { opacity: 0.9; }
-  .btn-ghost:disabled,
   .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
