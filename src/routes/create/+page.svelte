@@ -167,6 +167,7 @@
         generateStatus = "Erreur: " + (err.message || "Server error");
       }
       generating = false;
+      generatingPhase = "";
       return;
     }
 
