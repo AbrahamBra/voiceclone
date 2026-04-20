@@ -14,7 +14,6 @@
   let {
     personaName = "",
     personaAvatar = "?",
-    styleHealth = "unknown",
     personasList = [],       // enrichies par parent avec { triage, triageLabel }
     currentPersonaId = null,
     persona = null,          // pour ScenarioSwitcher (type + scenarios)
@@ -22,17 +21,11 @@
     onScenarioChange,
     onSwitchClone,
     onToggleSidebar,
+    onDeletePersona = null,
     switcherOpen = $bindable(false),   // Cmd+Shift+C toggle depuis le parent
   } = $props();
 
   let menuOpen = $state(false);
-
-  let styleHealthLabel = $derived(
-    styleHealth === "drift" ? "style dérive" :
-    styleHealth === "warn" ? "style alerte" :
-    styleHealth === "ok" ? "style sain" :
-    "style —"
-  );
 
   function openBrain() {
     if (currentPersonaId) goto(`/brain/${currentPersonaId}`);
@@ -75,21 +68,11 @@
         direction="down"
       />
     {/if}
-    <button
-      class="style-health"
-      type="button"
-      data-state={styleHealth}
-      onclick={openBrain}
-      aria-label="{styleHealthLabel}. Clic : diagnostic complet dans le cerveau du clone."
-    >
-      <span class="dot" aria-hidden="true"></span>
-      <span class="sh-val">{styleHealthLabel}</span>
-    </button>
   </div>
 
   <div class="right">
     <button class="tab-btn mono" onclick={openBrain} aria-label="Ouvrir le cerveau du clone">cerveau</button>
-    <UserMenu bind:open={menuOpen} />
+    <UserMenu bind:open={menuOpen} {onDeletePersona} />
   </div>
 </header>
 
@@ -174,54 +157,6 @@
     transition: transform 0.12s ease;
   }
   .id-btn[aria-expanded="true"] .chevron { transform: rotate(180deg); }
-
-  /* Style-health badge */
-  .style-health {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    border: 1px solid var(--rule-strong);
-    background: var(--paper-subtle);
-    cursor: pointer;
-    font-family: var(--font-mono);
-    transition: border-color 0.08s linear, background 0.08s linear;
-  }
-  .style-health:hover {
-    border-color: var(--ink-40);
-    background: var(--paper);
-  }
-  .style-health:focus-visible {
-    outline: 1px solid var(--vermillon);
-    outline-offset: 2px;
-  }
-  .style-health .sh-val {
-    font-size: 12px;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    color: var(--ink);
-  }
-  .style-health .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--ink-30);
-    flex-shrink: 0;
-  }
-  .style-health[data-state="ok"] .dot { background: #2d7a3e; }
-  .style-health[data-state="warn"] .dot { background: #b87300; }
-  .style-health[data-state="drift"] .dot {
-    background: var(--vermillon);
-    animation: sh-pulse 1.2s linear infinite;
-  }
-  .style-health[data-state="warn"] .sh-val { color: #b87300; }
-  .style-health[data-state="drift"] .sh-val { color: var(--vermillon); }
-  .style-health[data-state="unknown"] .sh-val { color: var(--ink-40); }
-  @keyframes sh-pulse {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.3); opacity: 0.6; }
-  }
 
   .tab-btn {
     background: transparent;

@@ -5,7 +5,10 @@
   import { goto } from "$app/navigation";
   import { isAdmin, logout } from "$lib/stores/auth.js";
 
-  let { open = $bindable(false) } = $props();
+  let {
+    open = $bindable(false),
+    onDeletePersona = null,   // callback () => void — si fourni, affiche "Supprimer ce clone"
+  } = $props();
 
   let containerEl = $state();
 
@@ -55,6 +58,12 @@
       {#if $isAdmin}
         <button class="item" role="menuitem" onclick={() => go("/admin")}>
           <span class="icon">⚙</span> Admin
+        </button>
+      {/if}
+      {#if onDeletePersona}
+        <div class="divider"></div>
+        <button class="item danger" role="menuitem" onclick={() => { open = false; onDeletePersona(); }}>
+          <span class="icon">✕</span> Supprimer ce clone…
         </button>
       {/if}
       <div class="divider"></div>

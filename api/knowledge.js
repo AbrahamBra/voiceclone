@@ -233,7 +233,8 @@ export default async function handler(req, res) {
   });
 
   if (insertError) {
-    res.status(500).json({ error: "Failed to save file" }); return;
+    console.log(JSON.stringify({ event: "knowledge_insert_error", error: insertError.message, code: insertError.code, intellId, path }));
+    res.status(500).json({ error: "Failed to save file", detail: insertError.message }); return;
   }
 
   clearIntelligenceCache(intellId);

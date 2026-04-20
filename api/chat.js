@@ -5,7 +5,7 @@ import { initSSE } from "../lib/sse.js";
 import { validateInput } from "../lib/validate.js";
 import { authenticateRequest, checkBudget, getApiKey, logUsage, hasPersonaAccess, setCors, supabase } from "../lib/supabase.js";
 import { getPersonaFromDb, findRelevantKnowledgeFromDb, loadScenarioFromDb, getCorrectionsFromDb, findRelevantEntities, getIntelligenceId } from "../lib/knowledge-db.js";
-import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, detectMetacognitiveInsights, looksLikeDirectInstruction, looksLikeNegativeFeedback, detectNegativeFeedback, classifyMessage } from "../lib/feedback-detect.js";
+import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, detectMetacognitiveInsights, looksLikeDirectInstruction, looksLikeNegativeFeedback, detectNegativeFeedback, classifyMessage, looksLikeHorsCible } from "../lib/feedback-detect.js";
 import { selectModel } from "../lib/model-router.js";
 import { consolidateCorrections } from "../lib/correction-consolidation.js";
 import { logLearningEvent } from "../lib/learning-events.js";
@@ -269,6 +269,32 @@ export default async function handler(req, res) {
     } catch (e) {
       console.log(JSON.stringify({ event: "direct_instruction_shortcircuit_error", ts: new Date().toISOString(), error: e.message }));
     }
+  }
+
+  // Short-circuit: STOP — prospect hors-cible, ne pas générer de message
+  if (msgIntent === "STOP") {
+    const confirm = "Compris — prospect hors-cible. Je ne propose plus de messages pour ce contact.";
+    sse("delta", { text: confirm });
+    sse("done", {});
+    logLearningEvent(personaId, "prospect_out_of_target", {
+      source_message: message.slice(0, 200),
+    });
+
+    if (convId && supabase) {
+      try {
+        await Promise.all([
+          supabase.from("messages").insert([
+            { conversation_id: convId, role: "user", content: message, message_type: "meta", turn_kind: "meta" },
+            { conversation_id: convId, role: "assistant", content: confirm, message_type: "meta", turn_kind: "meta" },
+          ]),
+          supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
+        ]);
+      } catch {}
+    }
+
+    if (convId) sse("conversation", { id: convId });
+    res.end();
+    return;
   }
 
   // Multi-model routing: Haiku for simple, Sonnet for complex

@@ -3,7 +3,36 @@ import { authenticateRequest, createSession, supabase, setCors } from "../lib/su
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
-  if (req.method !== "GET") { res.status(405).json({ error: "Method not allowed" }); return; }
+  if (!["GET", "DELETE"].includes(req.method)) { res.status(405).json({ error: "Method not allowed" }); return; }
+
+  // DELETE /api/personas?id=<personaId> — soft delete (is_active = false)
+  if (req.method === "DELETE") {
+    const { id } = req.query;
+    if (!id) { res.status(400).json({ error: "id required" }); return; }
+
+    try {
+      const { client, isAdmin } = await authenticateRequest(req);
+
+      const { data: persona } = await supabase
+        .from("personas").select("id, client_id").eq("id", id).single();
+
+      if (!persona) { res.status(404).json({ error: "Persona not found" }); return; }
+
+      if (!isAdmin && persona.client_id !== client.id) {
+        res.status(403).json({ error: "Access denied" }); return;
+      }
+
+      const { error } = await supabase
+        .from("personas").update({ is_active: false }).eq("id", id);
+
+      if (error) { res.status(500).json({ error: "Failed to delete" }); return; }
+
+      res.json({ deleted: true });
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.error || "Server error" });
+    }
+    return;
+  }
 
   try {
     const { client, isAdmin } = await authenticateRequest(req);

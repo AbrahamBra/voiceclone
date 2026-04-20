@@ -357,10 +357,11 @@
     display: flex;
     gap: 2px;
     opacity: 0;
+    pointer-events: none;
     transition: opacity var(--dur-fast) var(--ease);
     flex-shrink: 0;
   }
-  .conv-item:hover .conv-item-actions { opacity: 1; }
+  .conv-item:hover .conv-item-actions { opacity: 1; pointer-events: auto; }
 
   .conv-action-btn {
     width: 22px;

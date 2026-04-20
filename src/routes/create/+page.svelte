@@ -58,6 +58,7 @@
   let showDocs = $state(false);
   let fileInputEl;
   let generating = $state(false);
+  let generatingPhase = $state(""); // "clone" | "files" | ""
   let generateStatus = $state("");
   let ingestProgress = $state({ current: 0, total: 0 });
 
@@ -134,6 +135,7 @@
       : [];
 
     generating = true;
+    generatingPhase = "clone";
     generateStatus = "Création du clone (20-30 s)…";
     ingestProgress = { current: 0, total: 0 };
 
@@ -165,12 +167,14 @@
         generateStatus = "Erreur: " + (err.message || "Server error");
       }
       generating = false;
+      generatingPhase = "";
       return;
     }
 
     // Phase 2: absorb each queued file via /api/knowledge (sequential — each call is LLM-heavy)
     const toUpload = pendingFiles.filter(f => f.status === "pending" && f.content.trim());
     ingestProgress = { current: 0, total: toUpload.length };
+    generatingPhase = toUpload.length > 0 ? "files" : "";
 
     for (let i = 0; i < toUpload.length; i++) {
       const f = toUpload[i];
@@ -188,12 +192,13 @@
         });
         pendingFiles[idx] = { ...f, status: "done" };
       } catch (err) {
-        pendingFiles[idx] = { ...f, status: "error", error: err?.message || "upload" };
+        pendingFiles[idx] = { ...f, status: "error", error: err?.data?.detail || err?.message || "upload" };
       }
       pendingFiles = [...pendingFiles];
       ingestProgress = { current: i + 1, total: toUpload.length };
     }
 
+    generatingPhase = "";
     generateStatus = `Clone "${persona.name}" créé !`;
     setTimeout(() => { goto(`/calibrate/${persona.id}`); }, 800);
   }
@@ -380,16 +385,18 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
               <div class="dm-warn">
                 ⚠ {dmIssues.length === 1 ? "Conversation" : "Conversations"}
                 {dmIssues.map(i => i.idx).join(", ")} :
-                un seul interlocuteur détecté. Colle les deux côtés pour que le clone apprenne la dynamique.
+                un seul interlocuteur détecté. Chaque réplique doit commencer par "Prénom:" pour que le clone apprenne la dynamique. Ex : "Alice: Bonjour\nBob: Salut"
               </div>
             {/if}
 
             <div class="create-actions">
               <button class="btn-secondary" onclick={prevStep}>← Retour</button>
               {#if cloneType === 'both'}
-                <button class="btn-secondary" onclick={nextStep}>Passer</button>
+                <button class="btn-secondary" onclick={nextStep} disabled={dmIssues.length > 0}>Passer</button>
               {/if}
-              <button onclick={nextStep} disabled={cloneType === 'dm' && !dmsText.trim()}>Suivant →</button>
+              <button onclick={nextStep} disabled={(cloneType === 'dm' && !dmsText.trim()) || dmIssues.length > 0}>
+                {dmIssues.length > 0 ? "Corrige les conversations ci-dessus" : "Suivant →"}
+              </button>
             </div>
           </div>
 
@@ -469,8 +476,16 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
               {generating ? "Génération en cours..." : "Générer le clone"}
             </button>
 
-            {#if generating && ingestProgress.total > 0}
-              <div class="generate-status">Absorption {ingestProgress.current}/{ingestProgress.total}…</div>
+            {#if generatingPhase === "clone"}
+              <div class="generate-status generating-active">
+                <span class="gen-spinner" aria-hidden="true"></span>
+                <span>Analyse des données et création du clone (20–30 s)…</span>
+              </div>
+            {:else if generatingPhase === "files"}
+              <div class="generate-status generating-active">
+                <span class="gen-spinner" aria-hidden="true"></span>
+                <span>Absorption des documents {ingestProgress.current}/{ingestProgress.total}…</span>
+              </div>
             {:else if generateStatus}
               <div class="generate-status">{generateStatus}</div>
             {/if}
@@ -827,6 +842,24 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
     margin-top: 0.75rem;
     font-size: 0.75rem;
     color: var(--text-secondary);
+  }
+  .generating-active {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .gen-spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--rule-strong, #ddd);
+    border-top-color: var(--ink, #111);
+    border-radius: 50%;
+    animation: gen-spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes gen-spin {
+    to { transform: rotate(360deg); }
   }
 
   @media (max-width: 480px) {

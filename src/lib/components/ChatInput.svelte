@@ -13,6 +13,14 @@
     scenarioType.startsWith("post") ? POST_RANGE :
     null
   );
+
+  let placeholder = $derived(
+    scenarioType?.startsWith("DM")
+      ? "Colle le message du prospect, ou corrige le style du clone…"
+      : scenarioType?.startsWith("post")
+      ? "Colle un brief ou un contexte, ou corrige le style du clone…"
+      : "Écris un message, corrige le style, ou donne une règle au clone…"
+  );
   let chars = $derived(text.length);
   let countState = $derived(
     !target || chars === 0 ? "idle" :
@@ -61,7 +69,7 @@
 <div class="chat-input-bar">
   <textarea
     class="chat-input"
-    placeholder="Ecrivez votre message..."
+    placeholder={placeholder}
     rows="1"
     bind:value={text}
     bind:this={textareaEl}
