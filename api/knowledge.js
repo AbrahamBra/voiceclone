@@ -191,43 +191,12 @@ export default async function handler(req, res) {
   const base = dotIndex >= 0 ? filename.slice(0, dotIndex) : filename;
   const path = `${base}-${Date.now()}${ext}`;
 
-  // Extract keywords via Claude (with 8s timeout fallback)
-  let keywords = [];
-  try {
-    const anthropic = new Anthropic({ apiKey: getApiKey(client) });
-    const keywordPromise = anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 150,
-      messages: [{
-        role: "user",
-        content: `${KEYWORD_PROMPT}\n\nDocument :\n${content.slice(0, 3000)}`,
-      }],
-    });
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("timeout")), 8000)
-    );
-    const msg = await Promise.race([keywordPromise, timeoutPromise]);
-    const raw = msg.content[0]?.text?.trim() || "[]";
-    keywords = JSON.parse(raw);
-    if (!Array.isArray(keywords)) keywords = [];
-  } catch {
-    keywords = [];
-  }
-
-  // Chunk + embed (graceful if Voyage AI unavailable)
-  const chunks = chunkText(content);
-  let chunkCount = 0;
-  try {
-    chunkCount = await embedAndStore(supabase, chunks, intellId, "knowledge_file", path);
-  } catch (embedErr) {
-    console.log(JSON.stringify({ event: "embed_error", error: embedErr.message, path }));
-    // File still stored — keyword search will work without vectors
-  }
-
+  // Insert file record immediately, then respond — all heavy work (keywords, embeddings,
+  // graph extraction) runs fire-and-forget to stay well under Vercel's 60s timeout.
   const { error: insertError } = await supabase.from("knowledge_files").insert({
     persona_id: intellId,
     path,
-    keywords,
+    keywords: [],
     content,
     contributed_by: client?.id || null,
   });
@@ -238,12 +207,34 @@ export default async function handler(req, res) {
   }
 
   clearIntelligenceCache(intellId);
+  res.json({ file: { path } });
 
-  // Respond immediately — graph extraction is fire-and-forget to avoid Vercel 60s timeout
-  // on large documents. Chunks/embeddings are stored above and available for RAG.
-  res.json({ file: { path, chunk_count: chunkCount } });
+  // Background: keywords, embeddings, graph extraction (may not complete on Vercel hobby)
+  (async () => {
+    try {
+      const anthropic = new Anthropic({ apiKey: getApiKey(client) });
+      const msg = await Promise.race([
+        anthropic.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 150,
+          messages: [{ role: "user", content: `${KEYWORD_PROMPT}\n\nDocument :\n${content.slice(0, 3000)}` }],
+        }),
+        new Promise((_, r) => setTimeout(() => r(new Error("timeout")), 8000)),
+      ]);
+      const raw = msg.content[0]?.text?.trim() || "[]";
+      const keywords = JSON.parse(raw);
+      if (Array.isArray(keywords) && keywords.length > 0) {
+        await supabase.from("knowledge_files").update({ keywords }).eq("persona_id", intellId).eq("path", path);
+      }
+    } catch { /* skip */ }
 
-  extractGraphKnowledgeFromFile(intellId, content, client).catch(() => {});
+    try {
+      const chunks = chunkText(content);
+      await embedAndStore(supabase, chunks, intellId, "knowledge_file", path);
+    } catch { /* skip */ }
+
+    await extractGraphKnowledgeFromFile(intellId, content, client).catch(() => {});
+  })();
 }
 
 /**

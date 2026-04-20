@@ -20,7 +20,11 @@ export async function api(path, opts = {}) {
     logout();
     throw new Error("Unauthorized");
   }
-  const data = await resp.json();
+  const text = await resp.text();
+  let data;
+  try { data = JSON.parse(text); } catch {
+    throw new Error(resp.ok ? "Invalid server response" : `Server error (${resp.status})`);
+  }
   if (!resp.ok) {
     const err = new Error(data.error || "Request failed");
     err.status = resp.status;
