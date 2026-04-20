@@ -102,12 +102,17 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Load last 19 messages from DB
+    // Load last 40 chat messages from DB. Filter out `message_type='meta'`
+    // (rule-added/weakened confirmations inserted by short-circuits) — they
+    // pollute the DM thread and confuse the LLM into restarting the context.
+    // Limit bumped from 19 → 40 so long prospect threads keep the full arc
+    // in-context.
     const { data: dbMessages } = await supabase
       .from("messages").select("role, content")
       .eq("conversation_id", convId)
+      .eq("message_type", "chat")
       .order("created_at", { ascending: false })
-      .limit(19);
+      .limit(40);
 
     const history = (dbMessages || []).reverse();
     messages = [...history, { role: "user", content: message }];

@@ -286,6 +286,12 @@
       currentConversationId.set(convId);
       localStorage.setItem("conv_" + personaId, convId);
 
+      // Sync scenario stores with the conversation's stored values so the
+      // composer unlocks (scenario-gate) and the ScenarioSwitcher reflects
+      // the right pick. Canonical enum wins; legacy text is dual-written.
+      if (isScenarioId(conv.scenario_type)) currentScenarioType.set(conv.scenario_type);
+      if (conv.scenario) currentScenario.set(conv.scenario);
+
       const config = $personaConfig;
       const sc = config?.scenarios?.[conv.scenario || scenario] || config?.scenarios?.default;
       const welcome = sc?.welcome || `Bonjour, je suis ${config?.name || "le clone"}.`;

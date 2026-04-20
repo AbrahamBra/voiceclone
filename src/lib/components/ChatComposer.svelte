@@ -8,6 +8,12 @@
     onDraftNext,     // ({ consigne }) => void
   } = $props();
 
+  // Bloque le composer tant que l'opérateur n'a pas choisi de scénario.
+  // Le scénario est le seul switch de contexte qui oriente vraiment le draft
+  // (DM, post, relance…) — le laisser vide = LLM qui part de zéro.
+  let scenarioMissing = $derived(!scenarioType);
+  let effectiveDisabled = $derived(disabled || scenarioMissing);
+
   let text = $state("");
   let textareaEl = $state(undefined);
 
@@ -54,8 +60,12 @@
   }
 </script>
 
-<div class="composer">
-  {#if target}
+<div class="composer" class:composer-locked={scenarioMissing}>
+  {#if scenarioMissing}
+    <div class="scenario-gate mono" role="status">
+      → Choisis un scénario (haut de la page) avant d'écrire — le draft en dépend.
+    </div>
+  {:else if target}
     <div class="char-counter mono" data-state={countState} aria-live="polite">
       <span class="count">{chars}</span>
       <span class="sep"> · </span>
@@ -68,13 +78,15 @@
     bind:value={text}
     oninput={autoResize}
     onkeydown={handleKeydown}
-    placeholder="Consigne optionnelle pour le draft (Cmd+Enter = draft la suite)"
+    placeholder={scenarioMissing
+      ? "Sélectionne un scénario pour débloquer le composer"
+      : "Colle la réponse du prospect ou tape une consigne (Cmd+Enter = draft la suite)"}
     rows="2"
-    {disabled}
+    disabled={effectiveDisabled}
   ></textarea>
 
   <div class="actions">
-    <button class="btn-primary" type="button" onclick={draftNext} {disabled} title="Génère un clone_draft (textarea = consigne optionnelle). Cmd+Enter">
+    <button class="btn-primary" type="button" onclick={draftNext} disabled={effectiveDisabled} title="Génère un clone_draft (textarea = consigne optionnelle). Cmd+Enter">
       ✨ draft la suite
     </button>
   </div>
@@ -96,6 +108,13 @@
   .char-counter[data-state="under"] { color: #b37e3b; }
   .char-counter[data-state="over"]  { color: var(--vermillon); }
   .char-counter[data-state="ok"]    { color: #3b8a5c; }
+
+  .composer-locked textarea { background: var(--paper-subtle, #f6f5f1); }
+  .scenario-gate {
+    font-size: 11px;
+    color: var(--vermillon);
+    padding: 2px 0;
+  }
 
   textarea {
     width: 100%;
