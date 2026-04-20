@@ -1,13 +1,14 @@
 # Accueil — Copy refresh + démo killée — Design Spec
 
 **Date:** 2026-04-20
-**Status:** Draft v1
+**Status:** Draft v2 (revu après spec-review 2026-04-20 : open questions fermées, build hash décidé, critère SSR clarifié)
 **Scope:** refonte ciblée de `src/routes/+page.svelte` — copy + structure visible aux logged-out. Le chemin auth (auto-redirect vers `/chat/<lastPersona>` ou `/create`) reste intact.
 
 **Files:**
-- modified `src/routes/+page.svelte` — suppression démo scriptée, nouveau hero, formulaire d'accès promu, footer slim
-- modified `src/lib/landing-demo.js` — **deleted** (plus utilisé après cette spec)
-- new `src/lib/build-info.js` (ou équivalent) — exporte le vrai hash commit court, remplace `BUILD_HASH` hardcodé
+- modified `src/routes/+page.svelte` — suppression démo scriptée, nouveau hero, formulaire d'accès promu, footer slim, `<title>` `laboratoire` → `accès`
+- deleted `src/lib/landing-demo.js` — seul consommateur (`+page.svelte`) ne l'utilise plus
+- modified `src/lib/scenarios.js` — supprimer le commentaire ligne 30 qui référence `landing-demo.js` (devient orphelin après suppression du fichier)
+- modified `vite.config.js` — injecter `VITE_BUILD_HASH` depuis `VERCEL_GIT_COMMIT_SHA` (Vercel) ou `git rev-parse --short HEAD` en local, fallback `'dev'`
 
 ## Problème
 
@@ -118,15 +119,15 @@ Fichier à supprimer :
 - Footer access form (logique inchangée, styles à refondre pour la promotion centrale)
 - Skip-link, `<svelte:head>` (titre `<title>` à raccourcir : `VoiceClone — accès` au lieu de `VoiceClone — laboratoire`)
 
-## Vrai hash de version — option d'implémentation
+## Vrai hash de version
 
-À choisir au moment de l'implémentation, décision pas critique :
+`vite.config.js` injecte `VITE_BUILD_HASH` via `define`, valeur résolue dans cet ordre :
 
-**Option 1** — `vite.config.js` injecte `__BUILD_HASH__` via `define`, lu depuis `git rev-parse --short HEAD` à build time.
-**Option 2** — script `npm run build` génère `src/lib/build-info.js` exportant `{ hash, builtAt }`.
-**Option 3** — variable d'env `VITE_BUILD_HASH` injectée par CI (Vercel expose `VERCEL_GIT_COMMIT_SHA`).
+1. `process.env.VERCEL_GIT_COMMIT_SHA` tronqué à 7 chars (en prod sur Vercel)
+2. `git rev-parse --short HEAD` (en local quand git est dispo)
+3. `'dev'` (fallback, jamais censé apparaître en prod)
 
-Recommandation : **Option 3** sur prod (Vercel le fournit gratos), fallback `'dev'` en local. Pas de complexité de build pour une chaîne de 7 caractères.
+Côté composant : `import.meta.env.VITE_BUILD_HASH` remplace la constante hardcodée. Pas de fichier généré, pas de runtime fetch.
 
 ## Hors scope
 
@@ -134,15 +135,15 @@ Recommandation : **Option 3** sur prod (Vercel le fournit gratos), fallback `'de
 - Nouvelle page marketing pour prospects froids — décidé : on ne le fait pas tant que la douleur d'acquisition n'est pas validée (cf. mémoire `feedback_critic_verify_prod_usage`).
 - Mockups visuels via brainstorming visual companion — abandonné car instable sur Windows ; refonte text-driven suffit ici.
 
-## Questions ouvertes
+## Questions résolues (vérifiées pendant la spec review)
 
-- Le `/guide` survit-il vraiment, ou il faut aussi le retoucher ? **À vérifier** avant l'implémentation que la route existe et raconte une histoire à jour. Si pas, on l'enlève du footer ou on l'ajoute à la backlog.
-- L'animation `@keyframes pulse` est-elle réutilisée ailleurs ? **À grep** avant suppression.
+- `/guide` existe (`src/routes/guide/+page.svelte`) — on garde le lien dans le footer slim.
+- `@keyframes pulse` est dans le `<style>` scoped de `+page.svelte`. Le `pulse` à `chat/[persona]/+page.svelte:1017` est un homonyme scoped local distinct. Suppression côté landing safe.
 
 ## Critères de succès
 
 1. Aucune mention dans le DOM final de `pipeline`, `Generate → check → rewrite → fidelity`, `BUILD_HASH`, `laboratoire`, `pas un chatbot de plus`.
 2. Le hash de version affiché correspond à `git rev-parse --short HEAD` du déploiement courant.
 3. Le formulaire d'accès est visuellement le bloc principal sous le hero (taille input ≥ celle du hero, pas <100px de large).
-4. La page rendue à froid (sans JS) reste lisible et présente le formulaire (pas de dépendance au scenario runner).
+4. Le HTML SSR contient le hero (texte) et le markup du formulaire d'accès — pas de dépendance à `onMount` pour afficher le contenu principal. (Le submit du formulaire reste JS-driven, comme aujourd'hui.)
 5. Le bundle JS de la route `/` perd au moins le poids de `landing-demo.js` + le runner scripté.
