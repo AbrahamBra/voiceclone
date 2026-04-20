@@ -128,20 +128,24 @@ const PAGE_PATH = resolve(__dirname, "../src/routes/+page.svelte");
 const source = readFileSync(PAGE_PATH, "utf8");
 
 test("landing: chaînes interdites supprimées", () => {
+  // Toutes ces chaînes sont LITTÉRALEMENT présentes dans la version actuelle
+  // de +page.svelte (vérifié à la rédaction du plan). Le test est case-sensitive,
+  // donc les capitales comptent. Si tu ajoutes une chaîne ici, vérifie-la avant
+  // avec : grep -n "ta chaîne" src/routes/+page.svelte
   const forbidden = [
-    "pipeline 4 étapes",
-    'BUILD_HASH = "',
-    "/ laboratoire",
-    "pas un chatbot",
-    "Generate",
-    "rewrite",
-    "fidelity",
-    "$lib/landing-demo",
-    "SCENARIOS",
-    "PHASE_DELAYS",
-    "TYPE_SPEED_OUTPUT",
-    "case-strip",
-    "panel-fidelity",
+    'BUILD_HASH = "',           // déclaration JS du hash hardcodé
+    "/ laboratoire",            // brand sub-title
+    "Tu vois le pipeline tourner", // phrase du sub hero
+    "Pas un chatbot de plus",   // fin de la headline (capital P)
+    "observable en direct",     // accent italique de la headline
+    "$lib/landing-demo",        // import path
+    "SCENARIOS",                // export consommé du module supprimé
+    "PHASE_DELAYS",             // idem
+    "TYPE_SPEED_OUTPUT",        // idem
+    "case-strip",               // CSS class de la zone scénarios
+    "panel-fidelity",           // CSS class du panel fidélité
+    "runScenario",              // runner scripté
+    "typewriter(",              // helper du runner
   ];
   for (const s of forbidden) {
     assert.ok(
@@ -152,10 +156,14 @@ test("landing: chaînes interdites supprimées", () => {
 });
 
 test("landing: hero copy présent", () => {
+  // Substrings choisies pour tenir sur UNE SEULE ligne dans la source Svelte
+  // (l'indentation du <p class="hero-body"> casse le texte sur 3 lignes,
+  // donc on évite les substrings qui chevauchent un saut de ligne).
   const required = [
-    "Un clone d'écriture qui apprend de tes corrections",
-    "Tu lui parles d'un prospect",
-    "Au bout de cent corrections, il écrit comme toi",
+    "Un clone d'écriture qui apprend de tes corrections", // toute la tagline (line solo)
+    "Tu lui parles d'un prospect",                         // début ligne 1 du body
+    "reprends en deux mots",                               // milieu ligne 2 du body
+    "il écrit comme toi",                                  // fin ligne 3 du body
   ];
   for (const s of required) {
     assert.ok(
@@ -593,17 +601,29 @@ git commit -m "chore: remove landing-demo.js (no consumers after landing refonte
 **Files:**
 - Modify: `src/lib/scenarios.js`
 
-- [ ] **Step 1: Lire la ligne 30 et son contexte**
+Le commentaire à supprimer (lignes 29–30 vérifiées à la rédaction du plan) :
 
-```bash
-sed -n '25,35p' src/lib/scenarios.js
+```javascript
+// Named CANONICAL_SCENARIOS (not SCENARIOS) to avoid collision with the
+// unrelated landing-demo SCENARIOS array in $lib/landing-demo.js.
 ```
 
-Expected output: contient une ligne du genre `// unrelated landing-demo SCENARIOS array in $lib/landing-demo.js.` (et probablement les lignes voisines qui forment la mise en garde "do not confuse with").
+Toute la justification du commentaire — éviter la collision avec l'export `SCENARIOS` de `landing-demo.js` — disparaît avec la suppression du fichier dans Task 4.1. Le nom `CANONICAL_SCENARIOS` reste pertinent pour d'autres raisons (clarté), mais l'explication n'a plus de cible. **Supprimer les 2 lignes du commentaire intégralement.**
 
-- [ ] **Step 2: Supprimer cette ligne (et les lignes voisines de la mise en garde si elles n'ont plus de sens isolément)**
+- [ ] **Step 1: Confirmer la position du commentaire**
 
-Utiliser l'outil Edit pour retirer la phrase qui mentionne `landing-demo.js`. Garder uniquement le commentaire si la phrase précédente reste utile ; sinon supprimer le bloc entier.
+Utiliser le Read tool sur `src/lib/scenarios.js` lignes 25–35 pour vérifier que le commentaire est toujours aux lignes 29–30 (au cas où un autre commit aurait shifté le fichier).
+
+- [ ] **Step 2: Supprimer les 2 lignes via Edit**
+
+Le `old_string` à matcher (incluant le saut de ligne final) :
+
+```
+// Named CANONICAL_SCENARIOS (not SCENARIOS) to avoid collision with the
+// unrelated landing-demo SCENARIOS array in $lib/landing-demo.js.
+```
+
+`new_string` : (chaîne vide — le bloc disparaît, la ligne `/** @type ... */` qui suit remonte naturellement).
 
 - [ ] **Step 3: Vérifier qu'il ne reste plus aucune mention**
 
