@@ -842,7 +842,6 @@
       <ChatTopBar
         personaName={$personaConfig?.name || "Clone"}
         personaAvatar={$personaConfig?.avatar || "?"}
-        {styleHealth}
         personasList={personasListEnriched}
         currentPersonaId={personaId}
         persona={$personaConfig}
