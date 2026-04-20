@@ -92,7 +92,7 @@ export default async function handler(req, res) {
 
     let msgQuery = supabase
       .from("messages")
-      .select("id, role, content, created_at, message_type")
+      .select("id, role, content, created_at, message_type, turn_kind")
       .eq("conversation_id", id)
       .order("created_at", { ascending: true })
       .limit(50);

@@ -302,6 +302,11 @@
           id: msg.id || crypto.randomUUID(),
           role: msg.role === "user" ? "user" : "bot",
           content: msg.content,
+          // turn_kind drives the action buttons in ChatMessage (✓ c'est ça,
+          // ★ excellent, ✎ corriger, ↻ regen sur clone_draft). Sans cette
+          // ligne, les messages rechargés tombent sur le fallback legacy
+          // avec seulement "Corriger".
+          turn_kind: msg.turn_kind,
         });
       }
       messages.set(msgs);
@@ -366,7 +371,9 @@
     messages.update((msgs) => [
       ...msgs,
       { id: userId, role: "user", content: text, timestamp: now },
-      { id: botId, role: "bot", content: "", typing: true, timestamp: now },
+      // turn_kind: 'clone_draft' → débloque ✓/★/✎/↻ dans ChatMessage dès que
+      // le stream est fini (sinon fallback legacy avec seulement "Corriger").
+      { id: botId, role: "bot", content: "", typing: true, timestamp: now, turn_kind: "clone_draft" },
     ]);
 
     track("message_sent", {
