@@ -21,6 +21,7 @@
     onScenarioChange,
     onSwitchClone,
     onToggleSidebar,
+    onDeletePersona = null,
     switcherOpen = $bindable(false),   // Cmd+Shift+C toggle depuis le parent
   } = $props();
 
@@ -71,7 +72,7 @@
 
   <div class="right">
     <button class="tab-btn mono" onclick={openBrain} aria-label="Ouvrir le cerveau du clone">cerveau</button>
-    <UserMenu bind:open={menuOpen} />
+    <UserMenu bind:open={menuOpen} {onDeletePersona} />
   </div>
 </header>
 

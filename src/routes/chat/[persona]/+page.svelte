@@ -813,6 +813,17 @@
     messages.set([]);
     goto(`/chat/${newId}`);
   }
+
+  async function handleDeletePersona() {
+    const name = $personaConfig?.name || "ce clone";
+    if (!window.confirm(`Supprimer le clone "${name}" ? Cette action est irréversible.`)) return;
+    try {
+      await api(`/api/personas?id=${personaId}`, { method: "DELETE" });
+      goto("/");
+    } catch {
+      showToast("Erreur lors de la suppression");
+    }
+  }
 </script>
 
 <svelte:window onkeydown={handleKeyboard} />
@@ -849,6 +860,7 @@
         onScenarioChange={handleScenarioChange}
         onSwitchClone={handleSwitchToClone}
         onToggleSidebar={() => sidebarOpen = !sidebarOpen}
+        onDeletePersona={$personaConfig?._shared ? null : handleDeletePersona}
         bind:switcherOpen
       />
 
