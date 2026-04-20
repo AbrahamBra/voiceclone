@@ -120,14 +120,15 @@
         type="password"
         autocomplete="off"
         placeholder="code"
+        aria-label="code d'accès"
         bind:value={codeInput}
         class:shake={authShake}
         disabled={authLoading}
       />
-      <button type="submit" disabled={authLoading}>
+      <button type="submit" aria-label="valider" disabled={authLoading}>
         {authLoading ? "…" : "→"}
       </button>
-      {#if authError}<span class="access-err">{authError}</span>{/if}
+      {#if authError}<span class="access-err" role="status" aria-live="polite">{authError}</span>{/if}
     </form>
   </section>
 
