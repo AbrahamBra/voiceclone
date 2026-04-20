@@ -437,118 +437,107 @@ ${neverDoes}
       await logUsage(client.id, persona.id, finalInput, finalOutput);
     }
 
-    // Step 3: Extract ontology BEFORE response — retry once on failure
-    let ontologyCount = 0;
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        const ontologyResult = await Promise.race([
-          anthropic.messages.create({
-            model: "claude-haiku-4-5-20251001", max_tokens: 4096,
-            system: ONTOLOGY_PROMPT,
-            messages: [{ role: "user", content: userContent.join("\n") }],
-          }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 50000)),
-        ]);
-        const ontRaw = ontologyResult.content[0].text.trim();
-        let depth = 0, start = -1, end = -1;
-        for (let i = 0; i < ontRaw.length; i++) {
-          if (ontRaw[i] === "{") { if (depth === 0) start = i; depth++; }
-          if (ontRaw[i] === "}") { depth--; if (depth === 0) { end = i + 1; break; } }
-        }
-        if (start === -1) throw new Error("no_json");
-        const ontology = JSON.parse(ontRaw.slice(start, end));
-        if (ontology.entities?.length > 0) {
-          const entityRows = ontology.entities.map(e => ({
-            persona_id: persona.id, name: e.name,
-            type: e.type || "concept", description: e.description || "", confidence: 1.0,
-          }));
-          const { data: inserted } = await supabase
-            .from("knowledge_entities")
-            .upsert(entityRows, { onConflict: "persona_id,name" })
-            .select("id, name");
-
-          ontologyCount = inserted?.length || 0;
-
-          if (inserted && ontology.relations?.length > 0) {
-            const entityMap = {};
-            for (const e of inserted) entityMap[e.name] = e.id;
-            const relationRows = ontology.relations
-              .filter(r => entityMap[r.from] && entityMap[r.to])
-              .map(r => ({
-                persona_id: persona.id, from_entity_id: entityMap[r.from],
-                to_entity_id: entityMap[r.to], relation_type: r.type || "uses",
-                description: r.description || "", confidence: 1.0,
-              }));
-            if (relationRows.length > 0) {
-              const { error: relErr } = await supabase.from("knowledge_relations").insert(relationRows);
-              if (relErr) console.log(JSON.stringify({ event: "ontology_relation_insert_error", persona: persona.id, error: relErr.message }));
-            }
-          }
-        }
-        console.log(JSON.stringify({ event: "ontology_extracted", persona: persona.id, entities: ontologyCount, attempt }));
-        break; // success — exit retry loop
-      } catch (e) {
-        console.log(JSON.stringify({ event: "ontology_error", persona: persona.id, error: e.message, attempt }));
-        if (attempt === 2) break; // last attempt, give up gracefully
-      }
-    }
-
-    // Embed knowledge files for RAG (best-effort before response)
-    if (isEmbeddingAvailable()) {
-      try {
-        if (styleBody) {
-          const styleChunks = chunkText(styleBody);
-          await embedAndStore(supabase, styleChunks, persona.id, "knowledge_file", "topics/style-posts-linkedin.md");
-        }
-        if (allDocuments && allDocuments.length > 50) {
-          const docChunks = chunkText(allDocuments);
-          await embedAndStore(supabase, docChunks, persona.id, "document", "documents/client-docs.md");
-        }
-        if (allPosts.length > 0) {
-          const postsTextForEmbed = allPosts.map(p => p.slice(0, 3000)).join("\n\n---\n\n");
-          const postChunks = chunkText(postsTextForEmbed);
-          await embedAndStore(supabase, postChunks, persona.id, "linkedin_post");
-        }
-        console.log(JSON.stringify({ event: "chunks_embedded", persona: persona.id }));
-      } catch (e) {
-        console.log(JSON.stringify({ event: "embed_error", persona: persona.id, error: e.message }));
-      }
-    }
-
-    // Auto-extract entities from knowledge files (best-effort, non-blocking timeout)
-    try {
-      const extractionPromises = [];
-      if (styleBody) {
-        extractionPromises.push(
-          extractEntitiesFromContent(persona.id, styleBody, "topics/style-posts-linkedin.md", client)
-        );
-      }
-      if (dmResult) {
-        const dmBody = dmResult.content[0].text.trim().replace(/^---\n[\s\S]*?\n---\n?/, "");
-        extractionPromises.push(
-          extractEntitiesFromContent(persona.id, dmBody, "topics/style-conversations.md", client)
-        );
-      }
-      if (documents && documents.length > 50) {
-        extractionPromises.push(
-          extractEntitiesFromContent(persona.id, documents, "documents/client-docs.md", client)
-        );
-      }
-      if (extractionPromises.length > 0) {
-        await Promise.race([
-          Promise.all(extractionPromises),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("extraction_timeout")), 25000)),
-        ]);
-      }
-    } catch (e) {
-      console.log(JSON.stringify({ event: "auto_extraction_error", persona: persona.id, error: e.message }));
-    }
-
+    // Respond immediately — ontology, embeddings, entity extraction run fire-and-forget
     res.json({
       ok: true,
       persona: { id: persona.id, slug: persona.slug, name: persona.name, title: persona.title, avatar: persona.avatar },
-      entities_extracted: ontologyCount,
     });
+
+    // Background: ontology extraction, embeddings, entity extraction
+    (async () => {
+      // Ontology — retry once on failure
+      try {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            const ontologyResult = await Promise.race([
+              anthropic.messages.create({
+                model: "claude-haiku-4-5-20251001", max_tokens: 4096,
+                system: ONTOLOGY_PROMPT,
+                messages: [{ role: "user", content: userContent.join("\n") }],
+              }),
+              new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 50000)),
+            ]);
+            const ontRaw = ontologyResult.content[0].text.trim();
+            let depth = 0, start = -1, end = -1;
+            for (let i = 0; i < ontRaw.length; i++) {
+              if (ontRaw[i] === "{") { if (depth === 0) start = i; depth++; }
+              if (ontRaw[i] === "}") { depth--; if (depth === 0) { end = i + 1; break; } }
+            }
+            if (start === -1) throw new Error("no_json");
+            const ontology = JSON.parse(ontRaw.slice(start, end));
+            if (ontology.entities?.length > 0) {
+              const entityRows = ontology.entities.map(e => ({
+                persona_id: persona.id, name: e.name,
+                type: e.type || "concept", description: e.description || "", confidence: 1.0,
+              }));
+              const { data: inserted } = await supabase
+                .from("knowledge_entities")
+                .upsert(entityRows, { onConflict: "persona_id,name" })
+                .select("id, name");
+              if (inserted && ontology.relations?.length > 0) {
+                const entityMap = {};
+                for (const e of inserted) entityMap[e.name] = e.id;
+                const relationRows = ontology.relations
+                  .filter(r => entityMap[r.from] && entityMap[r.to])
+                  .map(r => ({
+                    persona_id: persona.id, from_entity_id: entityMap[r.from],
+                    to_entity_id: entityMap[r.to], relation_type: r.type || "uses",
+                    description: r.description || "", confidence: 1.0,
+                  }));
+                if (relationRows.length > 0) {
+                  await supabase.from("knowledge_relations").insert(relationRows);
+                }
+              }
+              console.log(JSON.stringify({ event: "ontology_extracted", persona: persona.id, entities: inserted?.length || 0, attempt }));
+            }
+            break;
+          } catch (e) {
+            console.log(JSON.stringify({ event: "ontology_error", persona: persona.id, error: e.message, attempt }));
+            if (attempt === 2) break;
+          }
+        }
+      } catch { /* skip */ }
+
+      // Embeddings
+      if (isEmbeddingAvailable()) {
+        try {
+          if (styleBody) {
+            const styleChunks = chunkText(styleBody);
+            await embedAndStore(supabase, styleChunks, persona.id, "knowledge_file", "topics/style-posts-linkedin.md");
+          }
+          if (allDocuments && allDocuments.length > 50) {
+            const docChunks = chunkText(allDocuments);
+            await embedAndStore(supabase, docChunks, persona.id, "document", "documents/client-docs.md");
+          }
+          if (allPosts.length > 0) {
+            const postsTextForEmbed = allPosts.map(p => p.slice(0, 3000)).join("\n\n---\n\n");
+            const postChunks = chunkText(postsTextForEmbed);
+            await embedAndStore(supabase, postChunks, persona.id, "linkedin_post");
+          }
+          console.log(JSON.stringify({ event: "chunks_embedded", persona: persona.id }));
+        } catch (e) {
+          console.log(JSON.stringify({ event: "embed_error", persona: persona.id, error: e.message }));
+        }
+      }
+
+      // Entity extraction from knowledge files
+      try {
+        const extractionPromises = [];
+        if (styleBody) {
+          extractionPromises.push(extractEntitiesFromContent(persona.id, styleBody, "topics/style-posts-linkedin.md", client));
+        }
+        if (dmResult) {
+          const dmBody = dmResult.content[0].text.trim().replace(/^---\n[\s\S]*?\n---\n?/, "");
+          extractionPromises.push(extractEntitiesFromContent(persona.id, dmBody, "topics/style-conversations.md", client));
+        }
+        if (documents && documents.length > 50) {
+          extractionPromises.push(extractEntitiesFromContent(persona.id, documents, "documents/client-docs.md", client));
+        }
+        if (extractionPromises.length > 0) await Promise.all(extractionPromises);
+      } catch (e) {
+        console.log(JSON.stringify({ event: "auto_extraction_error", persona: persona.id, error: e.message }));
+      }
+    })();
 
   } catch (err) {
     console.log(JSON.stringify({ event: "clone_error", ts: new Date().toISOString(), error: err.message }));
