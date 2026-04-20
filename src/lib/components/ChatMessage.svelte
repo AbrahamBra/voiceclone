@@ -172,8 +172,10 @@
           {#if isDraft}
             <!-- Draft actions: c'est ça (validation client explicite, signal fort
                  → +0.12 entity boost) / excellent (pattern à multiplier).
-                 corriger → FeedbackPanel ; regen → retry sans signal. -->
-            <button class="action-btn action-btn-primary" onclick={() => onClientValidate?.(message)} title="C'est ça — signal d'apprentissage fort">✓ c'est ça</button>
+                 corriger → FeedbackPanel ; regen → retry sans signal.
+                 Hiérarchie visuelle : ★ excellent = rouge plein (signal le plus
+                 fort), ✓ c'est ça = rouge clair (validation courante). -->
+            <button class="action-btn action-btn-soft" onclick={() => onClientValidate?.(message)} title="C'est ça — signal d'apprentissage fort">✓ c'est ça</button>
             <button class="action-btn action-btn-excellent" onclick={() => onExcellent?.(message)} title="Excellent — pattern à multiplier">★ excellent</button>
             <button class="action-btn" onclick={() => onCorrect?.(message)} title="Corriger">✎ corriger</button>
             <button class="action-btn" onclick={() => onRegen?.(message)} title="Regénérer sans correction">↻ regen</button>
@@ -341,15 +343,28 @@
     color: var(--paper);
   }
 
-  /* Excellent: gold outline, asymmetric from primary — signals "pattern" not "default". */
+  /* Soft: rouge clair pour ✓ c'est ça — validation courante (vs excellent = pattern à multiplier). */
+  .action-btn-soft {
+    background: color-mix(in srgb, var(--vermillon) 14%, var(--paper));
+    border-color: color-mix(in srgb, var(--vermillon) 40%, var(--paper));
+    color: var(--vermillon);
+  }
+  .action-btn-soft:hover {
+    background: color-mix(in srgb, var(--vermillon) 22%, var(--paper));
+    border-color: var(--vermillon);
+    color: var(--vermillon);
+  }
+
+  /* Excellent: rouge plein — signal le plus fort, pattern à multiplier. */
   .action-btn-excellent {
-    border-color: #b37e3b;
-    color: #8a5f2b;
+    background: var(--vermillon);
+    border-color: var(--vermillon);
+    color: var(--paper);
   }
   .action-btn-excellent:hover {
-    background: #f5efe4;
-    border-color: #8a5f2b;
-    color: #8a5f2b;
+    background: color-mix(in srgb, var(--vermillon) 88%, black);
+    border-color: color-mix(in srgb, var(--vermillon) 88%, black);
+    color: var(--paper);
   }
 
   .action-validated {
