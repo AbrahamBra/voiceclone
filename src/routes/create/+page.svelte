@@ -176,20 +176,23 @@
     ingestProgress = { current: 0, total: toUpload.length };
     generatingPhase = toUpload.length > 0 ? "files" : "";
 
+    const BLOCK_SIZE = 20_000;
     for (let i = 0; i < toUpload.length; i++) {
       const f = toUpload[i];
       const idx = pendingFiles.indexOf(f);
       pendingFiles[idx] = { ...f, status: "uploading" };
       pendingFiles = [...pendingFiles];
       try {
-        await api("/api/knowledge", {
-          method: "POST",
-          body: JSON.stringify({
-            personaId: persona.id,
-            filename: f.name,
-            content: f.content.slice(0, 200_000),
-          }),
-        });
+        const content = f.content.slice(0, 200_000);
+        const blocks = [];
+        for (let j = 0; j < content.length; j += BLOCK_SIZE) blocks.push(content.slice(j, j + BLOCK_SIZE));
+        for (let b = 0; b < blocks.length; b++) {
+          const blockName = blocks.length > 1 ? `${f.name} (${b + 1}/${blocks.length})` : f.name;
+          await api("/api/knowledge", {
+            method: "POST",
+            body: JSON.stringify({ personaId: persona.id, filename: blockName, content: blocks[b] }),
+          });
+        }
         pendingFiles[idx] = { ...f, status: "done" };
       } catch (err) {
         pendingFiles[idx] = { ...f, status: "error", error: err?.data?.detail || err?.message || "upload" };
