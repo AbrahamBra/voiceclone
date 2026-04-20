@@ -26,8 +26,6 @@
  * @property {'post' | 'dm'} legacyKey  persona.scenarios jsonb key (pre-migration)
  */
 
-// Named CANONICAL_SCENARIOS (not SCENARIOS) to avoid collision with the
-// unrelated landing-demo SCENARIOS array in $lib/landing-demo.js.
 /** @type {Readonly<Record<ScenarioId, ScenarioDef>>} */
 export const CANONICAL_SCENARIOS = Object.freeze({
   post_autonome: {
