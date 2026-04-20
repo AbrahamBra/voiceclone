@@ -4,7 +4,7 @@
 
   let {
     message, seq = null,
-    onCorrect, onValidate, onClientValidate, onRegen, onSaveRule, onCopyBlock,
+    onCorrect, onValidate, onClientValidate, onExcellent, onRegen, onSaveRule, onCopyBlock,
   } = $props();
 
   // Narrative kind derived from message.turn_kind (new axis from migration 028),
@@ -170,11 +170,11 @@
           </div>
 
           {#if isDraft}
-            <!-- Draft actions: valider → envoie au prospect ; c'est ça →
-                 validation client explicite (signal fort) ; corriger →
-                 FeedbackPanel ; regen → retry sans signal. -->
-            <button class="action-btn action-btn-primary" onclick={() => onValidate?.(message)} title="Valider et envoyer">✓ valider</button>
-            <button class="action-btn action-btn-strong" onclick={() => onClientValidate?.(message)} title="C'est ça, je valide — signal d'apprentissage positif">✓ c'est ça</button>
+            <!-- Draft actions: c'est ça (validation client explicite, signal fort
+                 → +0.12 entity boost) / excellent (pattern à multiplier).
+                 corriger → FeedbackPanel ; regen → retry sans signal. -->
+            <button class="action-btn action-btn-primary" onclick={() => onClientValidate?.(message)} title="C'est ça — signal d'apprentissage fort">✓ c'est ça</button>
+            <button class="action-btn action-btn-excellent" onclick={() => onExcellent?.(message)} title="Excellent — pattern à multiplier">★ excellent</button>
             <button class="action-btn" onclick={() => onCorrect?.(message)} title="Corriger">✎ corriger</button>
             <button class="action-btn" onclick={() => onRegen?.(message)} title="Regénérer sans correction">↻ regen</button>
           {:else if isSent}
@@ -341,14 +341,15 @@
     color: var(--paper);
   }
 
-  .action-btn-strong {
-    border-color: var(--vermillon);
-    color: var(--vermillon);
-    font-weight: 600;
+  /* Excellent: gold outline, asymmetric from primary — signals "pattern" not "default". */
+  .action-btn-excellent {
+    border-color: #b37e3b;
+    color: #8a5f2b;
   }
-  .action-btn-strong:hover {
-    background: var(--vermillon);
-    color: var(--paper);
+  .action-btn-excellent:hover {
+    background: #f5efe4;
+    border-color: #8a5f2b;
+    color: #8a5f2b;
   }
 
   .action-validated {

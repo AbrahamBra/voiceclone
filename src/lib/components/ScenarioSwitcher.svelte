@@ -30,6 +30,8 @@
     disabled = false,
     /** Restrict the list to a single kind ("post" or "dm"). Null = all supported. */
     kind = null,
+    /** Panel direction relative to trigger ("down" for top-bar, "up" for bottom-bar). */
+    direction = "down",
   } = $props();
 
   let open = $state(false);
@@ -124,7 +126,7 @@
   }
 </script>
 
-<div class="scenario-switcher" class:open>
+<div class="scenario-switcher" class:open class:dir-up={direction === "up"} class:dir-down={direction === "down"}>
   <button
     type="button"
     class="trigger"
@@ -216,7 +218,6 @@
 
   .panel {
     position: absolute;
-    bottom: calc(100% + 4px);
     left: 0;
     min-width: 260px;
     max-width: 320px;
@@ -229,6 +230,8 @@
     display: flex;
     flex-direction: column;
   }
+  .dir-up .panel   { bottom: calc(100% + 4px); }
+  .dir-down .panel { top: calc(100% + 4px); }
   .panel.empty {
     padding: 10px 12px;
     font-size: var(--fs-tiny);

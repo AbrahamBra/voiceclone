@@ -152,13 +152,35 @@
   })));
   const liveFidelity = $derived(lerp(current.fidelity_before, current.fidelity_after, fidelityProgress));
 
+  // Resolve the post-auth destination: first persona → /chat/<id>, or /create
+  // if the account has no clone yet. Hub is gone — chat is the new home.
+  async function resolveHome(codeOverride) {
+    try {
+      const headers = codeOverride ? { "x-access-code": codeOverride } : {};
+      // We call without full authHeaders() helper to avoid a circular import
+      // before the store is populated. For the already-authenticated path the
+      // cookie/session is already set by the server side or the fetch will
+      // fall back to the stored code.
+      if (!codeOverride && $accessCode) headers["x-access-code"] = $accessCode;
+      if (!codeOverride && $sessionToken) headers["x-session-token"] = $sessionToken;
+      const resp = await fetch("/api/personas", { headers });
+      if (!resp.ok) return "/create";
+      const data = await resp.json();
+      const first = Array.isArray(data.personas) && data.personas[0];
+      return first ? `/chat/${first.id}` : "/create";
+    } catch {
+      return "/create";
+    }
+  }
+
   // ───────── Mount ─────────
-  onMount(() => {
+  onMount(async () => {
     clockInterval = setInterval(() => { now = new Date(); }, 1000);
 
-    // If already authenticated, redirect to /hub
+    // If already authenticated, redirect straight to the first clone's chat.
     if ($accessCode || $sessionToken) {
-      goto("/hub");
+      const dest = await resolveHome();
+      goto(dest);
       return;
     }
 
@@ -191,7 +213,8 @@
       const data = await resp.json();
       accessCode.set(code);
       if (data.session?.token) sessionToken.set(data.session.token);
-      goto("/hub");
+      const first = Array.isArray(data.personas) && data.personas[0];
+      goto(first ? `/chat/${first.id}` : "/create");
     } catch {
       authError = "erreur réseau";
       authLoading = false;

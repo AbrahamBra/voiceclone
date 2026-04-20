@@ -1,28 +1,31 @@
 <script>
-  // Cockpit header — minimal identity strip for the chat page.
-  // The style-health badge deep-links to /brain#intelligence for full diagnostic;
-  // the ⚙ cerveau button deep-links to /brain#reglages.
-  // All lab metrics (collapse / fidelity / rules) live under /brain/[persona].
-
+  // Barre supérieure unifiée — remplace ChatCockpit après suppression du hub.
+  // Left : burger mobile + ClonesDropdown (avec points de triage par clone).
+  // Center : pill scenario + badge style-health.
+  // Right : bouton cerveau + UserMenu ⋯.
+  //
+  // Pas de flèche "back" ni bouton "changer de clone" : la nav se fait via
+  // le dropdown et le menu ⋯ (nouveau clone / admin / guide / logout).
   import { goto } from "$app/navigation";
   import ClonesDropdown from "./ClonesDropdown.svelte";
+  import ScenarioSwitcher from "./ScenarioSwitcher.svelte";
+  import UserMenu from "./UserMenu.svelte";
 
   let {
     personaName = "",
     personaAvatar = "?",
-    // Consolidated state pre-derived by the parent (ok | warn | drift | unknown)
     styleHealth = "unknown",
-    // Clone switcher
-    personasList = [],
+    personasList = [],       // enrichies par parent avec { triage, triageLabel }
     currentPersonaId = null,
-    switcherOpen = $bindable(false),
+    persona = null,          // pour ScenarioSwitcher (type + scenarios)
+    scenarioType = null,
+    onScenarioChange,
     onSwitchClone,
-    // Callbacks
-    onBack,
     onToggleSidebar,
-    onToggleLead,
-    onOpenBrain,
+    switcherOpen = $bindable(false),   // Cmd+Shift+C toggle depuis le parent
   } = $props();
+
+  let menuOpen = $state(false);
 
   let styleHealthLabel = $derived(
     styleHealth === "drift" ? "style dérive" :
@@ -31,24 +34,18 @@
     "style —"
   );
 
-  function openBrainIntelligence() {
-    if (onOpenBrain) return onOpenBrain("intelligence");
-    if (currentPersonaId) goto(`/brain/${currentPersonaId}#intelligence`);
-  }
-  function openBrainReglages() {
-    if (onOpenBrain) return onOpenBrain("reglages");
-    if (currentPersonaId) goto(`/brain/${currentPersonaId}#reglages`);
+  function openBrain() {
+    if (currentPersonaId) goto(`/brain/${currentPersonaId}`);
   }
 </script>
 
-<header class="cockpit">
-  <!-- Left cluster — identity -->
+<header class="topbar">
   <div class="left">
     <button class="icon-btn mobile-menu" onclick={() => onToggleSidebar?.()} aria-label="Conversations">☰</button>
-    <button class="icon-btn back" onclick={() => onBack?.()} aria-label="Retour à l'accueil">←</button>
+
     <div class="id-wrap">
       <button
-        class="id id-btn"
+        class="id-btn"
         onclick={() => (switcherOpen = !switcherOpen)}
         aria-haspopup="listbox"
         aria-expanded={switcherOpen}
@@ -56,9 +53,7 @@
         title="Changer de clone · Cmd+Shift+C"
       >
         <span class="avatar">{personaAvatar}</span>
-        <div class="id-text">
-          <span class="pname">{personaName}</span>
-        </div>
+        <span class="pname">{personaName}</span>
         <span class="chevron" aria-hidden="true">▾</span>
       </button>
       <ClonesDropdown
@@ -71,37 +66,35 @@
     </div>
   </div>
 
-  <!-- Center cluster — style health badge. Click routes to /brain#intelligence. -->
-  <div class="gauges" role="group" aria-label="Santé du style">
+  <div class="center">
+    {#if persona}
+      <ScenarioSwitcher
+        {persona}
+        value={scenarioType}
+        onchange={onScenarioChange}
+        direction="down"
+      />
+    {/if}
     <button
-      class="gauge style-health"
+      class="style-health"
       type="button"
       data-state={styleHealth}
-      onclick={openBrainIntelligence}
+      onclick={openBrain}
       aria-label="{styleHealthLabel}. Clic : diagnostic complet dans le cerveau du clone."
     >
       <span class="dot" aria-hidden="true"></span>
-      <span class="g-val">{styleHealthLabel}</span>
+      <span class="sh-val">{styleHealthLabel}</span>
     </button>
   </div>
 
-  <!-- Right cluster — actions -->
   <div class="right">
-    <button
-      class="tab-btn mono"
-      onclick={() => onToggleLead?.()}
-      aria-label="Brief du prospect"
-    >brief</button>
-    <button
-      class="tab-btn mono"
-      onclick={openBrainReglages}
-      aria-label="Ouvrir le cerveau du clone"
-    >cerveau</button>
+    <button class="tab-btn mono" onclick={openBrain} aria-label="Ouvrir le cerveau du clone">cerveau</button>
+    <UserMenu bind:open={menuOpen} />
   </div>
 </header>
 
 <style>
-  .cockpit {
+  .topbar {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: center;
@@ -113,9 +106,9 @@
     font-size: 11px;
     position: relative;
   }
-
   .left, .right { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .right { justify-content: flex-end; }
+  .center { display: flex; align-items: center; gap: 10px; justify-content: center; }
 
   .icon-btn {
     background: transparent;
@@ -130,8 +123,11 @@
   .mobile-menu { display: none; }
 
   .id-wrap { position: relative; min-width: 0; }
-  .id { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .id-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
     background: transparent;
     border: 1px solid transparent;
     cursor: pointer;
@@ -142,10 +138,7 @@
     color: inherit;
     text-align: left;
   }
-  .id-btn:hover {
-    border-color: var(--rule-strong);
-    background: var(--paper-subtle);
-  }
+  .id-btn:hover,
   .id-btn[aria-expanded="true"] {
     border-color: var(--rule-strong);
     background: var(--paper-subtle);
@@ -153,16 +146,6 @@
   .id-btn:focus-visible {
     outline: 1px solid var(--vermillon);
     outline-offset: 2px;
-  }
-  .chevron {
-    font-size: 10px;
-    color: var(--ink-40);
-    margin-left: 2px;
-    flex-shrink: 0;
-    transition: transform 0.12s ease;
-  }
-  .id-btn[aria-expanded="true"] .chevron {
-    transform: rotate(180deg);
   }
   .avatar {
     width: 22px; height: 22px;
@@ -173,8 +156,8 @@
     font-size: 10px;
     font-weight: 600;
     color: var(--ink-70);
+    flex-shrink: 0;
   }
-  .id-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
   .pname {
     font-family: var(--font-ui);
     font-size: 13px;
@@ -183,12 +166,16 @@
     letter-spacing: -0.005em;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-
-  /* ───── Style-health badge ───── */
-  .gauges {
-    display: inline-flex;
-    align-items: stretch;
+  .chevron {
+    font-size: 10px;
+    color: var(--ink-40);
+    margin-left: 2px;
+    flex-shrink: 0;
+    transition: transform 0.12s ease;
   }
+  .id-btn[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+
+  /* Style-health badge */
   .style-health {
     position: relative;
     display: inline-flex;
@@ -209,11 +196,10 @@
     outline: 1px solid var(--vermillon);
     outline-offset: 2px;
   }
-  .style-health .g-val {
+  .style-health .sh-val {
     font-size: 12px;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
-    letter-spacing: -0.005em;
     color: var(--ink);
   }
   .style-health .dot {
@@ -229,16 +215,14 @@
     background: var(--vermillon);
     animation: sh-pulse 1.2s linear infinite;
   }
-  .style-health[data-state="ok"] .g-val { color: var(--ink); }
-  .style-health[data-state="warn"] .g-val { color: #b87300; }
-  .style-health[data-state="drift"] .g-val { color: var(--vermillon); }
-  .style-health[data-state="unknown"] .g-val { color: var(--ink-40); }
+  .style-health[data-state="warn"] .sh-val { color: #b87300; }
+  .style-health[data-state="drift"] .sh-val { color: var(--vermillon); }
+  .style-health[data-state="unknown"] .sh-val { color: var(--ink-40); }
   @keyframes sh-pulse {
     0%, 100% { transform: scale(1); opacity: 1; }
     50% { transform: scale(1.3); opacity: 0.6; }
   }
 
-  /* ───── Right tabs ───── */
   .tab-btn {
     background: transparent;
     border: 1px solid var(--rule-strong);
@@ -248,13 +232,13 @@
     font-size: 10.5px;
     letter-spacing: 0.04em;
     cursor: pointer;
-    transition: color 0.08s linear, border-color 0.08s linear, background 0.08s linear;
+    transition: color 0.08s linear, border-color 0.08s linear;
   }
   .tab-btn:hover { color: var(--ink); border-color: var(--ink-40); }
 
   @media (max-width: 768px) {
     .mobile-menu { display: block; }
-    .cockpit { grid-template-columns: auto 1fr auto; padding: 6px 10px; gap: 8px; }
+    .topbar { grid-template-columns: auto 1fr auto; padding: 6px 10px; gap: 8px; }
     .icon-btn {
       min-width: var(--touch-min);
       min-height: var(--touch-min);
@@ -262,19 +246,11 @@
       align-items: center;
       justify-content: center;
     }
-    .tab-btn {
-      padding: 10px 10px;
-      font-size: 10px;
-      min-height: var(--touch-min);
-      min-width: var(--touch-min);
-    }
-    .style-health {
-      padding: 10px 10px;
-      min-height: var(--touch-min);
-    }
+    .tab-btn,
+    .style-health { padding: 10px 10px; min-height: var(--touch-min); font-size: 10px; }
   }
   @media (max-width: 560px) {
-    .gauges { order: 3; grid-column: 1 / -1; justify-content: center; }
-    .cockpit { grid-template-columns: auto 1fr auto; }
+    .center { order: 3; grid-column: 1 / -1; justify-content: center; flex-wrap: wrap; }
+    .topbar { grid-template-columns: auto 1fr auto; }
   }
 </style>

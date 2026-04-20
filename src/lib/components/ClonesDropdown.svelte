@@ -63,6 +63,14 @@
         >
           <span class="opt-avatar">{p.avatar || "?"}</span>
           <span class="opt-name">{p.name}</span>
+          {#if p.triage && p.triage !== "ok"}
+            <span
+              class="triage-dot"
+              data-kind={p.triage}
+              title={p.triageLabel || p.triage}
+              aria-label={p.triageLabel || p.triage}
+            ></span>
+          {/if}
           {#if p.id === currentPersonaId}
             <span class="opt-tag mono">courant</span>
           {/if}
@@ -138,6 +146,26 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     flex-shrink: 0;
+  }
+  /* Triage dot — même palette que hub pour cohérence.
+     drift = rouge (priorité 0), stale/never = ocre (priorité 1), warn = ocre pâle. */
+  .triage-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .triage-dot[data-kind="drift"] {
+    background: var(--vermillon);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--vermillon) 20%, transparent);
+    animation: driftPulse 2s ease-in-out infinite;
+  }
+  .triage-dot[data-kind="stale"],
+  .triage-dot[data-kind="never"] { background: #b87300; }
+  .triage-dot[data-kind="warn"] { background: #b87300; opacity: 0.55; }
+  @keyframes driftPulse {
+    0%, 100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--vermillon) 20%, transparent); }
+    50%      { box-shadow: 0 0 0 4px color-mix(in srgb, var(--vermillon) 10%, transparent); }
   }
   .empty {
     padding: 12px;

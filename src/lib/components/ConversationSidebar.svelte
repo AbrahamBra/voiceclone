@@ -11,7 +11,7 @@
     currentConvId,
     onselectconversation,
     onnewconversation,
-    onswitchclone,
+    onanalyseprospect,
     open = false,
   } = $props();
 
@@ -139,8 +139,8 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <aside class="conv-sidebar" class:open>
   <div class="conv-sidebar-header">
-    <button class="conv-switch-btn" onclick={onswitchclone}>
-      &larr; Changer de clone
+    <button class="conv-analyse-btn" onclick={onanalyseprospect} title="Coller une URL LinkedIn → contexte prospect injecté">
+      + Analyser prospect LinkedIn
     </button>
     <button class="conv-new-btn" onclick={onnewconversation}>
       + Nouvelle conversation
@@ -250,21 +250,24 @@
     gap: 6px;
   }
 
-  .conv-switch-btn {
+  /* "+ Analyser prospect LinkedIn" — action secondaire (scrape URL profil).
+     Outline discret, un cran sous le CTA principal "+ Nouvelle conversation". */
+  .conv-analyse-btn {
     width: 100%;
-    padding: 6px 8px;
+    padding: 7px 9px;
     background: transparent;
     border: 1px solid var(--rule-strong);
-    color: var(--ink-40);
+    color: var(--ink-60);
     font-family: var(--font-mono);
     font-size: var(--fs-tiny);
+    letter-spacing: 0.02em;
     cursor: pointer;
     transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
     text-align: left;
   }
-  .conv-switch-btn:hover {
+  .conv-analyse-btn:hover {
     color: var(--ink);
-    border-color: var(--ink-40);
+    border-color: var(--ink);
   }
 
   .conv-new-btn {

@@ -1,16 +1,12 @@
 <script>
   // Header pinné du dossier prospect. Affiche meta éditable inline
   // (nom / stage / note) + dernier contact + heat + compteur corrections.
-  // Déplace le ScenarioSwitcher depuis l'ex-composer-toolbar.
-  import ScenarioSwitcher from "./ScenarioSwitcher.svelte";
+  // Le ScenarioSwitcher vit désormais dans ChatTopBar (scope persona, pas prospect).
 
   let {
     conversation = null,      // { id, prospect_name, stage, note, last_message_at, ... }
     feedbackCount = 0,        // dérivé (passé par parent depuis FeedbackRail)
     heat = null,              // { state: 'cold'|'warm'|'hot', delta: number|null }
-    persona = null,           // pour ScenarioSwitcher
-    scenarioType = null,
-    onScenarioChange,
     onUpdate,                 // (patch) => Promise — parent relais vers /api/conversations PATCH
     onToggleRail,             // callback pour toggler le rail feedback en mobile
   } = $props();
@@ -101,12 +97,6 @@
 
     <span class="sep">·</span>
     <span class="last">dernier : {fmtRelative(conversation?.last_message_at)}</span>
-
-    {#if persona}
-      <div class="scenario-slot">
-        <ScenarioSwitcher {persona} value={scenarioType} onchange={onScenarioChange} />
-      </div>
-    {/if}
   </div>
 
   <div class="row-2">
@@ -176,7 +166,6 @@
   .heat-cold { color: #4a6fa5; }
   .heat-warm { color: #b37e3b; }
   .heat-hot  { color: var(--vermillon); }
-  .scenario-slot { margin-left: auto; }
   .fb-count,
   .fb-count-btn { margin-left: auto; font-weight: 500; }
   .fb-count-btn {
