@@ -185,14 +185,30 @@ export default async function handler(req, res) {
       ...(documents ? ["", "DOCUMENTATION CLIENT :", documents] : []),
     ];
 
-    // Only the config call is synchronous — style/DM run in background after response
-    const configResult = await Promise.race([
-      anthropic.messages.create({
+    // Config + style + DM in parallel (30s timeout each) — these ARE the intelligence
+    const CALL_TIMEOUT = 30000;
+    const withTimeout = (p) => Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error("timeout")), CALL_TIMEOUT))]);
+
+    const [configResult, styleResult, dmResult] = await Promise.all([
+      withTimeout(anthropic.messages.create({
         model: MODEL, max_tokens: 2048,
         system: CLONE_SYSTEM_PROMPT,
         messages: [{ role: "user", content: userContent.join("\n") }],
-      }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 45000)),
+      })),
+      cloneType !== 'dm' && postsContentForStyle
+        ? withTimeout(anthropic.messages.create({
+            model: MODEL, max_tokens: 2048,
+            system: STYLE_ANALYSIS_PROMPT,
+            messages: [{ role: "user", content: postsContentForStyle }],
+          })).catch(() => null)
+        : Promise.resolve(null),
+      dmsContent
+        ? withTimeout(anthropic.messages.create({
+            model: MODEL, max_tokens: 2048,
+            system: DM_ANALYSIS_PROMPT,
+            messages: [{ role: "user", content: dmsContent }],
+          })).catch(() => null)
+        : Promise.resolve(null),
     ]);
 
     const configRaw = configResult.content[0].text.trim();
@@ -336,157 +352,116 @@ ${neverDoes}
     const { error: scenarioErr } = await supabase.from("scenario_files").insert(scenarioRows);
     if (scenarioErr) console.log(JSON.stringify({ event: "scenario_insert_error", persona: persona.id, error: scenarioErr.message }));
 
-    // Log config usage immediately; style/DM tokens logged in background
-    if (client) {
-      await logUsage(client.id, persona.id, configResult.usage?.input_tokens || 0, configResult.usage?.output_tokens || 0);
+    // Insert style knowledge file (synchronous — needed for RAG)
+    let styleBody = null;
+    if (styleResult) {
+      const styleContent = styleResult.content[0].text.trim();
+      const fmMatch = styleContent.match(/^---\n([\s\S]*?)\n---/);
+      let keywords = ["post", "poster", "ecrire", "rediger", "contenu", "linkedin"];
+      if (fmMatch) {
+        const kwMatch = fmMatch[1].match(/keywords:\s*\[(.*?)\]/);
+        if (kwMatch) keywords = kwMatch[1].split(",").map(k => k.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+      }
+      styleBody = fmMatch ? styleContent.slice(fmMatch[0].length).trim() : styleContent;
+      await supabase.from("knowledge_files").insert({
+        persona_id: persona.id, path: "topics/style-posts-linkedin.md",
+        keywords, content: styleBody, source_type: "auto",
+      }).catch(e => console.log(JSON.stringify({ event: "style_insert_error", persona: persona.id, error: e.message })));
     }
 
-    // Respond — style/DM analysis, knowledge files, ontology, embeddings all run in background
+    // Insert DM knowledge file (synchronous)
+    let dmBody = null;
+    if (dmResult) {
+      const dmContent = dmResult.content[0].text.trim();
+      const dmFmMatch = dmContent.match(/^---\n([\s\S]*?)\n---/);
+      let dmKeywords = ["dm", "message", "conversation", "qualification", "prospection", "relance", "rdv"];
+      if (dmFmMatch) {
+        const kwMatch = dmFmMatch[1].match(/keywords:\s*\[(.*?)\]/);
+        if (kwMatch) dmKeywords = kwMatch[1].split(",").map(k => k.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+      }
+      dmBody = dmFmMatch ? dmContent.slice(dmFmMatch[0].length).trim() : dmContent;
+      await supabase.from("knowledge_files").insert({
+        persona_id: persona.id, path: "topics/style-conversations.md",
+        keywords: dmKeywords, content: dmBody, source_type: "auto",
+      }).catch(e => console.log(JSON.stringify({ event: "dm_insert_error", persona: persona.id, error: e.message })));
+    }
+
+    // Insert document knowledge file (synchronous)
+    if (documents && documents.length > 50) {
+      await supabase.from("knowledge_files").insert({
+        persona_id: persona.id, path: "documents/client-docs.md",
+        keywords: ["document", "doc", "methode", "offre", "service", "client"],
+        content: documents, source_type: "document",
+      }).catch(() => {});
+    }
+
+    // Log usage
+    const totalInput = (configResult.usage?.input_tokens || 0) + (styleResult?.usage?.input_tokens || 0) + (dmResult?.usage?.input_tokens || 0);
+    const totalOutput = (configResult.usage?.output_tokens || 0) + (styleResult?.usage?.output_tokens || 0) + (dmResult?.usage?.output_tokens || 0);
+    if (client) await logUsage(client.id, persona.id, totalInput, totalOutput);
+
+    // Respond — ontology + embeddings + entity extraction run in background
     res.json({
       ok: true,
       persona: { id: persona.id, slug: persona.slug, name: persona.name, title: persona.title, avatar: persona.avatar },
     });
 
-    // Background: style analysis, DM analysis, knowledge inserts, ontology, embeddings
+    // Fire-and-forget: ontology, embeddings, entity extraction
     (async () => {
-      let styleBody = null;
-
-      // Style analysis
-      if (cloneType !== 'dm' && postsContentForStyle) {
-        try {
-          const styleResult = await Promise.race([
-            anthropic.messages.create({
-              model: MODEL, max_tokens: 2048,
-              system: STYLE_ANALYSIS_PROMPT,
-              messages: [{ role: "user", content: postsContentForStyle }],
-            }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 50000)),
-          ]);
-          const styleContent = styleResult.content[0].text.trim();
-          const fmMatch = styleContent.match(/^---\n([\s\S]*?)\n---/);
-          let keywords = ["post", "poster", "ecrire", "rediger", "contenu", "linkedin"];
-          if (fmMatch) {
-            const kwMatch = fmMatch[1].match(/keywords:\s*\[(.*?)\]/);
-            if (kwMatch) keywords = kwMatch[1].split(",").map(k => k.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
-          }
-          styleBody = fmMatch ? styleContent.slice(fmMatch[0].length).trim() : styleContent;
-          await supabase.from("knowledge_files").insert({
-            persona_id: persona.id, path: "topics/style-posts-linkedin.md",
-            keywords, content: styleBody, source_type: "auto",
-          });
-          if (client) await logUsage(client.id, persona.id, styleResult.usage?.input_tokens || 0, styleResult.usage?.output_tokens || 0);
-        } catch (e) {
-          console.log(JSON.stringify({ event: "style_error", persona: persona.id, error: e.message }));
-        }
-      }
-
-      // DM analysis
-      let dmBody = null;
-      if (dmsContent) {
-        try {
-          const dmResult = await Promise.race([
-            anthropic.messages.create({
-              model: MODEL, max_tokens: 2048,
-              system: DM_ANALYSIS_PROMPT,
-              messages: [{ role: "user", content: dmsContent }],
-            }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 50000)),
-          ]);
-          const dmContent = dmResult.content[0].text.trim();
-          const dmFmMatch = dmContent.match(/^---\n([\s\S]*?)\n---/);
-          let dmKeywords = ["dm", "message", "conversation", "qualification", "prospection", "relance", "rdv"];
-          if (dmFmMatch) {
-            const kwMatch = dmFmMatch[1].match(/keywords:\s*\[(.*?)\]/);
-            if (kwMatch) dmKeywords = kwMatch[1].split(",").map(k => k.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
-          }
-          dmBody = dmFmMatch ? dmContent.slice(dmFmMatch[0].length).trim() : dmContent;
-          await supabase.from("knowledge_files").insert({
-            persona_id: persona.id, path: "topics/style-conversations.md",
-            keywords: dmKeywords, content: dmBody, source_type: "auto",
-          });
-          if (client) await logUsage(client.id, persona.id, dmResult.usage?.input_tokens || 0, dmResult.usage?.output_tokens || 0);
-        } catch (e) {
-          console.log(JSON.stringify({ event: "dm_analysis_error", persona: persona.id, error: e.message }));
-        }
-      }
-
-      // Document knowledge file
-      if (documents && documents.length > 50) {
-        await supabase.from("knowledge_files").insert({
-          persona_id: persona.id, path: "documents/client-docs.md",
-          keywords: ["document", "doc", "methode", "offre", "service", "client"],
-          content: documents, source_type: "document",
-        }).catch(() => {});
-      }
-
-      // Ontology — retry once on failure
+      // Ontology (1 attempt, no retry to save time)
       try {
-        for (let attempt = 1; attempt <= 2; attempt++) {
-          try {
-            const ontologyResult = await Promise.race([
-              anthropic.messages.create({
-                model: "claude-haiku-4-5-20251001", max_tokens: 4096,
-                system: ONTOLOGY_PROMPT,
-                messages: [{ role: "user", content: userContent.join("\n") }],
-              }),
-              new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 50000)),
-            ]);
-            const ontRaw = ontologyResult.content[0].text.trim();
-            let depth = 0, start = -1, end = -1;
-            for (let i = 0; i < ontRaw.length; i++) {
-              if (ontRaw[i] === "{") { if (depth === 0) start = i; depth++; }
-              if (ontRaw[i] === "}") { depth--; if (depth === 0) { end = i + 1; break; } }
+        const ontologyResult = await Promise.race([
+          anthropic.messages.create({
+            model: "claude-haiku-4-5-20251001", max_tokens: 4096,
+            system: ONTOLOGY_PROMPT,
+            messages: [{ role: "user", content: userContent.join("\n") }],
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 50000)),
+        ]);
+        const ontRaw = ontologyResult.content[0].text.trim();
+        let depth = 0, start = -1, end = -1;
+        for (let i = 0; i < ontRaw.length; i++) {
+          if (ontRaw[i] === "{") { if (depth === 0) start = i; depth++; }
+          if (ontRaw[i] === "}") { depth--; if (depth === 0) { end = i + 1; break; } }
+        }
+        if (start !== -1) {
+          const ontology = JSON.parse(ontRaw.slice(start, end));
+          if (ontology.entities?.length > 0) {
+            const entityRows = ontology.entities.map(e => ({
+              persona_id: persona.id, name: e.name,
+              type: e.type || "concept", description: e.description || "", confidence: 1.0,
+            }));
+            const { data: inserted } = await supabase
+              .from("knowledge_entities")
+              .upsert(entityRows, { onConflict: "persona_id,name" })
+              .select("id, name");
+            if (inserted && ontology.relations?.length > 0) {
+              const entityMap = {};
+              for (const e of inserted) entityMap[e.name] = e.id;
+              const relationRows = ontology.relations
+                .filter(r => entityMap[r.from] && entityMap[r.to])
+                .map(r => ({
+                  persona_id: persona.id, from_entity_id: entityMap[r.from],
+                  to_entity_id: entityMap[r.to], relation_type: r.type || "uses",
+                  description: r.description || "", confidence: 1.0,
+                }));
+              if (relationRows.length > 0) await supabase.from("knowledge_relations").insert(relationRows);
             }
-            if (start === -1) throw new Error("no_json");
-            const ontology = JSON.parse(ontRaw.slice(start, end));
-            if (ontology.entities?.length > 0) {
-              const entityRows = ontology.entities.map(e => ({
-                persona_id: persona.id, name: e.name,
-                type: e.type || "concept", description: e.description || "", confidence: 1.0,
-              }));
-              const { data: inserted } = await supabase
-                .from("knowledge_entities")
-                .upsert(entityRows, { onConflict: "persona_id,name" })
-                .select("id, name");
-              if (inserted && ontology.relations?.length > 0) {
-                const entityMap = {};
-                for (const e of inserted) entityMap[e.name] = e.id;
-                const relationRows = ontology.relations
-                  .filter(r => entityMap[r.from] && entityMap[r.to])
-                  .map(r => ({
-                    persona_id: persona.id, from_entity_id: entityMap[r.from],
-                    to_entity_id: entityMap[r.to], relation_type: r.type || "uses",
-                    description: r.description || "", confidence: 1.0,
-                  }));
-                if (relationRows.length > 0) {
-                  await supabase.from("knowledge_relations").insert(relationRows);
-                }
-              }
-              console.log(JSON.stringify({ event: "ontology_extracted", persona: persona.id, entities: inserted?.length || 0, attempt }));
-            }
-            break;
-          } catch (e) {
-            console.log(JSON.stringify({ event: "ontology_error", persona: persona.id, error: e.message, attempt }));
-            if (attempt === 2) break;
+            console.log(JSON.stringify({ event: "ontology_extracted", persona: persona.id, entities: inserted?.length || 0 }));
           }
         }
-      } catch { /* skip */ }
+      } catch (e) {
+        console.log(JSON.stringify({ event: "ontology_error", persona: persona.id, error: e.message }));
+      }
 
       // Embeddings
       if (isEmbeddingAvailable()) {
         try {
-          if (styleBody) {
-            const styleChunks = chunkText(styleBody);
-            await embedAndStore(supabase, styleChunks, persona.id, "knowledge_file", "topics/style-posts-linkedin.md");
-          }
-          if (allDocuments && allDocuments.length > 50) {
-            const docChunks = chunkText(allDocuments);
-            await embedAndStore(supabase, docChunks, persona.id, "document", "documents/client-docs.md");
-          }
+          if (styleBody) await embedAndStore(supabase, chunkText(styleBody), persona.id, "knowledge_file", "topics/style-posts-linkedin.md");
+          if (allDocuments && allDocuments.length > 50) await embedAndStore(supabase, chunkText(allDocuments), persona.id, "document", "documents/client-docs.md");
           if (allPosts.length > 0) {
-            const postsTextForEmbed = allPosts.map(p => p.slice(0, 3000)).join("\n\n---\n\n");
-            const postChunks = chunkText(postsTextForEmbed);
-            await embedAndStore(supabase, postChunks, persona.id, "linkedin_post");
+            const postsText = allPosts.map(p => p.slice(0, 3000)).join("\n\n---\n\n");
+            await embedAndStore(supabase, chunkText(postsText), persona.id, "linkedin_post");
           }
           console.log(JSON.stringify({ event: "chunks_embedded", persona: persona.id }));
         } catch (e) {
@@ -494,7 +469,7 @@ ${neverDoes}
         }
       }
 
-      // Entity extraction from knowledge files
+      // Entity extraction
       try {
         const extractionPromises = [];
         if (styleBody) extractionPromises.push(extractEntitiesFromContent(persona.id, styleBody, "topics/style-posts-linkedin.md", client));
