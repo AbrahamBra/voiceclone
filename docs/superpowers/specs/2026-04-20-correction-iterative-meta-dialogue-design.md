@@ -140,7 +140,7 @@ COMMENT ON COLUMN feedback_events.payload IS
 
 #### Extension de `type: "regenerate"` (existant)
 
-Ajout d'un champ optionnel `iteration_history` dans le payload :
+Ajout de deux champs optionnels dans le payload :
 
 ```js
 {
@@ -150,7 +150,13 @@ Ajout d'un champ optionnel `iteration_history` dans le payload :
   persona: string,
   iteration_history?: [                  // absent au round 1
     { correction: string, alternatives: string[], rejected: true }
-  ]
+  ],
+  meta_context?: {                       // présent UNIQUEMENT sur le round 1 après reprise
+                                         // depuis le dialogue méta (Sortie A). Absent sinon.
+    reflect_history: [{ role: 'clone'|'operator', content: string }],
+    synthesis_rule: string | null        // rule_candidate de synthesize_reflect,
+                                         //  null si l'opérateur l'a ignorée.
+  }
 }
 ```
 
@@ -162,7 +168,7 @@ L'opérateur demande maintenant : "<correction>"
 Génère 2 NOUVELLES alternatives qui évitent explicitement les écueils précédents.
 ```
 
-Backend side-effect : insert dans `feedback_events` avec `event_type: 'correction_rejected_round'` pour le round précédent (payload: round, correction, alternatives, why_bad=correction courante).
+Backend side-effect : insert dans `feedback_events` avec `event_type: 'correction_rejected_round'` pour le round précédent (payload: round, correction, alternatives, why_bad=correction courante). **Fire uniquement quand l'opérateur clique "aucune ne convient →"** (intention explicite de re-itérer ou d'escalader). Le chemin "Garder l'original" reste silencieux, inchangé par rapport au comportement actuel — c'est un abandon implicite, pas un signal d'apprentissage.
 
 #### Nouveau `type: "reflect"`
 
@@ -220,7 +226,10 @@ Appelé au clic de "réessaie →" ou "abandonne". Produit le candidat de règle
 {
   ok: true,
   rule_candidate: string,                // "préférer un ton ironique-tranchant..."
-  confidence: number                     // 0-1
+  confidence: number,                    // 0-1
+  retry_prompt_prefill: string           // toujours peuplé — synthèse prête à l'emploi
+                                         // comme texte pré-rempli pour le round 1 de reprise.
+                                         // Utilisé uniquement par Sortie A (retry), ignoré par Sortie B (abandon).
 }
 ```
 
@@ -246,17 +255,36 @@ Backend side-effect : insert `feedback_events` type `synthesis_proposed` (payloa
 ```
 
 Backend :
-1. Insert dans `corrections` avec `correction: rule_text`, `bot_message: "[reflect-synthesis]"`, flag `source: 'reflect_synthesis'` (stocké dans `metadata` jsonb si la colonne existe, sinon dans `user_message`)
-2. `logLearningEvent(persona, 'rule_added', { from: 'reflect', rule: rule_text })`
+1. Insert dans `corrections` avec `correction: rule_text`, `bot_message: "[reflect-synthesis:v1]"`, `user_message: rule_candidate_original`. Le marker `[reflect-synthesis:v1]` dans `bot_message` est la source de vérité pour distinguer analytiquement les règles issues de ce flow (cohérent avec le pattern existant de `save_rule` qui utilise `bot_message: "[saved-by-user]"`). Versionné (`:v1`) pour permettre une évolution future du marker sans casser les queries historiques.
+2. `logLearningEvent(persona, 'rule_added', { rules: [rule_text], count: 1, source: 'reflect' })` — respecte le shape existant `{rules, count}` documenté dans `017_learning_events.sql` avec un champ supplémentaire `source` (jsonb permissif) pour tracer l'origine.
 3. `extractGraphKnowledge(persona, rule_text, null, null, client)`
 4. Insert `feedback_events` type `synthesis_saved` avec `learning_event_id` FK pointant sur l'event créé à l'étape 2
 5. `clearIntelligenceCache(intellId)`
 
-Même pipeline que `type: save_rule` existant — juste un marqueur de source différent pour que les patterns analytics puissent distinguer.
+Même pipeline que `type: save_rule` existant — juste un marker de source différent (`[reflect-synthesis:v1]` vs `[saved-by-user]`).
 
-#### Endpoint silencieux pour `synthesis_ignored` et `reflect_exit`
+#### Endpoint silencieux `type: "reflect_event"`
 
-Pas de nouveau `type` — un simple `type: "reflect_event"` avec `event_type: 'synthesis_ignored' | 'reflect_exit'` et le payload approprié. Écriture bête dans `feedback_events`, pas de side-effect.
+Bête écriture dans `feedback_events`, pas de side-effect graph ou learning. Utilisé pour `synthesis_ignored`, `reflect_exit`, et le tracking quand `confidence_too_low`.
+
+```js
+// Request
+{
+  type: "reflect_event",
+  event_type: "synthesis_ignored" | "reflect_exit",
+  persona: string,
+  conversation_id: string,
+  message_id: string,                    // le clone_draft original
+  payload: object                        // shape par event_type — cf. Section 1
+}
+
+// Response
+{ ok: true }
+```
+
+#### Auth / access control (tous les nouveaux types)
+
+Identique aux types existants : `authenticateRequest` + `hasPersonaAccess(client?.id, personaId)` en amont (pattern de `api/feedback.js` existant, lignes ~15 et ~127). Un appel non authentifié ou sans accès au persona reçoit 403, rien n'est écrit. Le pattern `resolveIntelligenceId` via `getIntelligenceId(fbPersona)` reste utilisé pour tous les writes.
 
 ### Section 3 — Frontend : FeedbackPanel state machine
 
@@ -278,10 +306,12 @@ escalating             → fermeture drawer + toast + focus chat
 Transitions :
 - `idle → round1_input` : ouverture panel via clic ✎
 - `round1_input → round1_loading → round1_picking` : clic "Corriger"
-- `round1_picking → round2_input` : clic "aucune ne convient →"
-- `round1_picking → idle` : clic sur une alt (accept) OU "Garder l'original"
-- `round2_picking → escalating → idle` : clic "aucune ne convient →" → ferme drawer, dispatch event `onEscalate` au parent
-- `round2_picking → idle` : clic sur une alt OU "Garder l'original"
+- `round1_picking → round2_input` : clic "aucune ne convient →" (fire `correction_rejected_round` round=1)
+- `round1_picking → idle` : clic sur une alt (accept, flow existant inchangé) OU "Garder l'original" (abandon silencieux, inchangé)
+- `round2_picking → escalating → idle` : clic "aucune ne convient →" (fire `correction_rejected_round` round=2) → ferme drawer, dispatch event `onEscalate` au parent
+- `round2_picking → idle` : clic sur une alt (accept) OU "Garder l'original" (abandon silencieux)
+- **Erreurs API dans `round{1,2}_loading`** : comportement préservé du code existant — si la réponse contient `alternatives: []` ou 500, retour à `idle` via `saveCorrectionOnly()` (enregistre la correction brute sans alternatives) + toast d'erreur. Aucune nouvelle branche d'erreur introduite.
+- **`escalating` est un état transient** (~150ms de fade, synchrone avec le dispatch `onEscalate`). Si `onEscalate` throw côté parent (cas pathologique), fallback → `idle` + toast *"Erreur escalation — correction enregistrée quand même"*, l'opérateur reste sur le thread avec le clone_draft original intact.
 
 #### UI par state
 
@@ -338,7 +368,7 @@ Sous le **dernier** `clone_reflect` uniquement (pas sous chaque) :
 - Si clic `Répondre →` : POST `/api/feedback` type `reflect` avec `reflect_history` enrichi → insert `operator_reflect` dans la DB → nouveau `clone_reflect` en réponse → composer inline se déplace sous le nouveau dernier
 - Si clic `Je veux qu'on réessaie →` : flow de reprise (Section 5)
 
-Après 30 secondes sans interaction, les échanges `reflect` du dialogue courant se collapsent :
+Trigger précis du collapse : **30 secondes après le dernier `reflect_turn` ou `operator_reflect` inséré dans la conversation courante, ET si le composer inline est inactif** (ni focus, ni texte en cours de frappe). Si l'opérateur clique "Répondre →" ou tape dans le composer inline, le timer reset. À l'expiration, les échanges `reflect` du dialogue courant se collapsent :
 ```
 ┌─ ↔ debug ─────────────────────────────┐
 │ 8 échanges · déplier ▾                │
@@ -348,7 +378,9 @@ Clic → tout se déplie. La bordure dashed reste sur le bloc collapsed.
 
 #### Compteur et garde-fou
 
-Après le 10ᵉ tour de reflect_turn, sous le composer inline :
+Le compteur `total_meta_turns` = **nombre total de messages reflect insérés dans la conversation courante, clone et opérateur confondus** (i.e. `COUNT(*) WHERE turn_kind IN ('clone_reflect','operator_reflect')`). Un cycle clone→opérateur = 2 tours. Ainsi le garde-fou déclenche après ~5 cycles complets.
+
+Après le 10ᵉ tour, sous le composer inline :
 ```
 ça traîne — prends 5 min, reprends plus tard
 [abandonne, garde l'original]
@@ -369,7 +401,9 @@ Deux bouts de sortie, tous deux hébergés dans `src/routes/chat/[persona]/+page
    - Textarea pré-rempli par une synthèse auto du dialogue méta (récupérée via une sous-requête à l'API synthesize_reflect, champ `retry_prompt_prefill`)
    - Context entier (iteration_history + reflect_history) injecté dans le prompt `regenerate` via un nouveau champ `meta_context` (n'apparaît pas dans l'UI, transparent pour l'opérateur)
 5. Opérateur peut éditer le pré-remplissage avant de soumettre
-6. Nouveau cycle 2-rounds. Si ce cycle escalade à nouveau, le nouveau dialogue méta a accès à l'ancien (continuité).
+6. Nouveau cycle 2-rounds.
+
+**Re-escalation (cas où le nouveau cycle 2-rounds échoue aussi)** : dans le scope de v1, le nouveau dialogue méta démarre **fresh** — il ne relit pas automatiquement le `reflect_history` du dialogue précédent. Seul le `meta_context.synthesis_rule` (si l'opérateur a sauvegardé une règle à la première sortie) reste actif via le pipeline normal de `corrections`. Porter le `reflect_history` entier à travers les escalations successives est out-of-scope v1 — ticket de suivi si ça devient un vrai usage.
 
 Insert `feedback_events` type `reflect_exit` avec `exit: 'retry'`.
 
@@ -403,9 +437,11 @@ Composant inline dans `src/routes/chat/[persona]/+page.svelte`, affichée **au-d
 ```
 
 Comportement :
-- **sauver ✓** (bouton primaire, focus par défaut) → POST `type: accept_reflect_rule` → toast `"règle ajoutée au cerveau"` → carte disparaît
+- **sauver ✓** (bouton primaire) → POST `type: accept_reflect_rule` → toast `"règle ajoutée au cerveau"` → carte disparaît
 - **éditer** → textarea inline remplace l'affichage read-only, boutons deviennent [annuler] [sauver ✓] ; submit envoie `rule_text: <version éditée>` + `rule_candidate_original: <version initiale>` pour tracer l'édition
 - **ignorer** → POST `type: reflect_event` event_type `synthesis_ignored` → carte disparaît sans écriture dans corrections
+
+**Pas de focus par défaut sur un des 3 boutons.** Principe opposé à l'habituel ("sauver" au primaire, focus Enter) : cohérent avec *"jamais de learning silencieux sans opt-in"* (page "Pourquoi ce design"). L'opérateur doit prendre la décision consciente de bouger sa souris ou Tab→Enter — pas de save réflexe.
 
 Si `confidence ≤ 0.6` depuis `synthesize_reflect` → carte **jamais affichée**. POST `type: reflect_event` event_type `synthesis_ignored` (avec marker `confidence_too_low: true`) pour le tracking.
 
@@ -417,13 +453,15 @@ Le composant `FeedbackRail.svelte` existant affiche déjà les entrées `feedbac
 |------------|------------------------|
 | `correction_rejected_round` | `✎ round X · "why_bad" (16 mots)` |
 | `reflect_started` | `↔ debug ouvert · escalation round 2` |
-| `reflect_turn` | **non affiché individuellement** (trop verbeux, déjà dans le thread) |
-| `synthesis_proposed` | **non affiché individuellement** (signal transitoire) |
+| `reflect_turn` | **jamais rendu dans le rail** — rows écrites en DB pour l'audit / analytics uniquement. Le dialogue vit dans le thread (zone A). |
+| `synthesis_proposed` | **non affiché individuellement** (signal transitoire, remplacé par `synthesis_saved` ou `synthesis_ignored` dans les secondes qui suivent) |
 | `synthesis_saved` | `📏 règle sauvée · "rule_text" (20 mots)` + FK au `learning_event` |
-| `synthesis_ignored` | **non affiché** (non-event) |
+| `synthesis_ignored` | **non affiché** (non-event, l'opérateur a dit "j'écarte") |
 | `reflect_exit` | **non affiché** (déjà implicite via visibilité du dialogue méta) |
 
-Critère : chaque entrée du rail doit être **actionnable ou informative au retour sur dossier 3h plus tard**. Les tours intermédiaires d'un dialogue méta et les événements transitoires sont du bruit à cette échelle.
+Critère : chaque entrée du rail doit être **actionnable ou informative au retour sur dossier 3h plus tard**. Les tours intermédiaires (`reflect_turn`) sont utiles en DB (audit, patterns analytics, `correction-consolidation.js`) mais leur rendu dans le rail créerait du bruit — 8 lignes "↔ op a répondu" dégradent la lisibilité. L'opérateur qui veut voir le détail déplie le bloc `↔ debug` dans le thread lui-même.
+
+> Note de correction vs Section 2 : la ligne "le rail feedback (zone B) journalise déjà les événements du thread, réutilisation naturelle" (Pourquoi ce design, ligne "Dialogue méta dans le thread") doit se lire comme "la table `feedback_events` capture les événements" — *pas* "le composant `FeedbackRail` les affiche tous individuellement". Les `reflect_turn` passent par la table, pas par le rendu.
 
 ## Flow end-to-end (schéma)
 
@@ -480,8 +518,14 @@ Critère : chaque entrée du rail doit être **actionnable ou informative au ret
 
 ### Tests data integrity
 
-- [ ] Après un path C complet : requête `SELECT event_type, COUNT(*) FROM feedback_events WHERE conversation_id = $1 GROUP BY event_type;` → shape attendue : 2× `correction_rejected_round`, 1× `reflect_started`, N× `reflect_turn`, 1× `synthesis_proposed`, 1× `synthesis_saved`, 1× `reflect_exit`, 1× `corrected` (final).
+- [ ] Après un path C complet : requête `SELECT event_type, COUNT(*) FROM feedback_events WHERE conversation_id = $1 GROUP BY event_type;` → shape attendue : 2× `correction_rejected_round`, 1× `reflect_started`, N× `reflect_turn` (avec N = total_meta_turns), 1× `synthesis_proposed`, 1× `synthesis_saved`, 1× `reflect_exit`, 1× `corrected` (final).
 - [ ] Insert de `clone_reflect` avec `turn_kind` : constraint check passe, `draft_of_message_id` optionnel pointe sur le clone_draft original (tracé de pourquoi ce reflect existe).
+- [ ] **Consistance 3 niveaux (test intégration critique)** : après un path C complet avec règle sauvée, vérifier qu'on a :
+  - `corrections` : +2 rows (la règle synthétisée finale via `accept_reflect_rule`, + l'éventuelle acceptance finale de l'alternative retry). PAS de row pour les rounds rejetés.
+  - `learning_events` : exactement 1 `rule_added` (la règle synthétisée). PAS d'autre event de type learning.
+  - `extractGraphKnowledge` : appelé exactement 2 fois (une fois pour la règle synthétisée, une fois pour l'acceptance finale).
+  - `feedback_events` : comme au test précédent. Les 2 `correction_rejected_round` ne créent PAS de rows dans `corrections` (trace auto only, niveau 1).
+- [ ] Path D (abandon après rule saved) : `corrections` +1 row (règle uniquement), `learning_events` +1, `extractGraphKnowledge` appelé 1 fois. Le clone_draft original n'est pas remplacé, son `turn_kind` reste `clone_draft`.
 
 ## Hors scope
 
@@ -490,6 +534,8 @@ Critère : chaque entrée du rail doit être **actionnable ou informative au ret
 - **Auto-import Breakcold** (roadmap) : compatible tel quel — les `clone_reflect` sont juste des messages avec un turn_kind spécifique, ne cassent rien dans le pipeline d'import.
 - **Mode mobile** : le composer inline et la carte "j'ai retenu ça" doivent fonctionner mobile (< 900px), mais pas de design spécifique ici — on hérite du responsive existant de `FeedbackPanel` et du thread.
 - **Undo d'une règle synthétisée sauvée** : passe par `/brain/[persona]` > règles > supprimer. Pas de bouton undo dans la carte (ça complique et la carte disparaît de toute façon après 1 clic, le bouton serait inatteignable).
+- **Transport du `reflect_history` à travers plusieurs escalations** : hors scope v1 (cf. Section 5A step 6). Ticket de suivi si un usage réel émerge.
+- **Consumers de `messages` à auditer pour filtrer `clone_reflect` / `operator_reflect`** : les nouvelles valeurs de `turn_kind` ne doivent pas leaker dans (a) l'export PDF d'un dossier, (b) les prompts chargés par le pipeline de génération (`lib/pipeline.js`, `lib/prompt.js`), (c) le contexte d'auto-import Breakcold (roadmap), (d) les consommateurs analytiques (`correction-consolidation.js`, `heat/*`). Le plan d'implémentation devra lister précisément les endroits où ajouter `AND turn_kind NOT IN ('clone_reflect','operator_reflect')` au SELECT. Scope minimum à vérifier : `lib/pipeline.js`, `api/conversations.js`, `api/metrics.js`. Tout nouveau consumer de `messages` créé après cette spec doit appliquer le filtre par défaut.
 
 ## Risques & mitigations
 
