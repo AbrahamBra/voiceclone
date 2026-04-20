@@ -239,11 +239,11 @@ export default async function handler(req, res) {
 
   clearIntelligenceCache(intellId);
 
-  // Await extraction before responding — Vercel terminates the function after res.json(),
-  // so fire-and-forget doesn't work. We accept the slower response (~15s) for reliability.
-  const { count: entitiesAdded, debug: extractDebug } = await extractGraphKnowledgeFromFile(intellId, content, client);
+  // Respond immediately — graph extraction is fire-and-forget to avoid Vercel 60s timeout
+  // on large documents. Chunks/embeddings are stored above and available for RAG.
+  res.json({ file: { path, chunk_count: chunkCount } });
 
-  res.json({ file: { path, chunk_count: chunkCount }, entities_added: entitiesAdded, _debug: extractDebug });
+  extractGraphKnowledgeFromFile(intellId, content, client).catch(() => {});
 }
 
 /**
