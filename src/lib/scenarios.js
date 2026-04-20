@@ -18,12 +18,17 @@
  *
  * @typedef {'post' | 'dm'} ScenarioKind
  *
+ * @typedef {Object} ScenarioStarter
+ * @property {string} label     Short chip label shown above the composer
+ * @property {string} template  Text pre-filled into the composer textarea on click
+ *
  * @typedef {Object} ScenarioDef
  * @property {ScenarioId} id
  * @property {ScenarioKind} kind
  * @property {string} label       Short label for UI dropdowns
  * @property {string} description Operator-facing explanation
  * @property {'post' | 'dm'} legacyKey  persona.scenarios jsonb key (pre-migration)
+ * @property {ScenarioStarter[]} [starters]  Optional pilot-only chip starters
  */
 
 // Named CANONICAL_SCENARIOS (not SCENARIOS) to avoid collision with the
@@ -71,6 +76,23 @@ export const CANONICAL_SCENARIOS = Object.freeze({
     label: "Post cas client",
     description: "Résultat concret, narration avant/après",
     legacyKey: "post",
+    starters: [
+      {
+        label: "Avant/après concret",
+        template:
+          "Cas client : [nom ou secteur]\nSituation de départ : [...]\nRésultat atteint : [...]\nDurée : [...]\nLevier clé : [...]",
+      },
+      {
+        label: "Chiffre choc",
+        template:
+          "Client : [nom ou secteur]\nRésultat chiffré : [...]\nPoint de départ : [...]\nCe qui a débloqué : [...]",
+      },
+      {
+        label: "Anecdote marquante",
+        template:
+          "Client : [nom ou secteur]\nContexte : [...]\nMoment marquant : [...]\nLeçon à en tirer : [...]",
+      },
+    ],
   },
   post_coulisse: {
     id: "post_coulisse",
@@ -85,6 +107,23 @@ export const CANONICAL_SCENARIOS = Object.freeze({
     label: "DM — 1er message",
     description: "Cold approach, accroche initiale",
     legacyKey: "dm",
+    starters: [
+      {
+        label: "Suite à un engagement",
+        template:
+          "Prospect : [nom / poste / entreprise]\nA commenté ou liké : [post ou action]\nAngle d'accroche : [...]",
+      },
+      {
+        label: "Cold (Sales Nav / LI)",
+        template:
+          "Prospect : [nom / poste / entreprise]\nSource : [Sales Navigator ou recherche LI]\nSignal repéré : [trigger]\nAngle : [...]",
+      },
+      {
+        label: "Référence mutuelle",
+        template:
+          "Prospect : [nom / poste]\nConnexion commune : [nom]\nContexte : [...]\nDemande : [...]",
+      },
+    ],
   },
   DM_relance: {
     id: "DM_relance",

@@ -2,11 +2,17 @@
   // Composer hybride : paste d'un message prospect (pas de draft auto) OU
   // déclenchement du draft clone (textarea = consigne optionnelle).
   // Remplace ChatInput + l'ex-composer-toolbar.
+  import { CANONICAL_SCENARIOS } from "$lib/scenarios.js";
+
   let {
     disabled = false,
     scenarioType = null,
     onDraftNext,     // ({ consigne }) => void
   } = $props();
+
+  let starters = $derived(
+    (scenarioType && CANONICAL_SCENARIOS[scenarioType]?.starters) || []
+  );
 
   // Bloque le composer tant que l'opérateur n'a pas choisi de scénario.
   // Le scénario est le seul switch de contexte qui oriente vraiment le draft
@@ -50,6 +56,16 @@
     onDraftNext?.({ consigne });
   }
 
+  function applyStarter(/** @type {string} */ template) {
+    if (effectiveDisabled) return;
+    text = template;
+    requestAnimationFrame(() => {
+      if (!textareaEl) return;
+      textareaEl.focus();
+      autoResize();
+    });
+  }
+
   function handleKeydown(e) {
     // Cmd/Ctrl+Enter = draft la suite (action fréquente en itération)
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -70,6 +86,22 @@
       <span class="count">{chars}</span>
       <span class="sep"> · </span>
       <span class="target">cible {target.min}–{target.max}</span>
+    </div>
+  {/if}
+
+  {#if !scenarioMissing && starters.length > 0 && text.length === 0}
+    <div class="starters" role="group" aria-label="Amorces de consigne">
+      {#each starters as s (s.label)}
+        <button
+          type="button"
+          class="starter-chip mono"
+          onclick={() => applyStarter(s.template)}
+          disabled={effectiveDisabled}
+          title={s.template}
+        >
+          {s.label}
+        </button>
+      {/each}
     </div>
   {/if}
 
@@ -115,6 +147,28 @@
     color: var(--vermillon);
     padding: 2px 0;
   }
+
+  .starters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 2px 0 4px;
+  }
+  .starter-chip {
+    font-size: 11px;
+    padding: 4px 10px;
+    background: var(--paper-subtle, #f6f5f1);
+    border: 1px solid var(--rule);
+    color: var(--ink);
+    cursor: pointer;
+    transition: border-color var(--dur-fast, 120ms) var(--ease, ease),
+      background var(--dur-fast, 120ms) var(--ease, ease);
+  }
+  .starter-chip:hover:not(:disabled) {
+    border-color: var(--vermillon);
+    background: var(--paper, #fff);
+  }
+  .starter-chip:disabled { opacity: 0.5; cursor: not-allowed; }
 
   textarea {
     width: 100%;
