@@ -287,6 +287,14 @@
       <div class="fidelity-warning">Score base sur peu de donnees — precision limitee</div>
     {/if}
   </div>
+{:else if !fidelityLoading && fidelity?.can_calculate}
+  <div class="fidelity-section fidelity-empty">
+    <span class="fidelity-title">FIDELITE VOCALE</span>
+    <p>{fidelity.chunk_count} posts indexes. Lance le premier calcul pour voir le score.</p>
+    <button class="fidelity-add-posts" onclick={recalcFidelity} disabled={recalculating}>
+      {recalculating ? "Calcul en cours..." : "Calculer le score"}
+    </button>
+  </div>
 {:else if !fidelityLoading && fidelity && !fidelity.can_calculate}
   <div class="fidelity-section fidelity-empty">
     <span class="fidelity-title">FIDELITE VOCALE</span>
