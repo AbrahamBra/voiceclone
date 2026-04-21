@@ -46,11 +46,52 @@
     return ids.filter((id) => CANONICAL_SCENARIOS[id].kind === kind);
   });
 
-  let currentLabel = $derived(
-    value && CANONICAL_SCENARIOS[value]
-      ? CANONICAL_SCENARIOS[value].label
-      : "Choisir un scenario"
-  );
+  // Collapse the 4 DM_* sub-modes into a single "DM" entry in the dropdown.
+  // The sub-mode is chosen at draft time via the composer's 4 CTA buttons
+  // (DM_1st / reply / relance / closing). The picker only selects the kind.
+  // Picking "DM" sets scenario_type to DM_1st by default (harmless — the
+  // composer buttons override it on first click if the operator wants
+  // something else).
+  let displayItems = $derived.by(() => {
+    const ids = supportedIds;
+    const hasDm = ids.some((id) => CANONICAL_SCENARIOS[id].kind === "dm");
+    const postIds = ids.filter((id) => CANONICAL_SCENARIOS[id].kind === "post");
+    /** @type {{ id: string, label: string, description: string, pickValue: ScenarioId }[]} */
+    const items = postIds.map((id) => ({
+      id,
+      label: CANONICAL_SCENARIOS[id].label,
+      description: CANONICAL_SCENARIOS[id].description,
+      pickValue: id,
+    }));
+    if (hasDm) {
+      items.push({
+        id: "__dm__",
+        label: "DM",
+        description: "Conversation privée — 1er / réponse / relance / closing choisis au draft",
+        pickValue: /** @type {ScenarioId} */ ("DM_1st"),
+      });
+    }
+    return items;
+  });
+
+  let currentLabel = $derived.by(() => {
+    if (!value) return "Choisir un scenario";
+    const def = CANONICAL_SCENARIOS[value];
+    if (!def) return "Choisir un scenario";
+    // Any DM_* sub-mode shows as just "DM" in the picker trigger — the
+    // composer exposes the sub-mode granularity.
+    if (def.kind === "dm") return "DM";
+    return def.label;
+  });
+
+  // Index of the currently selected item in the flattened displayItems list.
+  let currentIndex = $derived.by(() => {
+    if (!value) return -1;
+    const def = CANONICAL_SCENARIOS[value];
+    if (!def) return -1;
+    if (def.kind === "dm") return displayItems.findIndex((it) => it.id === "__dm__");
+    return displayItems.findIndex((it) => it.id === value);
+  });
 
   // Close when clicking outside. Wired lazily so the open-click itself doesn't
   // re-close immediately.
@@ -71,8 +112,7 @@
     open = !open;
     if (open) {
       // Focus the current selection if any, else first item.
-      const idx = value ? supportedIds.indexOf(value) : 0;
-      activeIndex = idx >= 0 ? idx : 0;
+      activeIndex = currentIndex >= 0 ? currentIndex : 0;
     }
   }
 
@@ -100,7 +140,7 @@
     }
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      activeIndex = Math.min(activeIndex + 1, supportedIds.length - 1);
+      activeIndex = Math.min(activeIndex + 1, displayItems.length - 1);
       return;
     }
     if (e.key === "ArrowUp") {
@@ -115,13 +155,13 @@
     }
     if (e.key === "End") {
       e.preventDefault();
-      activeIndex = supportedIds.length - 1;
+      activeIndex = displayItems.length - 1;
       return;
     }
     if (e.key === "Enter") {
       e.preventDefault();
-      const id = supportedIds[activeIndex];
-      if (id) pick(id);
+      const item = displayItems[activeIndex];
+      if (item) pick(item.pickValue);
     }
   }
 </script>
@@ -143,7 +183,7 @@
     <span class="caret" aria-hidden="true">{open ? "▴" : "▾"}</span>
   </button>
 
-  {#if open && supportedIds.length > 0}
+  {#if open && displayItems.length > 0}
     <div
       class="panel"
       role="listbox"
@@ -152,20 +192,20 @@
       onkeydown={handleKeydown}
       tabindex="-1"
     >
-      {#each supportedIds as id, i (id)}
-        {@const def = CANONICAL_SCENARIOS[id]}
+      {#each displayItems as item, i (item.id)}
+        {@const isSelected = i === currentIndex}
         <button
           type="button"
           class="item"
           class:active={i === activeIndex}
-          class:selected={id === value}
+          class:selected={isSelected}
           role="option"
-          aria-selected={id === value}
+          aria-selected={isSelected}
           onmouseenter={() => (activeIndex = i)}
-          onclick={() => pick(id)}
+          onclick={() => pick(item.pickValue)}
         >
-          <strong>{def.label}</strong>
-          <span>{def.description}</span>
+          <strong>{item.label}</strong>
+          <span>{item.description}</span>
         </button>
       {/each}
     </div>

@@ -344,6 +344,12 @@
     // since persona jsonb wasn't restructured. currentScenarioType is what we
     // persist to conversations.scenario_type on the next insert.
     const legacy = legacyKeyFor(scenarioType);
+    // A "kind change" is post↔dm — different persona.scenarios jsonb config,
+    // different rule sets, different analytics bucket. Within the same kind
+    // (e.g. DM_1st → DM_relance) the config is identical; we let the thread
+    // continue and just update the sub-mode.
+    const kindChanged = legacy !== $currentScenario;
+
     currentScenarioType.set(scenarioType);
     currentScenario.set(legacy);
 
@@ -358,11 +364,15 @@
       keepFocus: true,
     });
 
-    // Switching scenario starts a fresh conversation — a conv is pinned to
-    // one scenario_type for learning/analytics integrity.
-    localStorage.removeItem("conv_" + personaId);
-    currentConversationId.set(null);
-    showWelcome();
+    // Kind change = fresh conversation (conv is pinned to a kind for
+    // analytics integrity). Sub-mode change inside the same kind keeps the
+    // thread — the operator naturally flows from DM_1st → DM_reply → relance
+    // → closing on the same prospect without losing history.
+    if (kindChanged) {
+      localStorage.removeItem("conv_" + personaId);
+      currentConversationId.set(null);
+      showWelcome();
+    }
   }
 
   async function handleSend(text) {
@@ -931,6 +941,7 @@
             disabled={$sending}
             scenarioType={$currentScenarioType}
             onDraftNext={handleDraftNext}
+            onSwitchScenario={handleScenarioChange}
             onAnalyzeProspect={(url) => { leadInitialUrl = url; leadOpen = true; }}
           />
         </div>

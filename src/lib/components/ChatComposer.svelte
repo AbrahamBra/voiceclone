@@ -9,7 +9,18 @@
     scenarioType = null,
     onDraftNext,          // ({ consigne }) => void
     onAnalyzeProspect,    // (url: string) => void — called when user confirms paste-detected LinkedIn URL
+    onSwitchScenario,     // (scenarioId) => Promise<void> — flip scenario_type before drafting (DM sub-mode)
   } = $props();
+
+  // DM sub-modes exposed as CTAs in the composer. Clicking one switches
+  // scenario_type (same kind = no conv reset) then drafts.
+  const DM_SUBMODES = [
+    { id: "DM_1st", label: "✨ 1er message" },
+    { id: "DM_reply", label: "✨ répondre" },
+    { id: "DM_relance", label: "✨ relancer" },
+    { id: "DM_closing", label: "✨ closer" },
+  ];
+  let isDmMode = $derived(scenarioType?.startsWith("DM") ?? false);
 
   const LINKEDIN_URL_RE = /https?:\/\/(?:www\.)?linkedin\.com\/in\/[^\s/?#]+/i;
 
@@ -102,6 +113,15 @@
     onDraftNext?.({ consigne });
   }
 
+  // DM sub-mode CTA: flip scenario_type (if different) then draft.
+  async function draftDmSubmode(subModeId) {
+    if (effectiveDisabled) return;
+    if (subModeId !== scenarioType) {
+      await onSwitchScenario?.(subModeId);
+    }
+    draftNext();
+  }
+
   function applyStarter(/** @type {string} */ template) {
     if (effectiveDisabled) return;
     text = template;
@@ -176,9 +196,28 @@
   ></textarea>
 
   <div class="actions">
-    <button class="btn-primary" type="button" onclick={draftNext} disabled={effectiveDisabled} title="Génère un clone_draft (textarea = consigne optionnelle). Cmd+Enter">
-      {ctaLabel}
-    </button>
+    {#if isDmMode}
+      <!-- 4 sub-mode CTAs replace the single adaptive button. Each click
+           switches scenario_type (same kind = no conv reset) then drafts.
+           The currently active sub-mode is visually marked. Cmd+Enter still
+           drafts in the active sub-mode. -->
+      {#each DM_SUBMODES as sub (sub.id)}
+        <button
+          class="btn-dm"
+          class:btn-dm-active={sub.id === scenarioType}
+          type="button"
+          onclick={() => draftDmSubmode(sub.id)}
+          disabled={effectiveDisabled}
+          title="{sub.label} — bascule en mode {sub.id}"
+        >
+          {sub.label}
+        </button>
+      {/each}
+    {:else}
+      <button class="btn-primary" type="button" onclick={draftNext} disabled={effectiveDisabled} title="Génère un clone_draft (textarea = consigne optionnelle). Cmd+Enter">
+        {ctaLabel}
+      </button>
+    {/if}
   </div>
 </div>
 
@@ -288,4 +327,35 @@
   }
   .btn-primary:hover { opacity: 0.9; }
   .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* DM sub-mode CTAs. Row of 4 compact buttons. Active sub-mode is filled
+     vermillon to signal "this is what will fire on Cmd+Enter", inactive ones
+     are outlined but still clickable (one click = switch + draft). */
+  .actions { flex-wrap: wrap; }
+  .btn-dm {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 6px 10px;
+    cursor: pointer;
+    border: 1px solid var(--rule-strong);
+    background: var(--paper);
+    color: var(--ink-70);
+    transition: border-color var(--dur-fast, 120ms) var(--ease, ease),
+      background var(--dur-fast, 120ms) var(--ease, ease),
+      color var(--dur-fast, 120ms) var(--ease, ease);
+  }
+  .btn-dm:hover:not(:disabled) {
+    border-color: var(--vermillon);
+    color: var(--ink);
+  }
+  .btn-dm-active {
+    background: var(--vermillon);
+    color: var(--paper);
+    border-color: var(--vermillon);
+  }
+  .btn-dm-active:hover:not(:disabled) {
+    color: var(--paper);
+    opacity: 0.9;
+  }
+  .btn-dm:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
