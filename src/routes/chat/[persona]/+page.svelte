@@ -47,6 +47,7 @@
   let pendingProspectName = $state(null); // set on lead scrape; auto-PATCHed once conv exists
   let showCommandPalette = $state(false);
   let switcherOpen = $state(false);
+  let pendingScenarioType = $state(/** @type {string|null} */(null));
 
   // Populate personas list for the inline clone switcher (top-bar dropdown).
   // triage=true attache last_message_at → point de triage par clone dans le menu.
@@ -339,22 +340,27 @@
     if (!scenarioType || !isScenarioId(scenarioType)) return;
     if (scenarioType === $currentScenarioType) return;
 
-    // Sprint 0.b dual-write : both stores stay in sync. The legacy store keeps
-    // driving persona.scenarios jsonb lookups (welcome, scenario file path)
-    // since persona jsonb wasn't restructured. currentScenarioType is what we
-    // persist to conversations.scenario_type on the next insert.
+    // Kind change = post↔dm, forces a new thread (different rule set, analytics
+    // bucket). If the user has an active conversation, ask before wiping it —
+    // the conv is persisted server-side but disappears from the current view
+    // and comes back as a surprise via the sidebar.
     const legacy = legacyKeyFor(scenarioType);
-    // A "kind change" is post↔dm — different persona.scenarios jsonb config,
-    // different rule sets, different analytics bucket. Within the same kind
-    // (e.g. DM_1st → DM_relance) the config is identical; we let the thread
-    // continue and just update the sub-mode.
+    const kindChanged = legacy !== $currentScenario;
+    if (kindChanged && $currentConversationId) {
+      pendingScenarioType = scenarioType;
+      return;
+    }
+
+    await applyScenarioChange(scenarioType);
+  }
+
+  async function applyScenarioChange(scenarioType) {
+    const legacy = legacyKeyFor(scenarioType);
     const kindChanged = legacy !== $currentScenario;
 
     currentScenarioType.set(scenarioType);
     currentScenario.set(legacy);
 
-    // Update URL so refresh / share preserves the choice. Replace state to
-    // avoid polluting browser history with every scenario flip.
     const url = new URL(window.location.href);
     url.searchParams.set("scenario_type", scenarioType);
     url.searchParams.set("scenario", legacy);
@@ -364,15 +370,22 @@
       keepFocus: true,
     });
 
-    // Kind change = fresh conversation (conv is pinned to a kind for
-    // analytics integrity). Sub-mode change inside the same kind keeps the
-    // thread — the operator naturally flows from DM_1st → DM_reply → relance
-    // → closing on the same prospect without losing history.
     if (kindChanged) {
       localStorage.removeItem("conv_" + personaId);
       currentConversationId.set(null);
       showWelcome();
     }
+  }
+
+  async function confirmScenarioSwitch() {
+    if (!pendingScenarioType) return;
+    const target = pendingScenarioType;
+    pendingScenarioType = null;
+    await applyScenarioChange(target);
+  }
+
+  function cancelScenarioSwitch() {
+    pendingScenarioType = null;
   }
 
   async function handleSend(text) {
@@ -989,6 +1002,22 @@
       onclose={() => (showCommandPalette = false)}
     />
   {/if}
+
+  {#if pendingScenarioType}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="scenario-confirm-backdrop" onclick={cancelScenarioSwitch}>
+      <div class="scenario-confirm" onclick={(e) => e.stopPropagation()}>
+        <h4>Changer de scenario ?</h4>
+        <p>Cette conversation va etre mise de cote et un nouveau thread demarrera.</p>
+        <p class="scenario-confirm-hint">Tu pourras la retrouver dans l'historique (☰ en haut a gauche).</p>
+        <div class="scenario-confirm-actions">
+          <button class="scenario-confirm-cancel" onclick={cancelScenarioSwitch}>Annuler</button>
+          <button class="scenario-confirm-ok" onclick={confirmScenarioSwitch}>Continuer</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 {/if}
 
 <style>
@@ -1101,5 +1130,72 @@
 
   @media (max-width: 480px) {
     .chat-messages { padding: 0.75rem; }
+  }
+
+  .scenario-confirm-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(20, 20, 26, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+  }
+  .scenario-confirm {
+    background: var(--paper);
+    border: 1px solid var(--rule-strong);
+    padding: 18px 20px;
+    width: 90%;
+    max-width: 420px;
+    font-family: var(--font-ui);
+    box-shadow: 0 12px 40px rgba(20, 20, 26, 0.12);
+  }
+  .scenario-confirm h4 {
+    margin: 0 0 0.5rem;
+    font-size: 0.9375rem;
+    color: var(--text);
+  }
+  .scenario-confirm p {
+    margin: 0 0 0.375rem;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+  .scenario-confirm-hint {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+  }
+  .scenario-confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+  .scenario-confirm-cancel,
+  .scenario-confirm-ok {
+    padding: 7px 14px;
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    border: 1px solid var(--rule-strong);
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+  }
+  .scenario-confirm-cancel {
+    background: transparent;
+    color: var(--ink-70);
+  }
+  .scenario-confirm-cancel:hover {
+    color: var(--ink);
+    border-color: var(--ink-40);
+  }
+  .scenario-confirm-ok {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+  .scenario-confirm-ok:hover {
+    background: var(--vermillon);
+    border-color: var(--vermillon);
   }
 </style>
