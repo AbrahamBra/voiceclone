@@ -107,23 +107,11 @@ export const CANONICAL_SCENARIOS = Object.freeze({
     label: "DM — 1er message",
     description: "Cold approach, accroche initiale",
     legacyKey: "dm",
-    starters: [
-      {
-        label: "Suite à un engagement",
-        template:
-          "Prospect : [nom / poste / entreprise]\nA commenté ou liké : [post ou action]\nAngle d'accroche : [...]",
-      },
-      {
-        label: "Cold (Sales Nav / LI)",
-        template:
-          "Prospect : [nom / poste / entreprise]\nSource : [Sales Navigator ou recherche LI]\nSignal repéré : [trigger]\nAngle : [...]",
-      },
-      {
-        label: "Référence mutuelle",
-        template:
-          "Prospect : [nom / poste]\nConnexion commune : [nom]\nContexte : [...]\nDemande : [...]",
-      },
-    ],
+    // Starters intentionally absent — the 4 DM sub-mode CTAs in the composer
+    // (1er / répondre / relancer / closer) are now the primary guidance
+    // surface for DM work. Adding cold-specific starters here would create
+    // visual asymmetry (chips present in DM_1st, empty in reply/relance) and
+    // duplicate the action affordance already exposed.
   },
   DM_relance: {
     id: "DM_relance",

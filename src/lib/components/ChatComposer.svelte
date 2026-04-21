@@ -208,6 +208,7 @@
           type="button"
           onclick={() => draftDmSubmode(sub.id)}
           disabled={effectiveDisabled}
+          aria-pressed={sub.id === scenarioType}
           title="{sub.label} — bascule en mode {sub.id}"
         >
           {sub.label}
@@ -358,4 +359,16 @@
     opacity: 0.9;
   }
   .btn-dm:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Under 480px, the 4 DM sub-mode CTAs wrap into a 2×2 grid rather than
+     flexwrapping (which leaves a visually orphaned 4th button on its own
+     row). Grid = equal widths, clean alignment on narrow screens. */
+  @media (max-width: 480px) {
+    .actions:has(.btn-dm) {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .btn-dm { width: 100%; }
+  }
 </style>
