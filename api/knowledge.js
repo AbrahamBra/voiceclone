@@ -212,23 +212,18 @@ export default async function handler(req, res) {
 
   // Tout SYNCHRONE avant res.json (Vercel tue les fire-and-forget).
   // Embeddings pour le RAG + chunks counter UI, graph extraction pour l'onglet intelligence.
-  const debug = { build: "2b4682f+", embed: null, graph: null };
   try {
     const chunks = chunkText(content);
-    const stored = await embedAndStore(supabase, chunks, intellId, "knowledge_file", path);
-    debug.embed = { ok: true, chunks: stored };
+    await embedAndStore(supabase, chunks, intellId, "knowledge_file", path);
   } catch (e) {
     console.log(JSON.stringify({ event: "embed_error", error: e.message, path }));
-    debug.embed = { ok: false, error: e.message };
   }
 
-  const graphResult = await extractGraphKnowledgeFromFile(intellId, content, client).catch((e) => {
+  await extractGraphKnowledgeFromFile(intellId, content, client).catch((e) => {
     console.log(JSON.stringify({ event: "graph_extraction_failed", error: e.message }));
-    return { count: 0, debug: `caught: ${e.message}` };
   });
-  debug.graph = graphResult;
 
-  res.json({ file: { path }, debug });
+  res.json({ file: { path } });
 
   // Keywords: fire-and-forget OK (cosmétique, pas critique)
   (async () => {
