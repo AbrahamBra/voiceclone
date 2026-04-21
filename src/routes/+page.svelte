@@ -117,9 +117,8 @@
     </div>
 
     <h1 class="headline">
-      <span>Setter augmenté par IA.</span>
-      <span>Tes DM prospects draftés en secondes.</span>
-      <span class="accent">Dans la voix que ton client <em>reconnaît</em>.</span>
+      <span>5 clients. 5 voix. Un setter.</span>
+      <span class="accent">Qui va <em>pas</em> tous les confondre à 23h.</span>
     </h1>
 
     <p class="sub">
