@@ -117,8 +117,9 @@
     </div>
 
     <h1 class="headline">
-      <span>5 clients. 5 voix. Un setter.</span>
-      <span class="accent">Qui va <em>pas</em> tous les confondre à 23h.</span>
+      <span>10 clients. 10 voix. Un setter.</span>
+      <span>Ton setter colle le DM d'un prospect.</span>
+      <span class="accent">Le draft sort dans la voix de ton <em>client</em>.</span>
     </h1>
 
     <p class="sub">
