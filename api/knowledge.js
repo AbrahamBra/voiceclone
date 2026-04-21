@@ -268,9 +268,10 @@ async function extractGraphKnowledgeFromFile(intellId, content, client) {
       ? `\n\nEntités déjà dans le graphe :\n${existingEntities.map(e => `- ${e.name} (${e.type}): ${e.description}`).join("\n")}`
       : "";
 
+    const startMs = Date.now();
     const extractPromise = anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 16384,
+      max_tokens: 4096,
       system: FILE_GRAPH_PROMPT + entityContext,
       messages: [{
         role: "user",
@@ -283,7 +284,7 @@ async function extractGraphKnowledgeFromFile(intellId, content, client) {
     ]);
 
     const raw = result.content[0].text.trim();
-    console.log(JSON.stringify({ event: "graph_extraction_raw", persona: intellId, raw_length: raw.length, stop_reason: result.stop_reason }));
+    console.log(JSON.stringify({ event: "graph_extraction_raw", persona: intellId, raw_length: raw.length, stop_reason: result.stop_reason, ms: Date.now() - startMs }));
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return { count: 0, debug: "no_json_in_response" };
 
