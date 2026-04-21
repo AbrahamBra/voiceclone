@@ -219,9 +219,12 @@
   {@const cur = fidelity.current}
   <div class="fidelity-section">
     <div class="fidelity-header">
-      <span class="fidelity-title">FIDELITE VOCALE</span>
+      <div class="fidelity-title-block">
+        <span class="fidelity-title">FIDELITE VOCALE</span>
+        <span class="fidelity-subtitle">Coherence du clone avec ton style d'ecriture LinkedIn</span>
+      </div>
       <div class="fidelity-headline">
-        <span class="fidelity-big-score">{cur.score_global}</span>
+        <span class="fidelity-big-score">{cur.score_global}<span class="fidelity-score-unit">/100</span></span>
         {#if scoreDelta != null}
           <span class="fidelity-delta" class:positive={scoreDelta > 2} class:negative={scoreDelta < -2}>
             {scoreDelta > 0 ? "+" : ""}{scoreDelta} pts
@@ -235,6 +238,7 @@
     </div>
 
     {#if cur.scores_by_theme?.length > 0}
+      <div class="fidelity-themes-label">Fidelite par theme</div>
       <div class="fidelity-themes">
         {#each cur.scores_by_theme as t}
           <div class="fidelity-theme">
@@ -284,7 +288,7 @@
     {/if}
 
     {#if cur.low_confidence}
-      <div class="fidelity-warning">Score base sur peu de donnees — precision limitee</div>
+      <div class="fidelity-warning">Precision limitee — ajoute plus de posts de reference (ideal : ≥10)</div>
     {/if}
   </div>
 {:else if !fidelityLoading && fidelity?.can_calculate}
@@ -292,7 +296,12 @@
     <span class="fidelity-title">FIDELITE VOCALE</span>
     <p>{fidelity.chunk_count} posts indexes. Lance le premier calcul pour voir le score.</p>
     <button class="fidelity-add-posts" onclick={recalcFidelity} disabled={recalculating}>
-      {recalculating ? "Calcul en cours..." : "Calculer le score"}
+      {#if recalculating}
+        <span class="fidelity-spinner" aria-hidden="true"></span>
+        Calcul en cours...
+      {:else}
+        Calculer le score
+      {/if}
     </button>
   </div>
 {:else if !fidelityLoading && fidelity && !fidelity.can_calculate}
@@ -770,8 +779,15 @@
   .fidelity-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
+    gap: 0.75rem;
     margin-bottom: 0.5rem;
+  }
+  .fidelity-title-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
   }
   .fidelity-title {
     font-size: 0.625rem;
@@ -779,6 +795,25 @@
     color: var(--text-tertiary);
     text-transform: uppercase;
     letter-spacing: 0.04em;
+  }
+  .fidelity-subtitle {
+    font-size: 0.625rem;
+    color: var(--text-tertiary);
+    line-height: 1.3;
+  }
+  .fidelity-score-unit {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    font-weight: var(--fw-regular);
+    margin-left: 0.125rem;
+  }
+  .fidelity-themes-label {
+    font-size: 0.5625rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.25rem;
   }
   .fidelity-headline {
     display: flex;
@@ -898,8 +933,24 @@
     font-size: 0.6875rem;
     cursor: pointer;
     transition: border-color 0.15s, color 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
   }
-  .fidelity-add-posts:hover { color: var(--text); border-color: var(--text-tertiary); }
+  .fidelity-add-posts:hover:not(:disabled) { color: var(--text); border-color: var(--text-tertiary); }
+  .fidelity-add-posts:disabled { opacity: 0.6; cursor: default; }
+  .fidelity-spinner {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border: 1.5px solid var(--border);
+    border-top-color: var(--text-secondary);
+    border-radius: 50%;
+    animation: fidelity-spin 0.8s linear infinite;
+  }
+  @keyframes fidelity-spin {
+    to { transform: rotate(360deg); }
+  }
   .posts-modal-backdrop {
     position: fixed;
     inset: 0;

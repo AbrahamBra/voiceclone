@@ -22,6 +22,7 @@ export function renderMarkdown(text) {
 export function getRelativeTime(dateStr) {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "a l'instant";
   if (mins < 60) return "il y a " + mins + "m";
   const hours = Math.floor(mins / 60);
   if (hours < 24) return "il y a " + hours + "h";
