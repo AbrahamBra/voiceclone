@@ -93,8 +93,8 @@
 </script>
 
 <svelte:head>
-  <title>VoiceClone — Setter augmenté par IA pour agences ghostwriting LinkedIn</title>
-  <meta name="description" content="Le setter de ton agence drafte 30× plus vite, dans la voix exacte de chaque client. Une base de connaissance par clone, un entraînement par feedback." />
+  <title>VoiceClone — Setter IA pour DM prospects + posts LinkedIn (agences ghostwriting)</title>
+  <meta name="description" content="Le setter drafte les DM prospects en secondes dans la voix de ton client. Pour les agences ghostwriting : le même cerveau drafte aussi les posts LinkedIn de tes clients, avec la même base de connaissance." />
 </svelte:head>
 
 <a href="#hero" class="skip-link">Aller au contenu</a>
@@ -118,14 +118,16 @@
 
     <h1 class="headline">
       <span>Setter augmenté par IA.</span>
-      <span>Tes drafts en secondes.</span>
+      <span>Tes DM prospects draftés en secondes.</span>
       <span class="accent">Dans la voix que ton client <em>reconnaît</em>.</span>
     </h1>
 
     <p class="sub">
       Un client = son cerveau à lui. Son style, ses tics, ses dossiers prospects.
-      Ton setter drafte <em>avec</em>, pas à côté. Chaque correction s'accumule —
-      au bout d'un mois, un nouveau setter s'aligne en trois drafts.
+      Ton setter drafte <em>avec</em>, pas à côté.
+      <br /><br />
+      Tu tiens une agence ghostwriting ? Le même cerveau drafte aussi les
+      <em>posts LinkedIn</em> de tes clients — DM et posts, une seule voix par clone.
     </p>
 
     <ul class="triptyque" aria-label="Ce que VoiceClone fait concrètement">
@@ -139,12 +141,13 @@
         </p>
       </li>
       <li class="beat">
-        <h3 class="beat-title">le draft sort vite</h3>
+        <h3 class="beat-title">DM au cœur. Posts inclus.</h3>
         <p class="beat-body">
-          DM de relance, post d'autorité, reply à un
-          prospect chaud. Ton setter donne la direction,
-          le draft arrive dans la bonne voix.
-          <strong>30 secondes, pas 30 minutes.</strong>
+          L'outil est né pour le setting DM : 1er message,
+          relance, reply, closing — ton setter drafte en
+          <strong>30 secondes au lieu de 30 minutes</strong>.
+          Pour les agences ghostwriting, active les posts
+          LinkedIn de tes clients — même cerveau, mêmes règles.
         </p>
       </li>
       <li class="beat">
