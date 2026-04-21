@@ -111,7 +111,7 @@ export default async function handler(req, res) {
 
     // Resolve intelligence source + ownership check
     const { data: delKnPersona } = await supabase
-      .from("personas").select("client_id, intelligence_source_id").eq("id", personaId).single();
+      .from("personas").select("id, client_id, intelligence_source_id").eq("id", personaId).single();
     if (!isAdmin) {
       if (!delKnPersona || delKnPersona.client_id !== client?.id) {
         res.status(403).json({ error: "Forbidden" }); return;
@@ -145,7 +145,7 @@ export default async function handler(req, res) {
     }
 
     const { data: pData } = await supabase
-      .from("personas").select("client_id, intelligence_source_id").eq("id", personaId).single();
+      .from("personas").select("id, client_id, intelligence_source_id").eq("id", personaId).single();
     if (!isAdmin && (!pData || pData.client_id !== client?.id)) {
       res.status(403).json({ error: "Forbidden" }); return;
     }
@@ -177,7 +177,7 @@ export default async function handler(req, res) {
 
   // Resolve intelligence source + ownership check
   const { data: postKnPersona } = await supabase
-    .from("personas").select("client_id, intelligence_source_id").eq("id", personaId).single();
+    .from("personas").select("id, client_id, intelligence_source_id").eq("id", personaId).single();
   if (!isAdmin) {
     if (!postKnPersona || postKnPersona.client_id !== client?.id) {
       res.status(403).json({ error: "Forbidden" }); return;
