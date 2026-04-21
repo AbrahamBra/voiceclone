@@ -44,6 +44,7 @@
   let feedbackOpen = $state(false);
   let leadOpen = $state(false);
   let leadInitialUrl = $state("");
+  let pendingProspectName = $state(null); // set on lead scrape; auto-PATCHed once conv exists
   let showCommandPalette = $state(false);
   let switcherOpen = $state(false);
 
@@ -589,7 +590,10 @@
     }
   }
 
-  function handleLeadAnalyzed(msg) {
+  function handleLeadAnalyzed(msg, prospectName) {
+    // Auto-fill dossier header: scraped profile name → prospect_name on the conv.
+    // Cleared once the conv exists and has been PATCHed (see $effect below).
+    if (prospectName) pendingProspectName = prospectName;
     handleSend(msg);
   }
 
@@ -790,6 +794,18 @@
     if (!convId) { currentConversation = null; return; }
     const conv = ($conversations || []).find(c => c.id === convId);
     if (conv) currentConversation = conv;
+  });
+
+  // Auto-fill prospect_name after a lead scrape.
+  // Runs once the conv is materialized: if it has no prospect_name yet, PATCH it.
+  // If the operator already set one, we don't overwrite — just clear the pending.
+  $effect(() => {
+    if (!pendingProspectName) return;
+    const conv = currentConversation;
+    if (!conv) return;
+    const name = pendingProspectName;
+    pendingProspectName = null;
+    if (!conv.prospect_name) handleConversationUpdate({ prospect_name: name });
   });
 
   function handleKeyboard(e) {

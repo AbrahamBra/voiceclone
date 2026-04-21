@@ -95,7 +95,7 @@
       ].filter(Boolean).join("\n\n");
 
       onClose?.();
-      onAnalyzed?.(leadMsg);
+      onAnalyzed?.(leadMsg, profile.name);
     } catch {
       status = "Erreur de connexion";
       statusError = true;
