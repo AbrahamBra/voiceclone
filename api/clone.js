@@ -400,61 +400,59 @@ ${neverDoes}
     const totalOutput = (configResult.usage?.output_tokens || 0) + (styleResult?.usage?.output_tokens || 0) + (dmResult?.usage?.output_tokens || 0);
     if (client) await logUsage(client.id, persona.id, totalInput, totalOutput);
 
-    // Respond — ontology + embeddings + entity extraction run in background
+    // Ontology — synchronous with 20s timeout (fits within 60s total budget)
+    try {
+      const ontologyResult = await Promise.race([
+        anthropic.messages.create({
+          model: "claude-haiku-4-5-20251001", max_tokens: 4096,
+          system: ONTOLOGY_PROMPT,
+          messages: [{ role: "user", content: userContent.join("\n") }],
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 20000)),
+      ]);
+      const ontRaw = ontologyResult.content[0].text.trim();
+      let depth = 0, start = -1, end = -1;
+      for (let i = 0; i < ontRaw.length; i++) {
+        if (ontRaw[i] === "{") { if (depth === 0) start = i; depth++; }
+        if (ontRaw[i] === "}") { depth--; if (depth === 0) { end = i + 1; break; } }
+      }
+      if (start !== -1) {
+        const ontology = JSON.parse(ontRaw.slice(start, end));
+        if (ontology.entities?.length > 0) {
+          const entityRows = ontology.entities.map(e => ({
+            persona_id: persona.id, name: e.name,
+            type: e.type || "concept", description: e.description || "", confidence: 1.0,
+          }));
+          const { data: inserted } = await supabase
+            .from("knowledge_entities")
+            .upsert(entityRows, { onConflict: "persona_id,name" })
+            .select("id, name");
+          if (inserted && ontology.relations?.length > 0) {
+            const entityMap = {};
+            for (const e of inserted) entityMap[e.name] = e.id;
+            const relationRows = ontology.relations
+              .filter(r => entityMap[r.from] && entityMap[r.to])
+              .map(r => ({
+                persona_id: persona.id, from_entity_id: entityMap[r.from],
+                to_entity_id: entityMap[r.to], relation_type: r.type || "uses",
+                description: r.description || "", confidence: 1.0,
+              }));
+            if (relationRows.length > 0) await supabase.from("knowledge_relations").insert(relationRows);
+          }
+          console.log(JSON.stringify({ event: "ontology_extracted", persona: persona.id, entities: inserted?.length || 0 }));
+        }
+      }
+    } catch (e) {
+      console.log(JSON.stringify({ event: "ontology_error", persona: persona.id, error: e.message }));
+    }
+
     res.json({
       ok: true,
       persona: { id: persona.id, slug: persona.slug, name: persona.name, title: persona.title, avatar: persona.avatar },
     });
 
-    // Fire-and-forget: ontology, embeddings, entity extraction
+    // Fire-and-forget: embeddings only (Vercel may freeze after res.json, embeddings are best-effort)
     (async () => {
-      // Ontology (1 attempt, no retry to save time)
-      try {
-        const ontologyResult = await Promise.race([
-          anthropic.messages.create({
-            model: "claude-haiku-4-5-20251001", max_tokens: 4096,
-            system: ONTOLOGY_PROMPT,
-            messages: [{ role: "user", content: userContent.join("\n") }],
-          }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 50000)),
-        ]);
-        const ontRaw = ontologyResult.content[0].text.trim();
-        let depth = 0, start = -1, end = -1;
-        for (let i = 0; i < ontRaw.length; i++) {
-          if (ontRaw[i] === "{") { if (depth === 0) start = i; depth++; }
-          if (ontRaw[i] === "}") { depth--; if (depth === 0) { end = i + 1; break; } }
-        }
-        if (start !== -1) {
-          const ontology = JSON.parse(ontRaw.slice(start, end));
-          if (ontology.entities?.length > 0) {
-            const entityRows = ontology.entities.map(e => ({
-              persona_id: persona.id, name: e.name,
-              type: e.type || "concept", description: e.description || "", confidence: 1.0,
-            }));
-            const { data: inserted } = await supabase
-              .from("knowledge_entities")
-              .upsert(entityRows, { onConflict: "persona_id,name" })
-              .select("id, name");
-            if (inserted && ontology.relations?.length > 0) {
-              const entityMap = {};
-              for (const e of inserted) entityMap[e.name] = e.id;
-              const relationRows = ontology.relations
-                .filter(r => entityMap[r.from] && entityMap[r.to])
-                .map(r => ({
-                  persona_id: persona.id, from_entity_id: entityMap[r.from],
-                  to_entity_id: entityMap[r.to], relation_type: r.type || "uses",
-                  description: r.description || "", confidence: 1.0,
-                }));
-              if (relationRows.length > 0) await supabase.from("knowledge_relations").insert(relationRows);
-            }
-            console.log(JSON.stringify({ event: "ontology_extracted", persona: persona.id, entities: inserted?.length || 0 }));
-          }
-        }
-      } catch (e) {
-        console.log(JSON.stringify({ event: "ontology_error", persona: persona.id, error: e.message }));
-      }
-
-      // Embeddings
       if (isEmbeddingAvailable()) {
         try {
           if (styleBody) await embedAndStore(supabase, chunkText(styleBody), persona.id, "knowledge_file", "topics/style-posts-linkedin.md");
@@ -467,17 +465,6 @@ ${neverDoes}
         } catch (e) {
           console.log(JSON.stringify({ event: "embed_error", persona: persona.id, error: e.message }));
         }
-      }
-
-      // Entity extraction
-      try {
-        const extractionPromises = [];
-        if (styleBody) extractionPromises.push(extractEntitiesFromContent(persona.id, styleBody, "topics/style-posts-linkedin.md", client));
-        if (dmBody) extractionPromises.push(extractEntitiesFromContent(persona.id, dmBody, "topics/style-conversations.md", client));
-        if (documents && documents.length > 50) extractionPromises.push(extractEntitiesFromContent(persona.id, documents, "documents/client-docs.md", client));
-        if (extractionPromises.length > 0) await Promise.all(extractionPromises);
-      } catch (e) {
-        console.log(JSON.stringify({ event: "auto_extraction_error", persona: persona.id, error: e.message }));
       }
     })();
 
