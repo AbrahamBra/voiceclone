@@ -1,3 +1,5 @@
+export const maxDuration = 90;
+
 import Anthropic from "@anthropic-ai/sdk";
 import { authenticateRequest, supabase, getApiKey, hasPersonaAccess, setCors } from "../lib/supabase.js";
 import { chunkText, embedAndStore } from "../lib/embeddings.js";
@@ -208,15 +210,22 @@ export default async function handler(req, res) {
 
   clearIntelligenceCache(intellId);
 
-  // Graph extraction SYNCHRONE (Vercel tue les fire-and-forget après res.json).
-  // C'est ce qui peuple l'onglet intelligence — sans ça, knowledge_entities reste vide.
+  // Tout SYNCHRONE avant res.json (Vercel tue les fire-and-forget).
+  // Embeddings pour le RAG + chunks counter UI, graph extraction pour l'onglet intelligence.
+  try {
+    const chunks = chunkText(content);
+    await embedAndStore(supabase, chunks, intellId, "knowledge_file", path);
+  } catch (e) {
+    console.log(JSON.stringify({ event: "embed_error", error: e.message, path }));
+  }
+
   await extractGraphKnowledgeFromFile(intellId, content, client).catch((e) => {
     console.log(JSON.stringify({ event: "graph_extraction_failed", error: e.message }));
   });
 
   res.json({ file: { path } });
 
-  // Background: keywords + embeddings (best-effort, ne bloquent pas l'intelligence tab)
+  // Keywords: fire-and-forget OK (cosmétique, pas critique)
   (async () => {
     try {
       const anthropic = new Anthropic({ apiKey: getApiKey(client) });
@@ -233,11 +242,6 @@ export default async function handler(req, res) {
       if (Array.isArray(keywords) && keywords.length > 0) {
         await supabase.from("knowledge_files").update({ keywords }).eq("persona_id", intellId).eq("path", path);
       }
-    } catch { /* skip */ }
-
-    try {
-      const chunks = chunkText(content);
-      await embedAndStore(supabase, chunks, intellId, "knowledge_file", path);
     } catch { /* skip */ }
   })();
 }
