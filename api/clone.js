@@ -403,7 +403,7 @@ ${neverDoes}
     const totalOutput = (configResult.usage?.output_tokens || 0) + (styleResult?.usage?.output_tokens || 0) + (dmResult?.usage?.output_tokens || 0);
     if (client) await logUsage(client.id, persona.id, totalInput, totalOutput);
 
-    // Ontology — synchronous, 40s timeout (budget : 30s parallèle + 40s ontologie < 90s maxDuration)
+    // Ontology — synchronous, 25s (budget serré: 30 parallèle + 25 onto + 15 doc + 10 embed = 80s)
     try {
       const ontologyResult = await Promise.race([
         anthropic.messages.create({
@@ -411,7 +411,7 @@ ${neverDoes}
           system: ONTOLOGY_PROMPT,
           messages: [{ role: "user", content: userContent.join("\n") }],
         }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 40000)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 25000)),
       ]);
       const ontRaw = ontologyResult.content[0].text.trim();
       let depth = 0, start = -1, end = -1;
@@ -449,27 +449,26 @@ ${neverDoes}
       console.log(JSON.stringify({ event: "ontology_error", persona: persona.id, error: e.message }));
     }
 
+    // Embeddings SYNCHRONES avant res.json (fire-and-forget tué par Vercel).
+    // Critique : sans ça, table `chunks` vide → fidélité vocale dit "pas assez de posts" + RAG cassé.
+    if (isEmbeddingAvailable()) {
+      try {
+        if (allPosts.length > 0) {
+          const postsText = allPosts.map(p => p.slice(0, 3000)).join("\n\n---\n\n");
+          await embedAndStore(supabase, chunkText(postsText), persona.id, "linkedin_post");
+        }
+        if (styleBody) await embedAndStore(supabase, chunkText(styleBody), persona.id, "knowledge_file", "topics/style-posts-linkedin.md");
+        if (allDocuments && allDocuments.length > 50) await embedAndStore(supabase, chunkText(allDocuments), persona.id, "document", "documents/client-docs.md");
+        console.log(JSON.stringify({ event: "chunks_embedded", persona: persona.id }));
+      } catch (e) {
+        console.log(JSON.stringify({ event: "embed_error", persona: persona.id, error: e.message }));
+      }
+    }
+
     res.json({
       ok: true,
       persona: { id: persona.id, slug: persona.slug, name: persona.name, title: persona.title, avatar: persona.avatar },
     });
-
-    // Fire-and-forget: embeddings only (Vercel may freeze after res.json, embeddings are best-effort)
-    (async () => {
-      if (isEmbeddingAvailable()) {
-        try {
-          if (styleBody) await embedAndStore(supabase, chunkText(styleBody), persona.id, "knowledge_file", "topics/style-posts-linkedin.md");
-          if (allDocuments && allDocuments.length > 50) await embedAndStore(supabase, chunkText(allDocuments), persona.id, "document", "documents/client-docs.md");
-          if (allPosts.length > 0) {
-            const postsText = allPosts.map(p => p.slice(0, 3000)).join("\n\n---\n\n");
-            await embedAndStore(supabase, chunkText(postsText), persona.id, "linkedin_post");
-          }
-          console.log(JSON.stringify({ event: "chunks_embedded", persona: persona.id }));
-        } catch (e) {
-          console.log(JSON.stringify({ event: "embed_error", persona: persona.id, error: e.message }));
-        }
-      }
-    })();
 
   } catch (err) {
     console.log(JSON.stringify({ event: "clone_error", ts: new Date().toISOString(), error: err.message }));

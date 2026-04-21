@@ -61,6 +61,17 @@
   let generatingPhase = $state(""); // "clone" | "files" | ""
   let generateStatus = $state("");
   let ingestProgress = $state({ current: 0, total: 0 });
+  let cloneStepMessage = $state("");
+  let currentFileLabel = $state("");
+
+  // Messages temporisés calés sur le timing réel mesuré de /api/clone
+  // (config+style+DM parallèle ~10-25s, ontologie ~25-45s, extraction doc ~45-60s)
+  const CLONE_STEPS = [
+    { at: 0,     msg: "Analyse du profil et des posts…" },
+    { at: 10000, msg: "Construction de la voix et du style d'écriture…" },
+    { at: 25000, msg: "Extraction des entités et relations (intelligence)…" },
+    { at: 50000, msg: "Finalisation et enregistrement…" },
+  ];
 
   // --- Scrape ---
   async function scrapeLinkedIn() {
@@ -136,8 +147,17 @@
 
     generating = true;
     generatingPhase = "clone";
-    generateStatus = "Création du clone (20-30 s)…";
+    generateStatus = "";
+    cloneStepMessage = CLONE_STEPS[0].msg;
     ingestProgress = { current: 0, total: 0 };
+
+    // Timer qui fait avancer les messages selon le temps écoulé
+    const startedAt = Date.now();
+    const stepTimer = setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      const current = [...CLONE_STEPS].reverse().find(s => elapsed >= s.at);
+      if (current) cloneStepMessage = current.msg;
+    }, 1000);
 
     // Phase 1: create the persona (no documents)
     let persona;
@@ -159,6 +179,7 @@
         has_docs: pendingFiles.filter(f => f.status === "pending").length > 0,
       });
     } catch (err) {
+      clearInterval(stepTimer);
       if (err.status === 402) {
         generateStatus = "Budget dépassé. Ajoutez votre clé API dans les paramètres.";
       } else if (err.status === 403) {
@@ -170,6 +191,7 @@
       generatingPhase = "";
       return;
     }
+    clearInterval(stepTimer);
 
     // Phase 2: absorb each queued file via /api/knowledge (sequential — each call is LLM-heavy)
     const toUpload = pendingFiles.filter(f => f.status === "pending" && f.content.trim());
@@ -188,6 +210,9 @@
         for (let j = 0; j < content.length; j += BLOCK_SIZE) blocks.push(content.slice(j, j + BLOCK_SIZE));
         for (let b = 0; b < blocks.length; b++) {
           const blockName = blocks.length > 1 ? `${f.name} (${b + 1}/${blocks.length})` : f.name;
+          currentFileLabel = blocks.length > 1
+            ? `${f.name} — bloc ${b + 1}/${blocks.length}`
+            : f.name;
           await api("/api/knowledge", {
             method: "POST",
             body: JSON.stringify({ personaId: persona.id, filename: blockName, content: blocks[b] }),
@@ -482,12 +507,15 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
             {#if generatingPhase === "clone"}
               <div class="generate-status generating-active">
                 <span class="gen-spinner" aria-hidden="true"></span>
-                <span>Analyse des données et création du clone (20–30 s)…</span>
+                <span>{cloneStepMessage}</span>
               </div>
             {:else if generatingPhase === "files"}
               <div class="generate-status generating-active">
                 <span class="gen-spinner" aria-hidden="true"></span>
-                <span>Absorption des documents {ingestProgress.current}/{ingestProgress.total}…</span>
+                <span>
+                  Absorption {ingestProgress.current}/{ingestProgress.total}
+                  {#if currentFileLabel} — {currentFileLabel}{/if}
+                </span>
               </div>
             {:else if generateStatus}
               <div class="generate-status">{generateStatus}</div>
