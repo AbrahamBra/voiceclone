@@ -6,20 +6,25 @@
   import { authHeaders } from "$lib/api.js";
   import SidePanel from "./SidePanel.svelte";
 
-  let { open = false, onClose, onAnalyzed } = $props();
+  let { open = false, initialUrl = "", onClose, onAnalyzed } = $props();
 
   let url = $state("");
   let status = $state("");
   let statusError = $state(false);
   let submitting = $state(false);
 
-  // Reset state when re-opening
+  // Reset state when re-opening. If initialUrl is provided, pre-fill and
+  // auto-trigger analyze (used by the composer's paste-detection banner).
   $effect(() => {
     if (open) {
-      url = "";
+      url = initialUrl || "";
       status = "";
       statusError = false;
       submitting = false;
+      if (initialUrl) {
+        // Defer so the panel renders before fetch starts.
+        queueMicrotask(() => { if (open && url === initialUrl) analyze(); });
+      }
     }
   });
 

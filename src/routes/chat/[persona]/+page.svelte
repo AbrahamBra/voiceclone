@@ -43,6 +43,7 @@
   let feedbackTarget = $state(null);      // bot message to correct
   let feedbackOpen = $state(false);
   let leadOpen = $state(false);
+  let leadInitialUrl = $state("");
   let showCommandPalette = $state(false);
   let switcherOpen = $state(false);
 
@@ -859,7 +860,6 @@
       currentConvId={$currentConversationId}
       onselectconversation={handleSelectConversation}
       onnewconversation={handleNewConversation}
-      onanalyseprospect={() => { leadOpen = true; sidebarOpen = false; }}
       open={sidebarOpen}
     />
 
@@ -915,6 +915,7 @@
             disabled={$sending}
             scenarioType={$currentScenarioType}
             onDraftNext={handleDraftNext}
+            onAnalyzeProspect={(url) => { leadInitialUrl = url; leadOpen = true; }}
           />
         </div>
 
@@ -943,13 +944,20 @@
 
   <LeadPanel
     open={leadOpen}
-    onClose={() => leadOpen = false}
+    initialUrl={leadInitialUrl}
+    onClose={() => { leadOpen = false; leadInitialUrl = ""; }}
     onAnalyzed={handleLeadAnalyzed}
   />
 
   {#if showCommandPalette}
     <CommandPalette
       conversations={$conversations}
+      commands={[
+        { id: "new-conv", label: "Nouvelle conversation", hint: "⌘N", action: handleNewConversation },
+        { id: "analyse-prospect", label: "Analyser un prospect", hint: "URL LinkedIn", action: () => { leadInitialUrl = ""; leadOpen = true; } },
+        { id: "open-brain", label: "Cerveau du clone", hint: "persona", action: () => goto(`/brain/${personaId}`) },
+        { id: "switch-clone", label: "Changer de clone", hint: "⌘⇧C", action: () => { switcherOpen = true; } },
+      ]}
       onselect={(id) => { showCommandPalette = false; handleSelectConversation(id); }}
       onclose={() => (showCommandPalette = false)}
     />

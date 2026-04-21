@@ -77,35 +77,33 @@
 <aside class="feedback-rail" aria-label="Journal feedback">
   <header class="rail-head mono">feedback</header>
 
-  <div class="rules-pill">
-    <button
-      class="pill-btn mono"
-      aria-expanded={rulesExpanded}
-      onclick={() => rulesExpanded = !rulesExpanded}
-    >
-      ● règles actives ({activeRules.length})
-      <span class="caret">{rulesExpanded ? "▾" : "▸"}</span>
-    </button>
-    {#if rulesExpanded}
-      <ul class="rules-list">
-        {#each activeRules as rule (rule.id)}
-          <li class="rule-item">
-            <span class="rule-name">{rule.name}</span>
-            {#if rule.count > 0}<span class="rule-count">{rule.count}×</span>{/if}
-          </li>
-        {:else}
-          <li class="rule-empty">aucune règle activée</li>
-        {/each}
-      </ul>
-    {/if}
-  </div>
+  {#if activeRules.length > 0}
+    <div class="rules-pill">
+      <button
+        class="pill-btn mono"
+        aria-expanded={rulesExpanded}
+        onclick={() => rulesExpanded = !rulesExpanded}
+      >
+        ● règles actives ({activeRules.length})
+        <span class="caret">{rulesExpanded ? "▾" : "▸"}</span>
+      </button>
+      {#if rulesExpanded}
+        <ul class="rules-list">
+          {#each activeRules as rule (rule.id)}
+            <li class="rule-item">
+              <span class="rule-name">{rule.name}</span>
+              {#if rule.count > 0}<span class="rule-count">{rule.count}×</span>{/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
+  {/if}
 
   <div class="rail-body">
     {#if loading && events.length === 0}
       <p class="rail-empty">chargement…</p>
-    {:else if events.length === 0}
-      <p class="rail-empty">aucune correction / validation encore</p>
-    {:else}
+    {:else if events.length > 0}
       <ul class="event-list">
         {#each events as ev (ev.id)}
           <li class="event" class:event-excellent={ev.event_type === "excellent"} class:event-client-validated={ev.event_type === "client_validated"}>

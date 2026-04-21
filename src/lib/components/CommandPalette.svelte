@@ -2,19 +2,28 @@
   import { fly } from "svelte/transition";
   import { tick } from "svelte";
 
-  let { conversations, onselect, onclose } = $props();
+  let { conversations, commands = [], onselect, onclose } = $props();
 
   let query = $state("");
   let selectedIndex = $state(0);
   let inputEl = $state(undefined);
 
-  let filtered = $derived(
-    query.trim()
-      ? conversations.filter((c) =>
-          (c.title || "Sans titre").toLowerCase().includes(query.toLowerCase())
-        )
-      : conversations
-  );
+  // Flat list of items (commands first, then conversations) with a _type tag so
+  // Enter can route to the correct handler.
+  let items = $derived.by(() => {
+    const q = query.trim().toLowerCase();
+    const matchCmd = commands.filter((c) =>
+      !q || c.label.toLowerCase().includes(q) || (c.hint || "").toLowerCase().includes(q)
+    );
+    const matchConv = conversations.filter((c) =>
+      !q || (c.title || "Sans titre").toLowerCase().includes(q)
+    );
+    return [
+      ...matchCmd.map((c) => ({ ...c, _type: "command" })),
+      ...matchConv.map((c) => ({ ...c, _type: "conversation" })),
+    ];
+  });
+  let filtered = $derived(items); // legacy alias used below
 
   // Reset selection when filter changes
   $effect(() => {
@@ -40,10 +49,19 @@
       selectedIndex = Math.max(selectedIndex - 1, 0);
     } else if (e.key === "Enter" && filtered.length > 0) {
       e.preventDefault();
-      onselect(filtered[selectedIndex].id);
+      activate(filtered[selectedIndex]);
     } else if (e.key === "Escape") {
       e.preventDefault();
       onclose();
+    }
+  }
+
+  function activate(item) {
+    if (item._type === "command") {
+      item.action?.();
+      onclose?.();
+    } else {
+      onselect(item.id);
     }
   }
 
@@ -77,17 +95,25 @@
       {#if filtered.length === 0}
         <div class="empty mono">aucun résultat</div>
       {:else}
-        {#each filtered as conv, i (conv.id)}
+        {#each filtered as item, i (item._type + ":" + item.id)}
           <button
             class="result-item"
             class:selected={i === selectedIndex}
-            onclick={() => onselect(conv.id)}
+            class:result-command={item._type === "command"}
+            onclick={() => activate(item)}
             onmouseenter={() => (selectedIndex = i)}
           >
             <span class="result-caret mono" aria-hidden="true">{i === selectedIndex ? "›" : " "}</span>
-            <span class="result-title">{conv.title || "Sans titre"}</span>
-            {#if conv.last_message_at}
-              <span class="result-date mono">{fmtDate(conv.last_message_at)}</span>
+            {#if item._type === "command"}
+              <span class="result-title">{item.label}</span>
+              {#if item.hint}
+                <span class="result-date mono">{item.hint}</span>
+              {/if}
+            {:else}
+              <span class="result-title">{item.title || "Sans titre"}</span>
+              {#if item.last_message_at}
+                <span class="result-date mono">{fmtDate(item.last_message_at)}</span>
+              {/if}
             {/if}
           </button>
         {/each}
@@ -223,6 +249,13 @@
     background: var(--paper-subtle);
     border-left-color: var(--vermillon);
   }
+
+  .result-item.result-command .result-title {
+    font-family: var(--font-mono);
+    font-size: var(--fs-small);
+    color: var(--ink);
+  }
+  .result-item.result-command .result-date { color: var(--vermillon); }
 
   .result-caret {
     color: var(--vermillon);

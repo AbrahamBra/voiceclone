@@ -66,7 +66,7 @@
       />
     {:else}
       <button class="field-display name" onclick={() => editingField = "name"}>
-        {localName || "prospect sans nom"}
+        {localName || "+ nom"}
       </button>
     {/if}
 
@@ -116,12 +116,14 @@
       </button>
     {/if}
 
-    {#if onToggleRail}
-      <button class="fb-count-btn mono" type="button" onclick={onToggleRail} title="Voir journal feedback">
-        {feedbackCount} correction{feedbackCount === 1 ? "" : "s"} ▸
-      </button>
-    {:else}
-      <span class="fb-count">{feedbackCount} correction{feedbackCount === 1 ? "" : "s"}</span>
+    {#if feedbackCount > 0}
+      {#if onToggleRail}
+        <button class="fb-count-btn mono" type="button" onclick={onToggleRail} title="Voir journal feedback">
+          {feedbackCount} correction{feedbackCount === 1 ? "" : "s"} ▸
+        </button>
+      {:else}
+        <span class="fb-count">{feedbackCount} correction{feedbackCount === 1 ? "" : "s"}</span>
+      {/if}
     {/if}
   </div>
 </header>
