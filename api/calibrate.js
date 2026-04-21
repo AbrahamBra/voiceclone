@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { authenticateRequest, supabase, getApiKey, setCors } from "../lib/supabase.js";
-import { getPersonaFromDb, clearCache } from "../lib/knowledge-db.js";
+import { getPersonaFromDb, getCorrectionsFromDb, clearCache } from "../lib/knowledge-db.js";
 import { buildSystemPrompt } from "../lib/prompt.js";
 
 const DEFAULT_MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514";
@@ -44,7 +44,17 @@ export default async function handler(req, res) {
     const persona = await getPersonaFromDb(personaId);
     if (!persona) { res.status(404).json({ error: "Persona not found" }); return; }
 
-    const { prompt: systemPrompt } = buildSystemPrompt({ persona });
+    // Inject accumulated corrections so calibration reflects the real clone
+    // state (same prompt shape as /api/chat, minus knowledge/scenario/ontology
+    // which are query-dependent and irrelevant for generic calibration contexts).
+    const corrections = await getCorrectionsFromDb(personaId);
+    const { prompt: systemPrompt } = buildSystemPrompt({
+      persona,
+      knowledgeMatches: [],
+      scenarioContent: null,
+      corrections,
+      ontology: { entities: [], relations: [] },
+    });
     const apiKey = getApiKey(client);
     const anthropic = new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY });
 
