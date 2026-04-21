@@ -11,8 +11,8 @@
   import { goto } from "$app/navigation";
   import { accessCode, sessionToken, isAdmin } from "$lib/stores/auth.js";
 
-  // TODO swap par ton lien Cal.com / Typeform / WhatsApp quand tu l'as.
-  const DEMO_CTA_HREF = "mailto:a.brakha@challengerslab.com?subject=Demo%20VoiceClone";
+  // TODO swap par ton lien Typeform / Tally / form waitlist quand tu l'as.
+  const DEMO_CTA_HREF = "mailto:a.brakha@challengerslab.com?subject=Waitlist%20VoiceClone%20(20%20premiers%20clients)";
   // TODO remplacer par le chiffre réel d'un client pilote une fois mesuré.
   const PILOT_RULES_COUNT = 147;
 
@@ -107,7 +107,7 @@
       <span class="brand-mark">◎</span>
       <span class="brand-name">VoiceClone</span>
     </div>
-    <a class="top-cta" href={DEMO_CTA_HREF}>réserver 20 min →</a>
+    <a class="top-cta" href={DEMO_CTA_HREF}>liste d'attente →</a>
   </header>
 
   <!-- ═══════ Écran 1 — Hero ═══════ -->
@@ -162,8 +162,9 @@
 
     <div class="hero-cta">
       <a class="btn-primary" href={DEMO_CTA_HREF}>
-        → Réserve 20 min. Je te montre sur un de tes clients.
+        → Rejoindre la liste d'attente. 20 premiers clients.
       </a>
+      <p class="cta-sub mono">on t'ouvre l'accès + 20 min pour te brancher sur un de tes clients.</p>
     </div>
   </section>
 
@@ -270,8 +271,9 @@
 
     <div class="moat-cta">
       <a class="btn-primary" href={DEMO_CTA_HREF}>
-        → Réserve 20 min.
+        → Rejoindre la liste d'attente.
       </a>
+      <p class="cta-sub mono">20 premiers clients. On calibre avec toi.</p>
     </div>
   </section>
 
@@ -493,7 +495,24 @@
     padding: 1px 6px;
   }
 
-  .hero-cta { display: flex; }
+  .hero-cta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .cta-sub {
+    font-size: 11.5px;
+    color: var(--ink-40);
+    margin: 0;
+    letter-spacing: 0.02em;
+  }
+  .moat-cta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
 
   /* ────────────────────────────────────────────────────────────
      Écran 2 — Preuve
