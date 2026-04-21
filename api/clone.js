@@ -451,18 +451,34 @@ ${neverDoes}
 
     // Embeddings SYNCHRONES avant res.json (fire-and-forget tué par Vercel).
     // Critique : sans ça, table `chunks` vide → fidélité vocale dit "pas assez de posts" + RAG cassé.
+    // Un try/catch par source_type : un échec sur les posts ne doit pas bloquer style/document.
     if (isEmbeddingAvailable()) {
-      try {
-        if (allPosts.length > 0) {
-          const postsText = allPosts.map(p => p.slice(0, 3000)).join("\n\n---\n\n");
-          await embedAndStore(supabase, chunkText(postsText), persona.id, "linkedin_post");
+      if (allPosts.length > 0) {
+        // 1 post = 1 chunk (unité sémantique pour la fidélité vocale k-means).
+        const postChunks = allPosts.map(p => p.slice(0, 3000).trim()).filter(p => p.length > 30);
+        if (postChunks.length > 0) {
+          try {
+            await embedAndStore(supabase, postChunks, persona.id, "linkedin_post");
+          } catch (e) {
+            console.log(JSON.stringify({ event: "embed_error", persona: persona.id, source_type: "linkedin_post", count: postChunks.length, error: e.message }));
+          }
         }
-        if (styleBody) await embedAndStore(supabase, chunkText(styleBody), persona.id, "knowledge_file", "topics/style-posts-linkedin.md");
-        if (allDocuments && allDocuments.length > 50) await embedAndStore(supabase, chunkText(allDocuments), persona.id, "document", "documents/client-docs.md");
-        console.log(JSON.stringify({ event: "chunks_embedded", persona: persona.id }));
-      } catch (e) {
-        console.log(JSON.stringify({ event: "embed_error", persona: persona.id, error: e.message }));
       }
+      if (styleBody) {
+        try {
+          await embedAndStore(supabase, chunkText(styleBody), persona.id, "knowledge_file", "topics/style-posts-linkedin.md");
+        } catch (e) {
+          console.log(JSON.stringify({ event: "embed_error", persona: persona.id, source_type: "knowledge_file", error: e.message }));
+        }
+      }
+      if (allDocuments && allDocuments.length > 50) {
+        try {
+          await embedAndStore(supabase, chunkText(allDocuments), persona.id, "document", "documents/client-docs.md");
+        } catch (e) {
+          console.log(JSON.stringify({ event: "embed_error", persona: persona.id, source_type: "document", error: e.message }));
+        }
+      }
+      console.log(JSON.stringify({ event: "chunks_embedded", persona: persona.id }));
     }
 
     res.json({
