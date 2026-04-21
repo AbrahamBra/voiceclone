@@ -393,6 +393,9 @@ ${neverDoes}
         keywords: ["document", "doc", "methode", "offre", "service", "client"],
         content: documents, source_type: "document",
       }).catch(() => {});
+      // Extraction d'entités dédiée sur le doc (ontologie globale ne voit que 20K tronqués)
+      await extractEntitiesFromContent(persona.id, documents, "documents/client-docs.md", client)
+        .catch(e => console.log(JSON.stringify({ event: "doc_graph_error", persona: persona.id, error: e.message })));
     }
 
     // Log usage
@@ -400,7 +403,7 @@ ${neverDoes}
     const totalOutput = (configResult.usage?.output_tokens || 0) + (styleResult?.usage?.output_tokens || 0) + (dmResult?.usage?.output_tokens || 0);
     if (client) await logUsage(client.id, persona.id, totalInput, totalOutput);
 
-    // Ontology — synchronous with 20s timeout (fits within 60s total budget)
+    // Ontology — synchronous, 40s timeout (budget : 30s parallèle + 40s ontologie < 90s maxDuration)
     try {
       const ontologyResult = await Promise.race([
         anthropic.messages.create({
@@ -408,7 +411,7 @@ ${neverDoes}
           system: ONTOLOGY_PROMPT,
           messages: [{ role: "user", content: userContent.join("\n") }],
         }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 20000)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 40000)),
       ]);
       const ontRaw = ontologyResult.content[0].text.trim();
       let depth = 0, start = -1, end = -1;

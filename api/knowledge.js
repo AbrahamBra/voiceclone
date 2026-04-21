@@ -207,9 +207,16 @@ export default async function handler(req, res) {
   }
 
   clearIntelligenceCache(intellId);
+
+  // Graph extraction SYNCHRONE (Vercel tue les fire-and-forget après res.json).
+  // C'est ce qui peuple l'onglet intelligence — sans ça, knowledge_entities reste vide.
+  await extractGraphKnowledgeFromFile(intellId, content, client).catch((e) => {
+    console.log(JSON.stringify({ event: "graph_extraction_failed", error: e.message }));
+  });
+
   res.json({ file: { path } });
 
-  // Background: keywords, embeddings, graph extraction (may not complete on Vercel hobby)
+  // Background: keywords + embeddings (best-effort, ne bloquent pas l'intelligence tab)
   (async () => {
     try {
       const anthropic = new Anthropic({ apiKey: getApiKey(client) });
@@ -232,8 +239,6 @@ export default async function handler(req, res) {
       const chunks = chunkText(content);
       await embedAndStore(supabase, chunks, intellId, "knowledge_file", path);
     } catch { /* skip */ }
-
-    await extractGraphKnowledgeFromFile(intellId, content, client).catch(() => {});
   })();
 }
 
@@ -270,7 +275,7 @@ async function extractGraphKnowledgeFromFile(intellId, content, client) {
     });
     const result = await Promise.race([
       extractPromise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 50000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 45000)),
     ]);
 
     const raw = result.content[0].text.trim();
