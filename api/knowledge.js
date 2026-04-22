@@ -322,12 +322,12 @@ async function extractGraphKnowledgeFromFile(intellId, content, client) {
       tool_choice: { type: "tool", name: "extract_graph" },
       messages: [{
         role: "user",
-        content: `Document :\n${content.slice(0, 100000)}`,
+        content: `Document :\n${content.slice(0, 40000)}`,
       }],
     });
     const result = await Promise.race([
       extractPromise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 60000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 75000)),
     ]);
 
     const toolUse = result.content.find((b) => b.type === "tool_use" && b.name === "extract_graph");
