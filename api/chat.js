@@ -127,8 +127,16 @@ export default async function handler(req, res) {
       // Sprint 0.b : persist canonical scenario_type alongside the legacy
       // scenario text. Nullable — omitted when no valid canonical was sent.
       if (scenarioType) insertData.scenario_type = scenarioType;
-      const { data: newConv } = await supabase
+      const { data: newConv, error: convInsErr } = await supabase
         .from("conversations").insert(insertData).select("id").single();
+      if (convInsErr) {
+        console.log(JSON.stringify({
+          event: "persist_error", ts: new Date().toISOString(),
+          stage: "conversation_insert",
+          error: convInsErr.message, code: convInsErr.code,
+          details: convInsErr.details, hint: convInsErr.hint,
+        }));
+      }
       convId = newConv?.id || null;
     }
 
@@ -387,7 +395,7 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
     if (convId && supabase) {
       const botText = result.text || "";
       try {
-        const [inserted] = await Promise.all([
+        const [inserted, updLast, updTitle] = await Promise.all([
           supabase.from("messages").insert([
             { conversation_id: convId, role: "user", content: message },
             { conversation_id: convId, role: "assistant", content: botText, turn_kind: "clone_draft" },
@@ -397,6 +405,43 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
             .update({ title: extractConvTitle(message, scenario) })
             .eq("id", convId).is("title", null),
         ]);
+        if (inserted?.error) {
+          console.log(JSON.stringify({
+            event: "persist_error", ts: new Date().toISOString(),
+            conversation_id: convId, stage: "messages_insert",
+            error: inserted.error.message, code: inserted.error.code,
+            details: inserted.error.details, hint: inserted.error.hint,
+          }));
+          sse("persist_error", { stage: "messages_insert", message: inserted.error.message || "Unknown" });
+        }
+        if (updLast?.error) {
+          console.log(JSON.stringify({
+            event: "persist_error", ts: new Date().toISOString(),
+            conversation_id: convId, stage: "conv_last_message_update",
+            error: updLast.error.message, code: updLast.error.code,
+          }));
+        }
+        if (updTitle?.error) {
+          console.log(JSON.stringify({
+            event: "persist_error", ts: new Date().toISOString(),
+            conversation_id: convId, stage: "conv_title_update",
+            error: updTitle.error.message, code: updTitle.error.code,
+          }));
+        }
+        // Bug #1 — emit the real DB message IDs so the front can rebind its
+        // temporary client-generated UUIDs. Without this, PATCH /api/messages
+        // and POST /api/feedback-events (FK on message_id) 404/500 silently
+        // and the FeedbackRail stays empty after "c'est ça".
+        if (inserted?.data && !inserted?.error) {
+          const dbUser = inserted.data.find((m) => m.role === "user");
+          const dbBot = inserted.data.find((m) => m.role === "assistant");
+          if (dbUser || dbBot) {
+            sse("ids", {
+              user_message_id: dbUser?.id || null,
+              bot_message_id: dbBot?.id || null,
+            });
+          }
+        }
         // Shadow: log prospect heat for the user/prospect message.
         // Non-blocking. Noise from test-prompts filtered later via business_outcomes join.
         const userMsg = inserted?.data?.find(m => m.role === "user");
