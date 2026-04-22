@@ -204,9 +204,10 @@
     resetSessionTotals();
   });
 
-  $effect(() => {
-    if (!loading && personaId) refreshFidelity();
-  });
+  // Events feedback pré-chargés pendant init() pour éviter que FeedbackRail
+  // n'attende la fin de loadConversation avant de lancer son fetch. Format :
+  // { convId, events } — FeedbackRail n'utilise le cache que si convId match.
+  let preloadedFeedbackEvents = $state(/** @type {{convId:string,events:any[]}|null} */ (null));
 
   // Scroll to bottom when messages change
   $effect(() => {
@@ -244,40 +245,61 @@
     // Si le clone n'existe plus, pickPersona() côté landing nettoie l'id.
     try { localStorage.setItem("vc_last_persona", pid); } catch {}
 
+    // Score fidelity : fire-and-forget pendant init() (au lieu d'attendre
+    // loading=false via $effect, ce qui ajoutait ~1s de décalage). Le state
+    // `fidelity`/`collapseIdx` se met à jour quand le fetch revient.
+    refreshFidelity();
+
+    // Reprise de fil : d'abord le pointeur localStorage (dernière conv
+    // consultée sur CE device), sinon fallback sur la conv la plus récente
+    // de l'historique DB. Évite le "j'ai plus rien en revenant" quand le
+    // localStorage a été perdu (autre device, nettoyage navigateur, logout).
+    // Comme on connaît savedConvId avant tout fetch, on peut lancer config +
+    // liste + conv-by-id + feedback-events en parallèle (au lieu de 3+
+    // round-trips séquentiels).
+    const savedConvId = localStorage.getItem("conv_" + pid);
+    const needsConfig = !$personaConfig || $personaConfig.id !== pid;
+
     try {
-      // Load config if not already loaded
-      if (!$personaConfig || $personaConfig.id !== pid) {
-        const resp = await fetch(`/api/config?persona=${pid}`, {
-          headers: authHeaders(),
-        });
-        if (!resp.ok) throw new Error("Failed to load config");
-        const config = await resp.json();
+      const [configResp, listResp, savedConvResp, savedEventsResp] = await Promise.all([
+        needsConfig
+          ? fetch(`/api/config?persona=${pid}`, { headers: authHeaders() }).catch(() => null)
+          : Promise.resolve(null),
+        fetch(`/api/conversations?persona=${pid}`, { headers: authHeaders() }).catch(() => null),
+        savedConvId
+          ? fetch(`/api/conversations?id=${savedConvId}`, { headers: authHeaders() }).catch(() => null)
+          : Promise.resolve(null),
+        savedConvId
+          ? fetch(`/api/feedback-events?conversation=${savedConvId}`, { headers: authHeaders() }).catch(() => null)
+          : Promise.resolve(null),
+      ]);
+
+      if (savedConvId && savedEventsResp && savedEventsResp.ok) {
+        try {
+          const d = await savedEventsResp.json();
+          preloadedFeedbackEvents = { convId: savedConvId, events: Array.isArray(d.events) ? d.events : [] };
+        } catch {}
+      }
+
+      if (needsConfig) {
+        if (!configResp || !configResp.ok) throw new Error("Failed to load config");
+        const config = await configResp.json();
         personaConfig.set(config);
         applyTheme(config.theme || {});
       }
 
-      // Load conversations
       let convList = [];
-      try {
-        const convResp = await fetch(`/api/conversations?persona=${pid}`, {
-          headers: authHeaders(),
-        });
-        if (convResp.ok) {
-          const d = await convResp.json();
-          convList = d.conversations || [];
-          conversations.set(convList);
-        }
-      } catch {}
+      if (listResp && listResp.ok) {
+        const d = await listResp.json();
+        convList = d.conversations || [];
+        conversations.set(convList);
+      }
 
-      // Reprise de fil : d'abord le pointeur localStorage (dernière conv
-      // consultée sur CE device), sinon fallback sur la conv la plus récente
-      // de l'historique DB. Évite le "j'ai plus rien en revenant" quand le
-      // localStorage a été perdu (autre device, nettoyage navigateur, logout).
-      const savedConvId = localStorage.getItem("conv_" + pid);
-      const fallbackConvId = convList[0]?.id || null;  // list ordered by last_message_at DESC
-      const targetConvId = savedConvId || fallbackConvId;
-      if (targetConvId) {
-        await loadConversation(targetConvId);
+      if (savedConvResp && savedConvResp.ok) {
+        const data = await savedConvResp.json();
+        await loadConversation(savedConvId, data);
+      } else if (convList[0]?.id) {
+        await loadConversation(convList[0].id);
       } else {
         showWelcome();
       }
@@ -305,16 +327,19 @@
     currentConversationId.set(null);
   }
 
-  async function loadConversation(convId) {
+  async function loadConversation(convId, preloadedData = null) {
     try {
-      const resp = await fetch(`/api/conversations?id=${convId}`, {
-        headers: authHeaders(),
-      });
-      if (!resp.ok) {
-        showWelcome();
-        return;
+      let data = preloadedData;
+      if (!data) {
+        const resp = await fetch(`/api/conversations?id=${convId}`, {
+          headers: authHeaders(),
+        });
+        if (!resp.ok) {
+          showWelcome();
+          return;
+        }
+        data = await resp.json();
       }
-      const data = await resp.json();
       const conv = data.conversation || data;
       const convMessages = conv.messages || data.messages || [];
 
@@ -345,17 +370,6 @@
         });
       }
       messages.set(msgs);
-
-      // Refresh sidebar
-      try {
-        const convResp = await fetch(`/api/conversations?persona=${personaId}`, {
-          headers: authHeaders(),
-        });
-        if (convResp.ok) {
-          const d = await convResp.json();
-          conversations.set(d.conversations || []);
-        }
-      } catch {}
     } catch {
       showWelcome();
     }
@@ -1083,6 +1097,7 @@
         <FeedbackRail
           bind:this={feedbackRailRef}
           conversationId={$currentConversationId}
+          preloadedEvents={preloadedFeedbackEvents}
           {activeRules}
           onHighlightMessage={handleHighlightMessage}
         />

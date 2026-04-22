@@ -9,6 +9,7 @@
     conversationId = null,
     activeRules = [],     // Array de { id, name, count }
     onHighlightMessage,   // (msgId) => void
+    preloadedEvents = null, // { convId, events } — hydrate sans fetch si convId match
   } = $props();
 
   let events = $state([]);
@@ -17,6 +18,10 @@
 
   $effect(() => {
     if (!conversationId) { events = []; return; }
+    if (preloadedEvents && preloadedEvents.convId === conversationId) {
+      events = preloadedEvents.events || [];
+      return;
+    }
     loadEvents();
   });
 
