@@ -6,6 +6,7 @@ import { isEmbeddingAvailable, chunkText, embedAndStore, embed } from "../lib/em
 import { kmeansSelectRepresentatives } from "../lib/fidelity.js";
 import { extractEntitiesFromContent } from "../lib/graph-extraction.js";
 import { rateLimit, getClientIp } from "./_rateLimit.js";
+import { withTimeout } from "../lib/with-timeout.js";
 
 const CLONE_SYSTEM_PROMPT = `Tu es un expert en personal branding et analyse de style d'ecriture LinkedIn.
 On te donne le profil LinkedIn d'une personne, ses posts, et optionnellement de la documentation.
@@ -187,27 +188,26 @@ export default async function handler(req, res) {
 
     // Config + style + DM in parallel (30s timeout each) — these ARE the intelligence
     const CALL_TIMEOUT = 30000;
-    const withTimeout = (p) => Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error("timeout")), CALL_TIMEOUT))]);
 
     const [configResult, styleResult, dmResult] = await Promise.all([
-      withTimeout(anthropic.messages.create({
+      withTimeout((signal) => anthropic.messages.create({
         model: MODEL, max_tokens: 2048,
         system: CLONE_SYSTEM_PROMPT,
         messages: [{ role: "user", content: userContent.join("\n") }],
-      })),
+      }, { signal }), CALL_TIMEOUT, "clone-config"),
       cloneType !== 'dm' && postsContentForStyle
-        ? withTimeout(anthropic.messages.create({
+        ? withTimeout((signal) => anthropic.messages.create({
             model: MODEL, max_tokens: 2048,
             system: STYLE_ANALYSIS_PROMPT,
             messages: [{ role: "user", content: postsContentForStyle }],
-          })).catch(() => null)
+          }, { signal }), CALL_TIMEOUT, "clone-style").catch(() => null)
         : Promise.resolve(null),
       dmsContent
-        ? withTimeout(anthropic.messages.create({
+        ? withTimeout((signal) => anthropic.messages.create({
             model: MODEL, max_tokens: 2048,
             system: DM_ANALYSIS_PROMPT,
             messages: [{ role: "user", content: dmsContent }],
-          })).catch(() => null)
+          }, { signal }), CALL_TIMEOUT, "clone-dm").catch(() => null)
         : Promise.resolve(null),
     ]);
 
@@ -405,14 +405,15 @@ ${neverDoes}
 
     // Ontology — synchronous, 25s (budget serré: 30 parallèle + 25 onto + 15 doc + 10 embed = 80s)
     try {
-      const ontologyResult = await Promise.race([
-        anthropic.messages.create({
+      const ontologyResult = await withTimeout(
+        (signal) => anthropic.messages.create({
           model: "claude-haiku-4-5-20251001", max_tokens: 4096,
           system: ONTOLOGY_PROMPT,
           messages: [{ role: "user", content: userContent.join("\n") }],
-        }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 25000)),
-      ]);
+        }, { signal }),
+        25000,
+        "clone-ontology",
+      );
       const ontRaw = ontologyResult.content[0].text.trim();
       let depth = 0, start = -1, end = -1;
       for (let i = 0; i < ontRaw.length; i++) {
