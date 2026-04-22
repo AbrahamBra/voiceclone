@@ -606,6 +606,28 @@
           userMessage: message.content,
         }),
       });
+      // Log dans le journal feedback pour qu'il apparaisse dans FeedbackRail.
+      try {
+        const resp = await fetch("/api/feedback-events", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({
+            conversation_id: $currentConversationId,
+            message_id: message.id,
+            event_type: "saved_rule",
+          }),
+        });
+        if (resp.ok) {
+          const ev = await resp.json();
+          feedbackRailRef?.appendEvent?.({
+            id: ev.id,
+            message_id: message.id,
+            event_type: "saved_rule",
+            created_at: ev.created_at,
+            rules_fired: [],
+          });
+        }
+      } catch { /* best-effort */ }
       showToast("Règle sauvegardée ✓");
     } catch {
       showToast("Erreur lors de la sauvegarde");
@@ -740,7 +762,7 @@
       api("/api/feedback", {
         method: "POST",
         body: JSON.stringify({
-          type: "validate",
+          type: "excellent",
           botMessage: message.content,
           persona: get(currentPersonaId),
         }),
@@ -988,6 +1010,32 @@
     botMessage={feedbackTarget || ""}
     onClose={() => { feedbackOpen = false; feedbackTarget = null; feedbackMessageId = null; }}
     onReplace={handleReplace}
+    onCorrected={async (correctionText) => {
+      if (!feedbackMessageId || !$currentConversationId) return;
+      try {
+        const resp = await fetch("/api/feedback-events", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({
+            conversation_id: $currentConversationId,
+            message_id: feedbackMessageId,
+            event_type: "corrected",
+            correction_text: correctionText,
+          }),
+        });
+        if (resp.ok) {
+          const ev = await resp.json();
+          feedbackRailRef?.appendEvent?.({
+            id: ev.id,
+            message_id: feedbackMessageId,
+            event_type: "corrected",
+            correction_text: correctionText,
+            created_at: ev.created_at,
+            rules_fired: [],
+          });
+        }
+      } catch { /* best-effort */ }
+    }}
   />
 
   <LeadPanel
