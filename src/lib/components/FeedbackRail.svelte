@@ -9,7 +9,9 @@
     conversationId = null,
     activeRules = [],     // Array de { id, name, count }
     onHighlightMessage,   // (msgId) => void
-    preloadedEvents = null, // { convId, events } — hydrate sans fetch si convId match
+    // Hydrate sans refetch si convId match. Accepte soit events prêts, soit
+    // une promesse in-flight que le parent a lancée en parallèle du load conv.
+    preloadedEvents = null, // { convId, events?: any[], promise?: Promise<any[]> }
   } = $props();
 
   let events = $state([]);
@@ -17,10 +19,25 @@
   let rulesExpanded = $state(false);
 
   $effect(() => {
-    if (!conversationId) { events = []; return; }
+    if (!conversationId) { events = []; loading = false; return; }
     if (preloadedEvents && preloadedEvents.convId === conversationId) {
-      events = preloadedEvents.events || [];
-      return;
+      if (Array.isArray(preloadedEvents.events)) {
+        events = preloadedEvents.events;
+        loading = false;
+        return;
+      }
+      if (preloadedEvents.promise) {
+        const expected = conversationId;
+        loading = true;
+        preloadedEvents.promise
+          .then((e) => {
+            if (conversationId !== expected) return; // superseded
+            events = Array.isArray(e) ? e : [];
+            loading = false;
+          })
+          .catch(() => { if (conversationId === expected) loading = false; });
+        return;
+      }
     }
     loadEvents();
   });

@@ -5,6 +5,7 @@
   import { api, authHeaders } from "$lib/api.js";
   import { showToast } from "$lib/stores/ui.js";
   import { groupByDate, getRelativeTime } from "$lib/utils.js";
+  import { prefetchConversation, prefetchFeedbackEvents } from "$lib/prefetchCache.js";
 
   let {
     personaId,
@@ -17,6 +18,7 @@
   let searchQuery = $state("");
   let searchResults = $state(null);
   let searchTimeout = $state(null);
+  let searchController = $state(/** @type {AbortController|null} */ (null));
 
   // Inline editing state
   let editingId = $state(null);
@@ -43,20 +45,33 @@
     }
 
     searchTimeout = setTimeout(async () => {
+      if (searchController) searchController.abort();
+      searchController = new AbortController();
       try {
         const resp = await fetch(
           `/api/conversations?search=${encodeURIComponent(query)}&persona=${personaId}`,
-          { headers: authHeaders() }
+          { headers: authHeaders(), signal: searchController.signal }
         );
         if (!resp.ok) return;
         const data = await resp.json();
         searchResults = data.results || [];
-      } catch {}
+      } catch (e) {
+        if (e?.name === "AbortError") return;
+      }
     }, 300);
   }
 
   function selectConv(id) {
     onselectconversation?.(id);
+  }
+
+  // Hover on a conv tile warms both the conv payload and its feedback events.
+  // By the time the user finishes clicking, the data is already in-flight (or
+  // resolved) — `loadConversation` reads from the cache instead of re-fetching.
+  function prefetchConv(id) {
+    if (!personaId || !id) return;
+    prefetchConversation(personaId, id);
+    prefetchFeedbackEvents(personaId, id);
   }
 
   function startEdit(conv, e) {
@@ -158,6 +173,8 @@
           role="button"
           tabindex="0"
           onclick={() => selectConv(r.conversation_id)}
+          onmouseenter={() => prefetchConv(r.conversation_id)}
+          onfocus={() => prefetchConv(r.conversation_id)}
         >
           <div class="conv-item-title">
             {r.conversation_title || "Sans titre"}
@@ -183,6 +200,8 @@
               role="button"
               tabindex="0"
               onclick={() => selectConv(conv.id)}
+              onmouseenter={() => prefetchConv(conv.id)}
+              onfocus={() => prefetchConv(conv.id)}
             >
               {#if editingId === conv.id}
                 <input
