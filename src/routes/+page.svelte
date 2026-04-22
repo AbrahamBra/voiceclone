@@ -90,6 +90,28 @@
       authLoading = false;
     }
   }
+
+  // Click "voir la démo" → log in with the public demo access code and jump
+  // straight into the demo persona cockpit. Seeded via supabase/033_demo_persona.sql.
+  let demoLoading = $state(false);
+  async function openDemo() {
+    if (demoLoading) return;
+    demoLoading = true;
+    try {
+      const resp = await fetch("/api/personas", { headers: { "x-access-code": "demo" } });
+      if (!resp.ok) throw new Error("demo unavailable");
+      const data = await resp.json();
+      accessCode.set("demo");
+      if (data.session?.token) sessionToken.set(data.session.token);
+      isAdmin.set(!!data.isAdmin);
+      const target = pickPersona(data.personas);
+      if (target) goto(`/chat/${target.id}`);
+      else throw new Error("no demo persona");
+    } catch {
+      demoLoading = false;
+      // Silent fail → fall back to waitlist CTA next to this button.
+    }
+  }
 </script>
 
 <svelte:head>
@@ -165,6 +187,9 @@
         → Rejoindre la liste d'attente. 20 premiers clients.
       </a>
       <p class="cta-sub mono">on t'ouvre l'accès + 20 min pour te brancher sur un de tes clients.</p>
+      <button type="button" class="demo-link mono" onclick={openDemo} disabled={demoLoading}>
+        {demoLoading ? "chargement…" : "ou fouiller dans la démo →"}
+      </button>
     </div>
   </section>
 
@@ -508,6 +533,25 @@
     margin: 0;
     letter-spacing: 0.02em;
   }
+  .demo-link {
+    margin-top: 4px;
+    padding: 4px 0;
+    background: none;
+    border: none;
+    border-bottom: 1px dashed var(--ink-40);
+    color: var(--ink-70);
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    align-self: flex-start;
+    transition: color var(--dur-fast, 120ms) var(--ease, ease),
+                border-color var(--dur-fast, 120ms) var(--ease, ease);
+  }
+  .demo-link:hover:not(:disabled) {
+    color: var(--vermillon);
+    border-bottom-color: var(--vermillon);
+  }
+  .demo-link:disabled { opacity: 0.5; cursor: wait; }
   .moat-cta {
     display: flex;
     flex-direction: column;
