@@ -10,25 +10,13 @@ Retourne UNIQUEMENT un tableau JSON de strings, sans aucun autre texte ni balise
 Exemple: ["stratégie", "linkedin", "contenu", "audience", "engagement"]`;
 
 const FILE_GRAPH_PROMPT = `Tu es un expert en extraction de connaissances business.
-Analyse ce document et extrais toutes les entités et relations NOUVELLES pour enrichir la connaissance d'un clone IA en appelant l'outil extract_graph.
+Analyse ce document et extrais les entités et relations NOUVELLES pour enrichir la connaissance d'un clone IA en appelant l'outil extract_graph.
 
-IMPORTANT : Un graphe d'entités existe déjà. Tu DOIS chercher ce qui est NOUVEAU ou COMPLÉMENTAIRE :
-- Nouveaux segments d'audience, personas, ICPs, noms de personnes
-- Nouvelles objections, pain points, motivations d'achat
-- Nouveaux canaux, outils, métriques, chiffres clés
-- Nouvelles croyances, principes business, frameworks
-- Entreprises, partenaires, concurrents pas encore dans le graphe
-- Entités existantes dont la description peut être enrichie
+Un graphe d'entités peut déjà exister. Cherche uniquement ce qui est NOUVEAU ou COMPLÉMENTAIRE.
 
-Concentre-toi sur :
-1. Entreprises et organisations (clients, prospects, concurrents, partenaires)
-2. Personas et cibles (ICP, segments, décideurs, utilisateurs)
-3. Positionnement et proposition de valeur
-4. Concepts métier, frameworks, méthodologies propres au domaine
-5. Métriques et objectifs clés
-6. Croyances et principes (ce que la personne croit fermement)
+Types à privilégier : entreprises, personas/ICPs, concepts métier, frameworks, métriques clés, croyances fortes, outils.
 
-Sois EXHAUSTIF. Extrais au minimum 10 entités de tout document non-trivial. Ne retourne has_graph_update: false que si le document est réellement vide ou sans aucune information exploitable.`;
+Reste concis. Descriptions courtes (une phrase). Si le document est vide ou sans info exploitable, retourne has_graph_update: false.`;
 
 const ENTITY_TYPES = ["concept", "framework", "person", "company", "metric", "belief", "tool", "style_rule"];
 const RELATION_TYPES = ["equals", "includes", "contradicts", "causes", "uses", "prerequisite", "enforces"];
@@ -316,18 +304,18 @@ async function extractGraphKnowledgeFromFile(intellId, content, client) {
     const startMs = Date.now();
     const extractPromise = anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 8192,
+      max_tokens: 4096,
       system: FILE_GRAPH_PROMPT + entityContext,
       tools: [GRAPH_EXTRACTION_TOOL],
       tool_choice: { type: "tool", name: "extract_graph" },
       messages: [{
         role: "user",
-        content: `Document :\n${content.slice(0, 40000)}`,
+        content: `Document :\n${content.slice(0, 30000)}`,
       }],
     });
     const result = await Promise.race([
       extractPromise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 75000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 90000)),
     ]);
 
     const toolUse = result.content.find((b) => b.type === "tool_use" && b.name === "extract_graph");
