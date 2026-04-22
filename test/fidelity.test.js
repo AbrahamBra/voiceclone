@@ -8,6 +8,7 @@ import {
   compositeScore,
   computeCollapseIndex,
   kmeansSelectRepresentatives,
+  extractLocalThemeLabel,
 } from "../lib/fidelity.js";
 
 // --- cosineSim ---
@@ -104,6 +105,44 @@ describe("clusterByTheme", () => {
     const clusters = clusterByTheme([[1, 0], [1, 0], [0, 1]]);
     const flat = clusters.flatMap(c => c.members).sort();
     assert.deepEqual(flat, [0, 1, 2]);
+  });
+});
+
+// --- extractLocalThemeLabel ---
+
+describe("extractLocalThemeLabel", () => {
+  it("returns null for empty samples", () => {
+    assert.equal(extractLocalThemeLabel([]), null);
+    assert.equal(extractLocalThemeLabel(null), null);
+  });
+
+  it("returns null when text has only stopwords and short words", () => {
+    assert.equal(extractLocalThemeLabel(["les des une est son"]), null);
+  });
+
+  it("picks the most frequent non-stopword as the primary label word", () => {
+    const samples = [
+      "Le growth hacking est un levier. Growth, growth, encore growth.",
+      "Le growth chez les founders reste sous-estime.",
+    ];
+    const label = extractLocalThemeLabel(samples);
+    assert.ok(label?.toLowerCase().startsWith("growth"), `expected growth-prefixed label, got: ${label}`);
+  });
+
+  it("capitalizes the first word", () => {
+    const label = extractLocalThemeLabel(["founders founders founders startups"]);
+    assert.ok(label && label[0] === label[0].toUpperCase(), `expected capitalized, got: ${label}`);
+  });
+
+  it("ignores accents when matching stopwords", () => {
+    // 'être' → 'etre' (stopword) should be filtered
+    const label = extractLocalThemeLabel(["être être être produit produit"]);
+    assert.ok(label?.toLowerCase().startsWith("produit"), `expected produit-prefixed, got: ${label}`);
+  });
+
+  it("returns a single word when only one non-trivial word is available", () => {
+    const label = extractLocalThemeLabel(["Startup startup startup"]);
+    assert.equal(label, "Startup");
   });
 });
 
