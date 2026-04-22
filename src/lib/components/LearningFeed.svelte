@@ -13,7 +13,10 @@
     if (!personaId) return;
     try {
       const res = await api(`/api/learning-events?persona=${personaId}&limit=${limit}`);
-      events = res.events || [];
+      // Flux d'apprentissage = règles enregistrées uniquement. Les corrections brutes
+      // (commentaires "trop basique", etc.) sont captées mais pas encore une règle —
+      // elles ressortiront via rule_added / consolidation_run.
+      events = (res.events || []).filter(e => e.event_type !== "correction_saved");
       error = null;
     } catch (e) {
       error = e?.message || "Erreur de chargement";
