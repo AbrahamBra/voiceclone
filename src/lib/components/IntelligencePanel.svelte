@@ -257,7 +257,12 @@
       <span>·</span>
       <span>{getRelativeTime(cur.calculated_at)}</span>
       <button class="fidelity-recalc" onclick={recalcFidelity} disabled={recalculating}>
-        {recalculating ? "..." : "Recalculer"}
+        {#if recalculating}
+          <span class="fidelity-spinner" aria-hidden="true"></span>
+          Calcul...
+        {:else}
+          Recalculer
+        {/if}
       </button>
     </div>
 
@@ -896,6 +901,9 @@
     margin-left: auto;
     background: transparent;
     border: 1px solid var(--border);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
     border-radius: var(--radius);
     color: var(--text-secondary);
     padding: 0.125rem 0.375rem;
