@@ -7,6 +7,7 @@
   let {
     disabled = false,
     scenarioType = null,
+    isEmptyConversation = false,
     onDraftNext,          // ({ consigne }) => void
     onAnalyzeProspect,    // (url: string) => void — called when user confirms paste-detected LinkedIn URL
     onSwitchScenario,     // (scenarioId) => Promise<void> — flip scenario_type before drafting (DM sub-mode)
@@ -80,6 +81,12 @@
     const match = text.match(LINKEDIN_URL_RE);
     detectedUrl = match ? match[0] : null;
   });
+
+  // Empty-state hint: guide l'user DM vers le scrape LinkedIn quand conv vierge.
+  // Masqué dès qu'une URL est collée (banner prend le relai) ou qu'un message part.
+  let showLeadHint = $derived(
+    isEmptyConversation && !scenarioMissing && isDmMode && text.length === 0 && !detectedUrl
+  );
 
   function analyzeDetected() {
     if (!detectedUrl) return;
@@ -166,6 +173,10 @@
           ×
         </button>
       </div>
+    </div>
+  {:else if showLeadHint && onAnalyzeProspect}
+    <div class="lead-hint mono" role="note">
+      🔗 Colle une URL LinkedIn pour démarrer — on extrait le profil + posts
     </div>
   {/if}
 
@@ -273,6 +284,14 @@
     cursor: pointer;
   }
   .lead-dismiss:hover { color: var(--ink); }
+
+  .lead-hint {
+    padding: 6px 10px;
+    background: var(--paper-subtle, #f6f5f1);
+    border: 1px dashed var(--rule);
+    font-size: 11px;
+    color: var(--ink-60, #666);
+  }
 
   .composer-locked textarea { background: var(--paper-subtle, #f6f5f1); }
   .scenario-gate {

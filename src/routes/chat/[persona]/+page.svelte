@@ -993,6 +993,7 @@
           <ChatComposer
             disabled={$sending}
             scenarioType={$currentScenarioType}
+            isEmptyConversation={$messages.length === 0}
             onDraftNext={handleDraftNext}
             onSwitchScenario={handleScenarioChange}
             onAnalyzeProspect={(url) => { leadInitialUrl = url; leadOpen = true; }}
