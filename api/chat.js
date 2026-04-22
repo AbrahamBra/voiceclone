@@ -244,7 +244,7 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
     correctionsCount: injectedCorrectionsCount || 0,
   };
 
-  const sse = initSSE(res);
+  const sse = initSSE(res, req);
   const apiKey = getApiKey(client);
 
   // Unified classifier: regex fast-path + Haiku fallback for ambiguous messages

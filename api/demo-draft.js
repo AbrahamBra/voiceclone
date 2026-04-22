@@ -121,7 +121,7 @@ export default async function handler(req, res) {
   }
 
   // SSE setup
-  const send = initSSE(res);
+  const send = initSSE(res, req);
   send("start", {});
 
   let tokenCount = 0;

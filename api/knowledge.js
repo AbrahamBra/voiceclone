@@ -4,10 +4,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { authenticateRequest, supabase, getApiKey, hasPersonaAccess, setCors } from "../lib/supabase.js";
 import { chunkText, embedAndStore } from "../lib/embeddings.js";
 import { clearIntelligenceCache, getIntelligenceId } from "../lib/knowledge-db.js";
-
-const KEYWORD_PROMPT = `Extrais 5 à 15 mots-clés représentatifs de ce document.
-Retourne UNIQUEMENT un tableau JSON de strings, sans aucun autre texte ni balises markdown.
-Exemple: ["stratégie", "linkedin", "contenu", "audience", "engagement"]`;
+import { withTimeout } from "../lib/with-timeout.js";
+import { KEYWORD_PROMPT } from "../lib/prompts/knowledge.js";
 
 export default async function handler(req, res) {
   setCors(res, "GET, POST, DELETE, OPTIONS");
@@ -198,14 +196,11 @@ export default async function handler(req, res) {
   (async () => {
     try {
       const anthropic = new Anthropic({ apiKey: getApiKey(client) });
-      const msg = await Promise.race([
-        anthropic.messages.create({
-          model: "claude-sonnet-4-6",
-          max_tokens: 150,
-          messages: [{ role: "user", content: `${KEYWORD_PROMPT}\n\nDocument :\n${content.slice(0, 3000)}` }],
-        }),
-        new Promise((_, r) => setTimeout(() => r(new Error("timeout")), 8000)),
-      ]);
+      const msg = await withTimeout((signal) => anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 150,
+        messages: [{ role: "user", content: `${KEYWORD_PROMPT}\n\nDocument :\n${content.slice(0, 3000)}` }],
+      }, { signal }), 8000, "knowledge-keywords");
       const raw = msg.content[0]?.text?.trim() || "[]";
       const keywords = JSON.parse(raw);
       if (Array.isArray(keywords) && keywords.length > 0) {
