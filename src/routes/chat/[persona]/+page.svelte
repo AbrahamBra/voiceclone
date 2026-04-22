@@ -140,6 +140,16 @@
   let currentConversation = $state(null);  // { id, prospect_name, stage, note, last_message_at, ... }
   let feedbackRailRef = $state(null);
   let feedbackCount = $state(0);
+
+  // Règles actives du clone = voice.writingRules (direct instructions + promoted
+  // consolidations). Pas de compteur "fired par conversation" pour l'instant —
+  // les count resteront à 0 (cachés dans la pill). À câbler plus tard via
+  // feedback_events.rules_fired si le signal devient utile.
+  let activeRules = $derived(
+    Array.isArray($personaConfig?.voice?.writingRules)
+      ? $personaConfig.voice.writingRules.map((r, i) => ({ id: `wr-${i}`, name: r, count: 0 }))
+      : []
+  );
   let heatSignal = $state(null);  // { state: 'cold'|'warm'|'hot', delta }
 
   // Bot message sequence number generator (per conversation)
@@ -992,7 +1002,7 @@
         <FeedbackRail
           bind:this={feedbackRailRef}
           conversationId={$currentConversationId}
-          activeRules={[]}
+          {activeRules}
           onHighlightMessage={handleHighlightMessage}
         />
 
