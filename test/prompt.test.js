@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 import { buildSystemPrompt } from "../lib/prompt.js";
+import { mergeBaselineVoice, DEMO_BASELINE_VOICE } from "../lib/demo-baseline-rules.js";
 
 const PERSONA = {
   name: "Thomas",
@@ -163,6 +164,42 @@ describe("buildSystemPrompt", () => {
     assert.ok(!prompt.includes("CORRECTIONS"));
     assert.ok(!prompt.includes("CONCEPTS CLES"));
     assert.ok(!prompt.includes("CONTEXTE"));
+  });
+
+  it("merges baseline voice — baseline items appear in prompt even when persona omits them", () => {
+    // PERSONA has its own tone/forbiddenWords, but NOT baseline-only items like
+    // "fondamentalement" or "pas corporate". After merge, those should appear.
+    const { prompt } = buildSystemPrompt({ persona: PERSONA });
+    assert.ok(prompt.includes("fondamentalement"), "baseline forbidden word should be in prompt");
+    assert.ok(prompt.includes("pas corporate"), "baseline personality should be in prompt");
+    assert.ok(prompt.includes("Tutoiement par défaut en DM LinkedIn"), "baseline writingRule should be in prompt");
+    // Persona's own rules must still be there.
+    assert.ok(prompt.includes("synergie"));
+    assert.ok(prompt.includes("Style WhatsApp"));
+  });
+
+  it("mergeBaselineVoice — returns full baseline when voice is missing", () => {
+    const merged = mergeBaselineVoice(undefined);
+    assert.deepEqual(merged.tone, DEMO_BASELINE_VOICE.tone);
+    assert.deepEqual(merged.forbiddenWords, DEMO_BASELINE_VOICE.forbiddenWords);
+    assert.deepEqual(merged.signaturePhrases, []);
+  });
+
+  it("mergeBaselineVoice — dedupes case-insensitively, persona items come first", () => {
+    const merged = mergeBaselineVoice({
+      tone: ["Direct", "custom"],                 // "Direct" overlaps baseline "direct"
+      forbiddenWords: ["synergie", "custom-word"], // "synergie" also in baseline
+    });
+    // Persona's "Direct" appears once (casing preserved), baseline's duplicate skipped.
+    const directMatches = merged.tone.filter((t) => t.toLowerCase() === "direct");
+    assert.strictEqual(directMatches.length, 1);
+    assert.strictEqual(merged.tone[0], "Direct", "persona item keeps first position");
+    assert.ok(merged.tone.includes("custom"));
+    assert.ok(merged.tone.includes("concret"), "baseline non-duplicate is added");
+
+    const synergieMatches = merged.forbiddenWords.filter((w) => w.toLowerCase() === "synergie");
+    assert.strictEqual(synergieMatches.length, 1);
+    assert.ok(merged.forbiddenWords.includes("custom-word"));
   });
 
   it("priority order: voice > corrections > scenario > ontology > knowledge", () => {
