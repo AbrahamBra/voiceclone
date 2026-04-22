@@ -429,7 +429,11 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
       try {
         const [inserted, updLast, updTitle] = await Promise.all([
           supabase.from("messages").insert([
-            { conversation_id: convId, role: "user", content: message },
+            // turn_kind explicit on BOTH rows — PostgREST normalizes columns
+            // across a batch insert, so if row 2 has turn_kind, row 1 gets
+            // turn_kind=null (not the DEFAULT) → NOT NULL violation → both
+            // rows lost. Regression introduced by eb923bd (2026-04-20).
+            { conversation_id: convId, role: "user", content: message, turn_kind: "prospect" },
             { conversation_id: convId, role: "assistant", content: botText, turn_kind: "clone_draft" },
           ]).select("id, role, created_at"),
           supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
