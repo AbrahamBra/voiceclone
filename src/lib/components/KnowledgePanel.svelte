@@ -24,13 +24,13 @@
   let isDragging = $state(false);
   let fileInputEl = $state(undefined);
 
-  // Upload progress steps
+  // Upload progress steps. Intelligence extraction runs asynchronously
+  // via the consolidation cron (not during upload), so we don't fake it here.
   const STEPS = [
     { label: "Lecture du fichier", icon: "◉" },
-    { label: "Analyse des mots-clés", icon: "◉" },
     { label: "Découpage en chunks", icon: "◉" },
     { label: "Indexation sémantique", icon: "◉" },
-    { label: "Extraction intelligence", icon: "◉" },
+    { label: "Analyse des mots-clés", icon: "◉" },
   ];
   let currentStep = $state(-1);
   let stepTimers = [];
@@ -43,10 +43,9 @@
     const factor = Math.min(contentLength / 50_000, 1);
     const timings = [
       300,                        // lecture: instant
-      2000 + factor * 3000,       // mots-clés: 2-5s
       800 + factor * 1200,        // chunks: 0.8-2s
       3000 + factor * 7000,       // embeddings: 3-10s
-      3000 + factor * 12000,      // intelligence: 3-15s
+      1500 + factor * 2500,       // mots-clés: 1.5-4s
     ];
     stepTimers = [];
     let cumulative = 0;
@@ -74,18 +73,46 @@
     return f.displayName || f.path.replace(/-\d{13}(\.[^.]+)?$/, '$1').replace(/^.*\//, '');
   }
 
+  function extractionLabel(status) {
+    if (status === "pending") return "extraction en attente";
+    if (status === "processing") return "extraction en cours";
+    if (status === "failed") return "extraction échouée";
+    return null;
+  }
+
+  let pollTimer = null;
+
   async function loadFiles() {
     loading = true;
     error = null;
     try {
       const data = await api(`/api/knowledge?persona=${personaId}`);
       files = data.files || [];
+      schedulePoll();
     } catch (e) {
       error = e.message || "Erreur de chargement";
     } finally {
       loading = false;
     }
   }
+
+  // Poll every 20s if any file still pending/processing, so the UI catches up
+  // when the cron finishes extraction (cron runs every 10 min, so worst case
+  // we show "pending" for up to 10 min — that's fine; the badge explains it).
+  function schedulePoll() {
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    const hasWork = files.some(f => f.extraction_status === "pending" || f.extraction_status === "processing");
+    if (!hasWork) return;
+    pollTimer = setTimeout(async () => {
+      try {
+        const data = await api(`/api/knowledge?persona=${personaId}`);
+        files = data.files || [];
+      } catch { /* silent */ }
+      schedulePoll();
+    }, 20000);
+  }
+
+  $effect(() => () => { if (pollTimer) clearTimeout(pollTimer); });
 
   function startDelete(path) {
     confirmingDelete = path;
@@ -217,7 +244,14 @@
         <div class="kp-file">
           <div class="kp-file-info">
             <span class="kp-file-name">{displayName(f)}</span>
-            <span class="kp-file-meta">{f.chunk_count} chunks · {getRelativeTime(f.created_at)}</span>
+            <span class="kp-file-meta">
+              {f.chunk_count} chunks · {getRelativeTime(f.created_at)}
+              {#if extractionLabel(f.extraction_status)}
+                <span class="kp-ext-badge" class:failed={f.extraction_status === 'failed'} title={f.extraction_error || ''}>
+                  · {extractionLabel(f.extraction_status)}
+                </span>
+              {/if}
+            </span>
           </div>
           {#if confirmingDelete === f.path}
             <button class="kp-delete confirming" onclick={() => confirmDelete(f.path)}>Supprimer ?</button>
@@ -378,6 +412,15 @@
     font-size: var(--fs-nano);
     color: var(--ink-40);
     font-variant-numeric: tabular-nums;
+  }
+  .kp-ext-badge {
+    color: var(--ink-70);
+    font-style: italic;
+  }
+  .kp-ext-badge.failed {
+    color: var(--vermillon);
+    font-style: normal;
+    cursor: help;
   }
   .kp-delete {
     background: transparent;

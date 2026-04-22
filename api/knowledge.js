@@ -1,4 +1,4 @@
-export const maxDuration = 90;
+export const maxDuration = 60;
 
 import Anthropic from "@anthropic-ai/sdk";
 import { authenticateRequest, supabase, getApiKey, hasPersonaAccess, setCors } from "../lib/supabase.js";
@@ -8,69 +8,6 @@ import { clearIntelligenceCache, getIntelligenceId } from "../lib/knowledge-db.j
 const KEYWORD_PROMPT = `Extrais 5 à 15 mots-clés représentatifs de ce document.
 Retourne UNIQUEMENT un tableau JSON de strings, sans aucun autre texte ni balises markdown.
 Exemple: ["stratégie", "linkedin", "contenu", "audience", "engagement"]`;
-
-const FILE_GRAPH_PROMPT = `Tu es un expert en extraction de connaissances business.
-Analyse ce document et extrais les entités et relations NOUVELLES pour enrichir la connaissance d'un clone IA en appelant l'outil extract_graph.
-
-Un graphe d'entités peut déjà exister. Cherche uniquement ce qui est NOUVEAU ou COMPLÉMENTAIRE.
-
-Types à privilégier : entreprises, personas/ICPs, concepts métier, frameworks, métriques clés, croyances fortes, outils.
-
-Reste concis. Descriptions courtes (une phrase). Si le document est vide ou sans info exploitable, retourne has_graph_update: false.`;
-
-const ENTITY_TYPES = ["concept", "framework", "person", "company", "metric", "belief", "tool", "style_rule"];
-const RELATION_TYPES = ["equals", "includes", "contradicts", "causes", "uses", "prerequisite", "enforces"];
-
-const GRAPH_EXTRACTION_TOOL = {
-  name: "extract_graph",
-  description: "Upsert new entities, relations, and enriched descriptions into the clone's knowledge graph.",
-  input_schema: {
-    type: "object",
-    properties: {
-      has_graph_update: {
-        type: "boolean",
-        description: "false only if the document is truly empty or has no exploitable information.",
-      },
-      new_entities: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            type: { type: "string", enum: ENTITY_TYPES },
-            description: { type: "string" },
-          },
-          required: ["name", "type", "description"],
-        },
-      },
-      new_relations: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            from: { type: "string" },
-            to: { type: "string" },
-            type: { type: "string", enum: RELATION_TYPES },
-            description: { type: "string" },
-          },
-          required: ["from", "to", "type"],
-        },
-      },
-      updated_entities: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            description: { type: "string" },
-          },
-          required: ["name", "description"],
-        },
-      },
-    },
-    required: ["has_graph_update"],
-  },
-};
 
 export default async function handler(req, res) {
   setCors(res, "GET, POST, DELETE, OPTIONS");
@@ -105,7 +42,7 @@ export default async function handler(req, res) {
 
     const { data: files, error } = await supabase
       .from("knowledge_files")
-      .select("path, created_at")
+      .select("path, created_at, extraction_status, extraction_error, extraction_attempts")
       .eq("persona_id", intellId)
       .order("created_at", { ascending: false });
 
@@ -128,6 +65,9 @@ export default async function handler(req, res) {
       path: f.path,
       created_at: f.created_at,
       chunk_count: chunkCounts[f.path] || 0,
+      extraction_status: f.extraction_status,
+      extraction_error: f.extraction_error,
+      extraction_attempts: f.extraction_attempts,
     }));
 
     res.json({ files: enriched });
@@ -224,14 +164,16 @@ export default async function handler(req, res) {
   const base = dotIndex >= 0 ? filename.slice(0, dotIndex) : filename;
   const path = `${base}-${Date.now()}${ext}`;
 
-  // Insert file record immediately, then respond — all heavy work (keywords, embeddings,
-  // graph extraction) runs fire-and-forget to stay well under Vercel's 60s timeout.
+  // Insert file record with extraction_status='pending' — graph extraction
+  // is offloaded to api/cron-consolidate.js (async, within its 300s budget).
   const { error: insertError } = await supabase.from("knowledge_files").insert({
     persona_id: intellId,
     path,
     keywords: [],
     content,
     contributed_by: client?.id || null,
+    extraction_status: "pending",
+    extraction_attempts: 0,
   });
 
   if (insertError) {
@@ -241,8 +183,8 @@ export default async function handler(req, res) {
 
   clearIntelligenceCache(intellId);
 
-  // Tout SYNCHRONE avant res.json (Vercel tue les fire-and-forget).
-  // Embeddings pour le RAG + chunks counter UI, graph extraction pour l'onglet intelligence.
+  // Embeddings (RAG + chunk counter) must stay sync — UI counts chunks immediately.
+  // Graph extraction is NOT done here (runs in cron).
   try {
     const chunks = chunkText(content);
     await embedAndStore(supabase, chunks, intellId, "knowledge_file", path);
@@ -250,13 +192,7 @@ export default async function handler(req, res) {
     console.log(JSON.stringify({ event: "embed_error", error: e.message, path }));
   }
 
-  const graphResult = await extractGraphKnowledgeFromFile(intellId, content, client).catch((e) => {
-    console.log(JSON.stringify({ event: "graph_extraction_failed", persona: intellId, path, error: e.message }));
-    return { count: 0, debug: `catch: ${e.message}` };
-  });
-  console.log(JSON.stringify({ event: "graph_extraction_done", persona: intellId, path, count: graphResult?.count ?? 0, debug: graphResult?.debug }));
-
-  res.json({ file: { path }, graph: graphResult });
+  res.json({ file: { path, extraction_status: "pending" } });
 
   // Keywords: fire-and-forget OK (cosmétique, pas critique)
   (async () => {
@@ -277,112 +213,4 @@ export default async function handler(req, res) {
       }
     } catch { /* skip */ }
   })();
-}
-
-/**
- * Extract entities/relations from a document and upsert into knowledge graph.
- * Entities from files get confidence 0.7 (lower than corrections at 0.8 — not user-validated).
- * Runs async — caller doesn't wait.
- */
-async function extractGraphKnowledgeFromFile(intellId, content, client) {
-  try {
-    const apiKey = getApiKey(client);
-    if (!apiKey) {
-      return { count: 0, debug: "no_api_key" };
-    }
-    const anthropic = new Anthropic({ apiKey });
-
-    const { data: existingEntities } = await supabase
-      .from("knowledge_entities")
-      .select("name, type, description")
-      .eq("persona_id", intellId);
-
-    const entityContext = existingEntities?.length > 0
-      ? `\n\nEntités déjà dans le graphe :\n${existingEntities.map(e => `- ${e.name} (${e.type}): ${e.description}`).join("\n")}`
-      : "";
-
-    const startMs = Date.now();
-    const extractPromise = anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 4096,
-      system: FILE_GRAPH_PROMPT + entityContext,
-      tools: [GRAPH_EXTRACTION_TOOL],
-      tool_choice: { type: "tool", name: "extract_graph" },
-      messages: [{
-        role: "user",
-        content: `Document :\n${content.slice(0, 30000)}`,
-      }],
-    });
-    const result = await Promise.race([
-      extractPromise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 90000)),
-    ]);
-
-    const toolUse = result.content.find((b) => b.type === "tool_use" && b.name === "extract_graph");
-    console.log(JSON.stringify({ event: "graph_extraction_raw", persona: intellId, stop_reason: result.stop_reason, ms: Date.now() - startMs, has_tool_use: !!toolUse }));
-    if (!toolUse) return { count: 0, debug: `no_tool_use: stop_reason=${result.stop_reason}` };
-
-    const graphData = toolUse.input;
-
-    if (!graphData.has_graph_update) return { count: 0, debug: `has_graph_update=false` };
-
-    let insertedCount = 0;
-
-    if (graphData.new_entities?.length > 0) {
-      const VALID_ENTITY_TYPES = new Set(["concept", "framework", "person", "company", "metric", "belief", "tool", "style_rule"]);
-      const entityRows = graphData.new_entities.map(e => ({
-        persona_id: intellId,
-        name: e.name,
-        type: VALID_ENTITY_TYPES.has(e.type) ? e.type : "concept",
-        description: e.description || "",
-        confidence: 0.7,
-      }));
-
-      const { data: inserted, error: upsertError } = await supabase
-        .from("knowledge_entities")
-        .upsert(entityRows, { onConflict: "persona_id,name" })
-        .select("id, name");
-
-      if (upsertError) {
-        return { count: 0, debug: `upsert_error: ${upsertError.message}` };
-      }
-
-      insertedCount = inserted?.length || 0;
-
-      if (inserted?.length > 0 && graphData.new_relations?.length > 0) {
-        const { data: allEntities } = await supabase
-          .from("knowledge_entities").select("id, name").eq("persona_id", intellId);
-        const entityMap = {};
-        for (const e of (allEntities || [])) entityMap[e.name] = e.id;
-
-        const VALID_RELATION_TYPES = new Set(["equals", "includes", "contradicts", "causes", "uses", "prerequisite", "enforces"]);
-        const relationRows = graphData.new_relations
-          .filter(r => entityMap[r.from] && entityMap[r.to])
-          .map(r => ({
-            persona_id: intellId,
-            from_entity_id: entityMap[r.from],
-            to_entity_id: entityMap[r.to],
-            relation_type: VALID_RELATION_TYPES.has(r.type) ? r.type : "uses",
-            description: r.description || "",
-            confidence: 0.7,
-          }));
-        if (relationRows.length > 0) {
-          await supabase.from("knowledge_relations").insert(relationRows);
-        }
-      }
-    }
-
-    if (graphData.updated_entities?.length > 0) {
-      for (const upd of graphData.updated_entities) {
-        await supabase.from("knowledge_entities")
-          .update({ description: upd.description })
-          .eq("persona_id", intellId).eq("name", upd.name);
-      }
-    }
-
-    return { count: insertedCount, debug: `ok: ${insertedCount} entities` };
-  } catch (e) {
-    console.log(JSON.stringify({ event: "file_graph_extraction_error", persona: intellId, error: e.message }));
-    return { count: 0, debug: `exception: ${e.message}` };
-  }
 }
