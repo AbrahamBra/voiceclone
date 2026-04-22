@@ -9,7 +9,7 @@
 
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
-  import { accessCode, sessionToken, isAdmin } from "$lib/stores/auth.js";
+  import { accessCode, sessionToken, isAdmin, logout } from "$lib/stores/auth.js";
 
   // TODO swap par ton lien Typeform / Tally / form waitlist quand tu l'as.
   const DEMO_CTA_HREF = "mailto:a.brakha@challengerslab.com?subject=Waitlist%20VoiceClone%20(20%20premiers%20clients)";
@@ -94,25 +94,29 @@
   // Click "voir la démo" → log in with the public demo access code and jump
   // straight into the demo persona cockpit. Seeded via supabase/033_demo_persona.sql.
   //
-  // SECURITY : we hard-code the demo persona id and clear any prior auth
-  // state before authenticating. Without this, clicking "demo" from an
-  // admin session (cross-client persona access) combined with
-  // localStorage.vc_last_persona can redirect to another client's persona
-  // — NOT what we want on a public demo CTA.
+  // SECURITY — the real root cause of the "redirected to another client"
+  // bug was that authHeaders() (used by every /chat fetch) sends BOTH
+  // x-session-token AND x-access-code when both stores are set. The server
+  // prefers the session token (lib/supabase.js authenticateRequest). So an
+  // admin user clicking "demo" without clearing their session would still
+  // auth as admin on every subsequent /chat API call, exposing cross-client
+  // data under the demo URL. Fix : call logout() first to wipe every auth
+  // trace (stores + localStorage + vc_last_persona), THEN authenticate as
+  // demo. Also hard-code the expected persona id — never trust pickPersona
+  // on a public CTA.
   const DEMO_PERSONA_ID = "00000000-0000-0000-0000-00000000d002";
   let demoLoading = $state(false);
   async function openDemo() {
     if (demoLoading) return;
     demoLoading = true;
-    // Wipe any prior session so admin scope / last-used persona cannot leak.
-    try { localStorage.removeItem("vc_last_persona"); } catch {}
-    sessionToken.set(null);
-    isAdmin.set(false);
+    // Full auth wipe before authenticating as demo — closes every leak path
+    // (session token, access code, last persona, admin flag).
+    logout();
     try {
       const resp = await fetch("/api/personas", { headers: { "x-access-code": "demo" } });
       if (!resp.ok) throw new Error("demo unavailable");
       const data = await resp.json();
-      // Strict scoping : only accept the known demo persona from the list.
+      // Strict scoping : only accept the known demo persona from the response.
       const target = (data.personas || []).find((p) => p.id === DEMO_PERSONA_ID);
       if (!target) throw new Error("demo persona missing in response");
       accessCode.set("demo");
