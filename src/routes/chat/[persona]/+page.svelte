@@ -1092,13 +1092,17 @@
 
       <div class="chat-body" class:rail-open={railOpen}>
         <div class="chat-messages-col">
-          <ProspectDossierHeader
-            conversation={currentConversation}
-            {feedbackCount}
-            heat={heatSignal}
-            onUpdate={handleConversationUpdate}
-            onToggleRail={() => railOpen = !railOpen}
-          />
+          <!-- Le dossier prospect n'a de sens qu'en DM (pipeline lead). En mode
+               post, stage/note/heat/dernier contact ne veulent rien dire. -->
+          {#if $currentScenario === "dm"}
+            <ProspectDossierHeader
+              conversation={currentConversation}
+              {feedbackCount}
+              heat={heatSignal}
+              onUpdate={handleConversationUpdate}
+              onToggleRail={() => railOpen = !railOpen}
+            />
+          {/if}
 
           <div class="chat-messages" bind:this={messagesEl}>
             {#each $messages as message (message.id)}
