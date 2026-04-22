@@ -206,6 +206,40 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Type "excellent": highest positive signal — "pattern à multiplier".
+  // +0.15 boost (vs +0.12 client_validated, +0.05 validate). ──
+  if (type === "excellent") {
+    if (!botMessage) { res.status(400).json({ error: "botMessage required" }); return; }
+
+    await supabase.from("corrections").insert({
+      persona_id: intellId,
+      correction: "[EXCELLENT] Pattern à multiplier — validé comme excellent",
+      bot_message: botMessage.slice(0, 300),
+      user_message: userMessage?.slice(0, 200) || null,
+      contributed_by: client?.id || null,
+    });
+
+    const { data: entities } = await supabase
+      .from("knowledge_entities")
+      .select("id, name, confidence")
+      .eq("persona_id", intellId);
+
+    if (entities?.length > 0) {
+      const msgLower = botMessage.toLowerCase();
+      const matched = entities.filter(e => msgLower.includes(e.name.toLowerCase()));
+      for (const e of matched) {
+        const newConf = Math.min(1.0, (e.confidence || 0.8) + 0.15);
+        await supabase.from("knowledge_entities")
+          .update({ confidence: newConf, last_matched_at: new Date().toISOString() })
+          .eq("id", e.id);
+      }
+    }
+
+    clearIntelligenceCache(intellId);
+    res.json({ ok: true, signal: "excellent" });
+    return;
+  }
+
   // ── Type "reject": negative reinforcement — demote specific entities/corrections ──
   // Frontend sends entityIds[] and/or correctionIds[] to demote explicitly.
   if (type === "reject") {

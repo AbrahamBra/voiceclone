@@ -96,5 +96,14 @@ export default async function handler(req, res) {
     res.status(500).json({ error: error.message });
     return;
   }
+
+  // Promote validated/excellent messages as gold — alimente `compute-rhythm-baseline.js`
+  // (Mahalanobis) et toute consommation downstream de `messages.is_gold`.
+  if (event_type === "excellent" || event_type === "client_validated") {
+    const { error: goldErr } = await supabase
+      .from("messages").update({ is_gold: true }).eq("id", message_id);
+    if (goldErr) console.error("[feedback-events] is_gold update failed", goldErr.message);
+  }
+
   res.status(201).json({ id: data.id, created_at: data.created_at });
 }

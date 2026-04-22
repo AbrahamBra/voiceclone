@@ -10,7 +10,7 @@
   import { get } from "svelte/store";
   import SidePanel from "./SidePanel.svelte";
 
-  let { open = false, botMessage = "", onClose, onReplace } = $props();
+  let { open = false, botMessage = "", onClose, onReplace, onCorrected } = $props();
 
   let correction = $state("");
   let submitting = $state(false);
@@ -64,6 +64,7 @@
       });
       showToast("Clone amélioré ;)");
       onReplace?.(alt);
+      onCorrected?.(correction.trim());
       onClose?.();
     } catch {
       showToast("Erreur — correction enregistrée quand même");
@@ -82,6 +83,7 @@
         }),
       });
       showToast("Correction enregistrée ;)");
+      onCorrected?.(correction.trim());
       onClose?.();
     } catch {
       onClose?.();

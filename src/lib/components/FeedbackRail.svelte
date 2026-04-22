@@ -52,7 +52,6 @@
   function iconFor(type) {
     switch (type) {
       case "validated": return "✓";
-      case "validated_edited": return "✓*";
       case "client_validated": return "✓✓";
       case "excellent": return "★";
       case "corrected": return "✎";
@@ -64,7 +63,6 @@
   function labelFor(type) {
     switch (type) {
       case "validated": return "validé";
-      case "validated_edited": return "validé (édité)";
       case "client_validated": return "c'est ça";
       case "excellent": return "excellent";
       case "corrected": return "corrigé";
