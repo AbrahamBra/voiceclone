@@ -276,8 +276,11 @@ Génère directement un post standalone sans CTA fort. Si le sujet manque, pose 
           : `${saved} règles ajoutées. Elles seront actives dès ton prochain message.`;
         sse("delta", { text: confirm });
         sse("done", {});
-        logLearningEvent(personaId, "rule_added", {
-          count: saved,
+        // Direct instruction writes straight into writingRules — functionally
+        // equivalent to a consolidated rule, so we emit the same event type
+        // rather than a separate rule_added step.
+        logLearningEvent(personaId, "consolidation_run", {
+          promoted: saved,
           rules: savedRules,
           source_message: message.slice(0, 200),
         });

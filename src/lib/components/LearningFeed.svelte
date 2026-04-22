@@ -13,10 +13,10 @@
     if (!personaId) return;
     try {
       const res = await api(`/api/learning-events?persona=${personaId}&limit=${limit}`);
-      // Flux d'apprentissage = règles enregistrées uniquement. Les corrections brutes
-      // (commentaires "trop basique", etc.) sont captées mais pas encore une règle —
-      // elles ressortiront via rule_added / consolidation_run.
-      events = (res.events || []).filter(e => e.event_type !== "correction_saved");
+      // Flux d'apprentissage = règles consolidées uniquement. Toute règle ajoutée
+      // (direct instruction) est émise comme consolidation_run côté back — donc
+      // ce filtre suffit pour couvrir les deux chemins (direct + cron cluster).
+      events = (res.events || []).filter(e => e.event_type === "consolidation_run");
       error = null;
     } catch (e) {
       error = e?.message || "Erreur de chargement";
@@ -35,34 +35,15 @@
   /** Build a human-readable line per event type. */
   function eventLabel(ev) {
     const p = ev.payload || {};
-    switch (ev.event_type) {
-      case "rule_added": {
-        const rules = Array.isArray(p.rules) ? p.rules : [];
-        const n = p.count || rules.length || 1;
-        // Legacy events (pre-2026-04-20) only stored source_message
-        const detail = rules[0] || p.source_message;
-        return { icon: "✨", title: n === 1 ? "Règle ajoutée" : `${n} règles ajoutées`, detail };
-      }
-      case "rule_weakened": {
-        const first = (p.corrections || [])[0] || "";
-        return { icon: "⚠️", title: p.demoted === 1 ? "Règle affaiblie" : `${p.demoted} règles affaiblies`, detail: first };
-      }
-      case "correction_saved": {
-        const n = p.count || 1;
-        const src = p.source || "chat";
-        return { icon: "💬", title: n === 1 ? `Correction captée (${src})` : `${n} corrections captées (${src})`, detail: p.text };
-      }
-      case "consolidation_run": {
-        const n = p.promoted || 0;
-        const rules = (p.rules || []).slice(0, 2).join(" · ");
-        return { icon: "🧠", title: n === 1 ? "Règle consolidée" : `${n} règles consolidées`, detail: rules };
-      }
-      case "consolidation_reverted": {
-        return { icon: "↩️", title: "Consolidation annulée", detail: `raison : ${p.reason || "inconnue"}` };
-      }
-      default:
-        return { icon: "•", title: ev.event_type, detail: null };
+    if (ev.event_type === "consolidation_run") {
+      const n = p.promoted || (Array.isArray(p.rules) ? p.rules.length : 0) || 1;
+      const rules = (p.rules || []).slice(0, 2).join(" · ");
+      // Fallback for direct-instruction consolidations: source_message
+      // is stored when no rules payload is present.
+      const detail = rules || p.source_message || null;
+      return { icon: "🧠", title: n === 1 ? "Règle consolidée" : `${n} règles consolidées`, detail };
     }
+    return { icon: "•", title: ev.event_type, detail: null };
   }
 
   function fidelityDelta(ev) {

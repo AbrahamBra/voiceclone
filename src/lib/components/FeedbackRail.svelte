@@ -70,8 +70,15 @@
       default: return type;
     }
   }
+
+  // Hide the whole rail when there's nothing to show — avoids a 280px
+  // empty column on conversations with no feedback yet.
+  let hasContent = $derived(
+    !!conversationId && (loading || events.length > 0 || activeRules.length > 0)
+  );
 </script>
 
+{#if hasContent}
 <aside class="feedback-rail" aria-label="Journal feedback">
   <header class="rail-head mono">feedback</header>
 
@@ -128,6 +135,7 @@
     {/if}
   </div>
 </aside>
+{/if}
 
 <style>
   .feedback-rail {
