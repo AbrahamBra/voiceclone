@@ -709,6 +709,51 @@
 
   // "📝 j'ai écrit ce post" — user colle un post écrit main, on extrait des règles
   // candidates et on ouvre la bulle de validation. Aucune écriture DB à ce stade.
+  // 📥 "j'ai reçu" : log la réponse prospect en DB (turn_kind='prospect'),
+  // sans appeler le LLM. Pré-requis : conv déjà créée (1er draft envoyé).
+  // Signal clef pour l'auto-stage ("en conv") — voir Bloc 2.
+  async function handleAddProspectReply(content) {
+    const convId = $currentConversationId;
+    if (!convId) {
+      showToast("Envoie un premier message avant de logger une réponse");
+      return;
+    }
+    try {
+      const resp = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          conversation_id: convId,
+          role: "user",
+          content,
+          turn_kind: "prospect",
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        showToast("Ajout échoué : " + (err.error || resp.statusText));
+        return;
+      }
+      const saved = await resp.json();
+      messages.update((msgs) => [
+        ...msgs,
+        {
+          id: saved.id,
+          role: "user",
+          content: saved.content,
+          turn_kind: "prospect",
+          timestamp: new Date(saved.created_at).getTime(),
+        },
+      ]);
+      // Sidebar last_message_at is already bumped server-side; refresh local view.
+      if (currentConversation && currentConversation.id === convId) {
+        currentConversation = { ...currentConversation, last_message_at: saved.created_at };
+      }
+    } catch (e) {
+      showToast("Ajout échoué : " + (e?.message || "erreur réseau"));
+    }
+  }
+
   async function handleIngestPost(post) {
     ingesting = true;
     ingestPending = null;
@@ -1091,6 +1136,7 @@
             onSwitchScenario={handleScenarioChange}
             onAnalyzeProspect={(url) => { leadInitialUrl = url; leadOpen = true; }}
             onIngestPost={handleIngestPost}
+            onAddProspectReply={handleAddProspectReply}
           />
         </div>
 

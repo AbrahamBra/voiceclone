@@ -12,6 +12,7 @@
     onAnalyzeProspect,    // (url: string) => void — called when user confirms paste-detected LinkedIn URL
     onSwitchScenario,     // (scenarioId) => Promise<void> — flip scenario_type before drafting (DM sub-mode)
     onIngestPost,         // (post: string) => void — called when user submits a hand-written post to ingest as rules
+    onAddProspectReply,   // (content: string) => Promise<void> — DM only, logs prospect message with turn_kind='prospect'
   } = $props();
 
   // DM sub-modes exposed as CTAs in the composer. Clicking one switches
@@ -28,7 +29,10 @@
   // Ingest mode : user wants to paste a hand-written post to teach the clone.
   // Flip les CTA + placeholder. Reset à chaque changement de scénario.
   let ingestMode = $state(false);
-  $effect(() => { scenarioType; ingestMode = false; });
+  // Prospect-reply mode : user a reçu une réponse DM qu'il veut logger
+  // (turn_kind='prospect'). Pas d'appel LLM — juste un INSERT message.
+  let prospectMode = $state(false);
+  $effect(() => { scenarioType; ingestMode = false; prospectMode = false; });
 
   const LINKEDIN_URL_RE = /https?:\/\/(?:www\.)?linkedin\.com\/in\/[^\s/?#]+/i;
 
@@ -57,8 +61,11 @@
     null
   );
   let chars = $derived(text.length);
+  const PROSPECT_MIN = 3;
   let countState = $derived(
-    ingestMode
+    prospectMode
+      ? (chars === 0 ? "idle" : chars < PROSPECT_MIN ? "under" : "ok")
+      : ingestMode
       ? (chars === 0 ? "idle" : chars < INGEST_MIN ? "under" : "ok")
       : !target || chars === 0 ? "idle"
       : chars < target.min ? "under"
@@ -78,11 +85,13 @@
   let placeholderText = $derived(
     scenarioMissing
       ? "Sélectionne un scénario pour débloquer le composer"
-      : ingestMode
-        ? "Colle ton post ici — on en extraira des règles à valider (min 50 caractères)"
-        : scenarioType?.startsWith("post")
-          ? "Décris le sujet du post ou colle une inspiration (Cmd+Enter = générer)"
-          : "Colle la réponse du prospect, une URL LinkedIn, ou tape une consigne (Cmd+Enter)"
+      : prospectMode
+        ? "Colle la réponse de ton prospect — elle sera ajoutée au fil (pas de draft auto)"
+        : ingestMode
+          ? "Colle ton post ici — on en extraira des règles à valider (min 50 caractères)"
+          : scenarioType?.startsWith("post")
+            ? "Décris le sujet du post ou colle une inspiration (Cmd+Enter = générer)"
+            : "Tape une consigne pour draft la suite (Cmd+Enter). Réponse reçue → bouton 📥"
   );
 
   // Paste-detected LinkedIn URL → inline "Analyser" banner. Dismissable.
@@ -152,10 +161,11 @@
   }
 
   function handleKeydown(e) {
-    // Cmd/Ctrl+Enter = draft la suite (action fréquente en itération)
+    // Cmd/Ctrl+Enter = action primaire du mode courant
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      if (ingestMode) ingestPost();
+      if (prospectMode) addProspectReply();
+      else if (ingestMode) ingestPost();
       else draftNext();
     }
     // Shift+Enter = newline (default)
@@ -187,12 +197,47 @@
     if (textareaEl) textareaEl.style.height = "auto";
     onIngestPost?.(post);
   }
+
+  function startProspect() {
+    if (effectiveDisabled) return;
+    prospectMode = true;
+    text = "";
+    requestAnimationFrame(() => {
+      if (!textareaEl) return;
+      textareaEl.focus();
+      autoResize();
+    });
+  }
+
+  function cancelProspect() {
+    prospectMode = false;
+    text = "";
+    if (textareaEl) textareaEl.style.height = "auto";
+  }
+
+  async function addProspectReply() {
+    if (effectiveDisabled) return;
+    const content = text.trim();
+    if (content.length < PROSPECT_MIN) return;
+    text = "";
+    prospectMode = false;
+    if (textareaEl) textareaEl.style.height = "auto";
+    await onAddProspectReply?.(content);
+  }
 </script>
 
 <div class="composer" class:composer-locked={scenarioMissing}>
   {#if scenarioMissing}
     <div class="scenario-gate mono" role="status">
       → Choisis un scénario (haut de la page) avant d'écrire — le draft en dépend.
+    </div>
+  {:else if prospectMode}
+    <div class="char-counter mono" data-state={countState} aria-live="polite">
+      <span class="count">{chars}</span>
+      <span class="sep"> · </span>
+      <span class="target">
+        {chars < PROSPECT_MIN ? "colle la réponse reçue" : "prêt à ajouter"}
+      </span>
     </div>
   {:else if ingestMode}
     <div class="char-counter mono" data-state={countState} aria-live="polite">
@@ -257,7 +302,20 @@
   ></textarea>
 
   <div class="actions">
-    {#if ingestMode}
+    {#if prospectMode}
+      <button
+        class="btn-primary btn-prospect"
+        type="button"
+        onclick={addProspectReply}
+        disabled={effectiveDisabled || text.trim().length < PROSPECT_MIN}
+        title="Ajoute la réponse du prospect au fil (turn_kind=prospect). Cmd+Enter"
+      >
+        📥 ajouter la réponse
+      </button>
+      <button class="btn-cancel-ingest" type="button" onclick={cancelProspect}>
+        annuler
+      </button>
+    {:else if ingestMode}
       <button
         class="btn-primary btn-ingest"
         type="button"
@@ -288,6 +346,17 @@
           {sub.label}
         </button>
       {/each}
+      {#if onAddProspectReply}
+        <button
+          class="btn-prospect-toggle"
+          type="button"
+          onclick={startProspect}
+          disabled={effectiveDisabled}
+          title="Ton prospect vient de répondre ? Colle sa réponse pour la logger dans le fil."
+        >
+          📥 j'ai reçu
+        </button>
+      {/if}
     {:else}
       <button class="btn-primary" type="button" onclick={draftNext} disabled={effectiveDisabled} title="Génère un clone_draft (textarea = consigne optionnelle). Cmd+Enter">
         {ctaLabel}
@@ -451,6 +520,27 @@
     color: var(--ink-40);
   }
   .btn-cancel-ingest:hover { color: var(--ink); }
+
+  /* Mode "j'ai reçu" : toggle dashed en mode DM, puis bouton plein en mode prospect. */
+  .btn-prospect-toggle {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 6px 10px;
+    cursor: pointer;
+    border: 1px dashed var(--rule-strong);
+    background: var(--paper);
+    color: var(--ink-70);
+  }
+  .btn-prospect-toggle:hover:not(:disabled) { border-color: var(--ink); color: var(--ink); }
+  .btn-prospect-toggle:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-prospect { background: var(--ink); border-color: var(--ink); }
+  .btn-prospect:disabled {
+    background: var(--paper);
+    color: var(--ink-40);
+    border: 1px dashed var(--rule-strong);
+    opacity: 1;
+  }
 
   /* DM sub-mode CTAs. Row of 4 compact buttons. Active sub-mode is filled
      vermillon to signal "this is what will fire on Cmd+Enter", inactive ones
