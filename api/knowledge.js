@@ -5,10 +5,7 @@ import { authenticateRequest, supabase, getApiKey, hasPersonaAccess, setCors } f
 import { chunkText, embedAndStore } from "../lib/embeddings.js";
 import { clearIntelligenceCache, getIntelligenceId } from "../lib/knowledge-db.js";
 import { withTimeout } from "../lib/with-timeout.js";
-
-const KEYWORD_PROMPT = `Extrais 5 à 15 mots-clés représentatifs de ce document.
-Retourne UNIQUEMENT un tableau JSON de strings, sans aucun autre texte ni balises markdown.
-Exemple: ["stratégie", "linkedin", "contenu", "audience", "engagement"]`;
+import { KEYWORD_PROMPT } from "../lib/prompts/knowledge.js";
 
 export default async function handler(req, res) {
   setCors(res, "GET, POST, DELETE, OPTIONS");
