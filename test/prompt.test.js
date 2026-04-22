@@ -41,6 +41,28 @@ describe("buildSystemPrompt", () => {
     assert.ok(prompt.includes("Style WhatsApp"));
   });
 
+  it("switches to post-format when scenarioKind='post'", () => {
+    const { prompt } = buildSystemPrompt({ persona: PERSONA, scenarioKind: "post" });
+    assert.ok(prompt.includes("POST LINKEDIN"), "post header must appear");
+    assert.ok(prompt.includes("SEUL bloc"), "single-block rule must appear");
+    assert.ok(!prompt.includes("PLUSIEURS messages courts"), "no WhatsApp multi-message rule");
+    assert.ok(!prompt.includes("Style WhatsApp, pas email"), "no WhatsApp framing for posts");
+  });
+
+  it("voice reinforcement uses post hint when kind='post' and budget saturated", () => {
+    // Only scenarioContent/corrections/ontology update usedTokens; knowledge
+    // doesn't, so saturate via a large scenarioContent to trip the >4000 guard.
+    const bigScenario = "X".repeat(20000);
+    const { prompt } = buildSystemPrompt({
+      persona: PERSONA,
+      scenarioContent: bigScenario,
+      scenarioKind: "post",
+    });
+    assert.ok(prompt.includes("Format post LinkedIn complet"), "post reinforcement hint");
+    assert.ok(!/Style WhatsApp, messages courts\./.test(prompt.slice(-400)),
+      "no WhatsApp reinforcement tail for posts");
+  });
+
   it("includes corrections when provided", () => {
     const corrections = "# Corrections apprises\n\n- **2026-04-10** — Ne jamais tutoyer au premier message\n- **2026-04-11** — Toujours poser une question ouverte";
     const { prompt } = buildSystemPrompt({ persona: PERSONA, corrections });

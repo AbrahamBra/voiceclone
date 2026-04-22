@@ -62,7 +62,7 @@
       "label": "Creer un post LinkedIn",
       "description": "{name} vous aide a ecrire un post LinkedIn percutant",
       "file": "scenarios/post.md",
-      "welcome": "Salut ! On ecrit un post LinkedIn. C'est quoi le sujet ? Et c'est pour toucher quel type de personne ?"
+      "welcome": "Yes, balance le sujet du post (et le sous-type via le switcher si tu veux forcer un angle), je m'en occupe ;)"
     }
   },
 
