@@ -190,10 +190,14 @@ export default async function handler(req, res) {
       }
     }
 
-    const result = conversations.map(c => ({
-      ...c,
-      message_count: messageCounts[c.id] ?? 0,
-    }));
+    // Hide orphan conv shells (count=0) from the sidebar. These appear when
+    // the pipeline crashes/times-out after the initial conversation INSERT
+    // in api/chat.js but before messages get persisted. Cliquer dessus
+    // n'affichait que le welcome ("tout s'efface"). La conv reste en DB —
+    // si un message s'y ajoute plus tard, elle réapparaît naturellement.
+    const result = conversations
+      .map(c => ({ ...c, message_count: messageCounts[c.id] ?? 0 }))
+      .filter(c => c.message_count > 0);
 
     res.json({ conversations: result });
     return;
