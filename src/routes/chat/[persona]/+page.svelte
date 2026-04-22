@@ -548,6 +548,24 @@
             refreshConversations();
           }
         },
+        // Bug #1 — rebind temporary client-generated UUIDs to the real DB
+        // message IDs. Without this, PATCH /api/messages?id=X and POST
+        // /api/feedback-events (FK on message_id) fail silently and no
+        // feedback event ever reaches the FeedbackRail.
+        onIds({ user_message_id, bot_message_id }) {
+          messages.update((msgs) =>
+            msgs.map((m) => {
+              if (user_message_id && m.id === userId) return { ...m, id: user_message_id };
+              if (bot_message_id && m.id === botId) return { ...m, id: bot_message_id };
+              return m;
+            })
+          );
+          // Keep feedbackMessageId in sync if the panel was opened against
+          // the pre-rebind bot UUID.
+          if (bot_message_id && feedbackMessageId === botId) {
+            feedbackMessageId = bot_message_id;
+          }
+        },
         onError(type, detail) {
           if (type === "rate_limit") {
             showToast("Trop de messages, patientez");
