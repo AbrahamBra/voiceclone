@@ -4,18 +4,33 @@
   // Le ScenarioSwitcher vit désormais dans ChatTopBar (scope persona, pas prospect).
 
   let {
-    conversation = null,      // { id, prospect_name, stage, note, last_message_at, ... }
+    conversation = null,      // { id, prospect_name, stage, note, last_message_at, stage_auto, ... }
     feedbackCount = 0,        // dérivé (passé par parent depuis FeedbackRail)
     heat = null,              // { state: 'cold'|'warm'|'hot', delta: number|null }
     onUpdate,                 // (patch) => Promise — parent relais vers /api/conversations PATCH
     onToggleRail,             // callback pour toggler le rail feedback en mobile
   } = $props();
 
+  // Slug→label map. Aligné sur les 5 slugs canoniques définis dans lib/stage.js
+  // (source de vérité serveur). Un stage non-slug = override manuel texte libre.
+  const STAGE_LABELS = {
+    to_contact: "à contacter",
+    first_message: "1er message",
+    in_conv: "en conv",
+    follow_up: "relance",
+    closing: "closing",
+  };
+  function stageLabel(value) {
+    if (!value) return "";
+    return STAGE_LABELS[value] || value;
+  }
+
   // Local editable state — synced on blur/enter.
   let localName = $state(conversation?.prospect_name || "");
   let localStage = $state(conversation?.stage || "");
   let localNote = $state(conversation?.note || "");
   let editingField = $state(null); // 'name' | 'stage' | 'note' | null
+  let stageIsAuto = $derived(conversation?.stage_auto !== false);
 
   $effect(() => {
     // Re-sync if conversation prop changes (operator selected another conv)
@@ -29,6 +44,10 @@
     const trimmed = (value || "").trim();
     if (trimmed === (conversation?.[field] || "")) return;
     await onUpdate?.({ [field]: trimmed });
+  }
+
+  async function resetStageToAuto() {
+    await onUpdate?.({ stage_auto: true });
   }
 
   function fmtRelative(iso) {
@@ -82,9 +101,28 @@
         placeholder="stage…"
         autofocus
       />
+    {:else if stageIsAuto}
+      <!-- Badge auto : pas un bouton d'édition → l'operator doit expliciter
+           l'override via double-click (l'UX commune "cliquer" sauvegarderait
+           le label auto comme texte manuel, ce qui figerait le stage). -->
+      <button
+        class="field-display stage stage-auto"
+        ondblclick={() => editingField = "stage"}
+        title="Auto-dérivé. Double-click pour éditer manuellement."
+      >
+        {stageLabel(localStage) || "—"}
+      </button>
     {:else}
-      <button class="field-display stage" onclick={() => editingField = "stage"}>
+      <button class="field-display stage stage-manual" onclick={() => editingField = "stage"}>
         {localStage || "+ stage"}
+      </button>
+      <button
+        class="stage-reset mono"
+        type="button"
+        onclick={resetStageToAuto}
+        title="Repasser en auto (dérivé des signaux de la conv)"
+      >
+        ↻ auto
       </button>
     {/if}
 
@@ -162,6 +200,24 @@
   }
   .name.field-display,
   .name.field-input { font-weight: 600; color: var(--ink); }
+  .stage-auto {
+    color: var(--ink-60);
+    font-variant: small-caps;
+    letter-spacing: 0.04em;
+    cursor: default;
+    border-bottom-style: dotted;
+  }
+  .stage-auto:hover { border-bottom-color: var(--ink-40); }
+  .stage-manual { color: var(--ink); font-weight: 500; }
+  .stage-reset {
+    background: transparent;
+    border: none;
+    padding: 0 4px;
+    font-size: 10px;
+    color: var(--ink-40);
+    cursor: pointer;
+  }
+  .stage-reset:hover { color: var(--vermillon); }
   .note.field-input,
   .note.field-display { flex: 1; text-align: left; min-width: 0; }
   .heat { font-weight: 500; }

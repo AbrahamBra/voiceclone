@@ -1,4 +1,5 @@
 import { authenticateRequest, supabase, setCors } from "../lib/supabase.js";
+import { recomputeStage } from "../lib/stage.js";
 
 export default async function handler(req, res) {
   setCors(res, "GET, PATCH, DELETE, OPTIONS");
@@ -15,7 +16,7 @@ export default async function handler(req, res) {
   // --- PATCH: update conversation (title or dossier fields) ---
   if (req.method === "PATCH") {
     const { id } = req.query || {};
-    const { title, prospect_name, stage, note } = req.body || {};
+    const { title, prospect_name, stage, note, stage_auto } = req.body || {};
 
     if (!id) { res.status(400).json({ error: "id query param required" }); return; }
 
@@ -26,8 +27,18 @@ export default async function handler(req, res) {
       patch.title = title.trim().slice(0, 100);
     }
     if (typeof prospect_name === "string") patch.prospect_name = prospect_name.trim().slice(0, 120) || null;
-    if (typeof stage === "string")         patch.stage = stage.trim().slice(0, 60) || null;
+    // Override manuel du stage : on flippe stage_auto=false pour que l'auto
+    // ne vienne pas écraser au prochain event. Voir lib/stage.js.
+    if (typeof stage === "string") {
+      patch.stage = stage.trim().slice(0, 60) || null;
+      patch.stage_auto = false;
+    }
     if (typeof note === "string")          patch.note = note.trim().slice(0, 300) || null;
+    // Reset explicite vers l'auto : { stage_auto: true } déclenche une recompute
+    // juste après l'update (ignoré si un stage manuel est également envoyé).
+    if (stage_auto === true && patch.stage_auto !== false) {
+      patch.stage_auto = true;
+    }
 
     if (Object.keys(patch).length === 0) {
       res.status(400).json({ error: "no updatable fields provided" });
@@ -42,6 +53,12 @@ export default async function handler(req, res) {
     const { error: updateErr } = await supabase
       .from("conversations").update(patch).eq("id", id);
     if (updateErr) { res.status(500).json({ error: updateErr.message }); return; }
+
+    // Reset → auto : on recompute tout de suite pour que la réponse reflète
+    // la nouvelle valeur dérivée.
+    if (patch.stage_auto === true) {
+      await recomputeStage(supabase, id).catch(() => {});
+    }
 
     res.json({ ok: true, patch });
     return;
