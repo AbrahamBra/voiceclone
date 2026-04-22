@@ -405,6 +405,86 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Type "extract_rules_from_post": preview candidate rules from a hand-written post ──
+  // Aucune écriture DB : retourne juste les candidats pour validation côté client.
+  if (type === "extract_rules_from_post") {
+    const { post } = req.body || {};
+    if (!post || typeof post !== "string" || post.trim().length < 50) {
+      res.status(400).json({ error: "post trop court (min 50 chars)" }); return;
+    }
+
+    try {
+      const apiKey = getApiKey(client);
+      const anthropic = new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY });
+
+      const result = await Promise.race([
+        anthropic.messages.create({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 1024,
+          system: `Tu analyses un post LinkedIn écrit à la main par un client (ghostwriter). Extrais 3 à 5 règles de style/voix actionnables qui caractérisent SA façon d'écrire. Chaque règle doit être concrète et réutilisable pour guider un futur draft. Évite les règles génériques ("sois authentique"). Privilégie : tournures, structures, ouvertures/closings, tics, longueurs, ponctuation, ton.
+
+Réponds STRICTEMENT en JSON : {"rules": [{"text": "règle actionnable", "rationale": "exemple précis du post qui illustre"}]}. Si le post est trop générique pour en extraire, réponds {"rules": []}.`,
+          messages: [{ role: "user", content: post.slice(0, 4000) }],
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 20000)),
+      ]);
+
+      const raw = result.content[0].text.trim();
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      let rules = [];
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (Array.isArray(parsed.rules)) {
+            rules = parsed.rules
+              .filter(r => r && typeof r.text === "string" && r.text.trim())
+              .slice(0, 5)
+              .map(r => ({
+                text: r.text.trim().slice(0, 300),
+                rationale: (r.rationale || "").toString().trim().slice(0, 200),
+              }));
+          }
+        } catch {}
+      }
+
+      res.json({ ok: true, rules });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to extract rules: " + e.message });
+    }
+    return;
+  }
+
+  // ── Type "save_rule_direct": save a pre-extracted rule text (no LLM extraction) ──
+  // Utilisé par le flux d'ingestion de post : les règles ont déjà été extraites
+  // via extract_rules_from_post et validées une par une par le client.
+  if (type === "save_rule_direct") {
+    const { ruleText, sourcePost } = req.body || {};
+    if (!ruleText || typeof ruleText !== "string" || !ruleText.trim()) {
+      res.status(400).json({ error: "ruleText required" }); return;
+    }
+
+    try {
+      const rule = ruleText.trim().slice(0, 300);
+      const source = (sourcePost || "").toString().slice(0, 200);
+
+      await supabase.from("corrections").insert({
+        persona_id: intellId,
+        correction: rule,
+        user_message: source,
+        bot_message: "[ingested-from-post]",
+        contributed_by: client?.id || null,
+      });
+
+      await extractGraphKnowledge(intellId, rule, null, source, client);
+      clearIntelligenceCache(intellId);
+
+      res.json({ ok: true, rule });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to save rule: " + e.message });
+    }
+    return;
+  }
+
   // ── Type "rdv_triggered": user credits a specific message as what got the RDV ──
   if (type === "rdv_triggered" || type === "rdv_signed" || type === "rdv_no_show" || type === "rdv_lost") {
     const { conversation_id, message_id, value, note } = req.body || {};
