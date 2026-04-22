@@ -93,20 +93,32 @@
 
   // Click "voir la démo" → log in with the public demo access code and jump
   // straight into the demo persona cockpit. Seeded via supabase/033_demo_persona.sql.
+  //
+  // SECURITY : we hard-code the demo persona id and clear any prior auth
+  // state before authenticating. Without this, clicking "demo" from an
+  // admin session (cross-client persona access) combined with
+  // localStorage.vc_last_persona can redirect to another client's persona
+  // — NOT what we want on a public demo CTA.
+  const DEMO_PERSONA_ID = "00000000-0000-0000-0000-00000000d002";
   let demoLoading = $state(false);
   async function openDemo() {
     if (demoLoading) return;
     demoLoading = true;
+    // Wipe any prior session so admin scope / last-used persona cannot leak.
+    try { localStorage.removeItem("vc_last_persona"); } catch {}
+    sessionToken.set(null);
+    isAdmin.set(false);
     try {
       const resp = await fetch("/api/personas", { headers: { "x-access-code": "demo" } });
       if (!resp.ok) throw new Error("demo unavailable");
       const data = await resp.json();
+      // Strict scoping : only accept the known demo persona from the list.
+      const target = (data.personas || []).find((p) => p.id === DEMO_PERSONA_ID);
+      if (!target) throw new Error("demo persona missing in response");
       accessCode.set("demo");
       if (data.session?.token) sessionToken.set(data.session.token);
       isAdmin.set(!!data.isAdmin);
-      const target = pickPersona(data.personas);
-      if (target) goto(`/chat/${target.id}`);
-      else throw new Error("no demo persona");
+      goto(`/chat/${target.id}`);
     } catch {
       demoLoading = false;
       // Silent fail → fall back to waitlist CTA next to this button.
