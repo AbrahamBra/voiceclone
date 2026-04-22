@@ -4,6 +4,7 @@ import { runPipeline } from "../lib/pipeline.js";
 import { initSSE } from "../lib/sse.js";
 import { validateInput } from "../lib/validate.js";
 import { authenticateRequest, checkBudget, getApiKey, logUsage, hasPersonaAccess, setCors, supabase } from "../lib/supabase.js";
+import { recomputeStage } from "../lib/stage.js";
 import { getPersonaFromDb, findRelevantKnowledgeFromDb, loadScenarioFromDb, getCorrectionsFromDb, findRelevantEntities, getIntelligenceId } from "../lib/knowledge-db.js";
 import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, detectMetacognitiveInsights, looksLikeDirectInstruction, looksLikeNegativeFeedback, detectNegativeFeedback, classifyMessage, looksLikeHorsCible } from "../lib/feedback-detect.js";
 import { selectModel } from "../lib/model-router.js";
@@ -91,7 +92,7 @@ export default async function handler(req, res) {
   if (convId) {
     // Load existing conversation
     const { data: conv, error: convErr } = await supabase
-      .from("conversations").select("id, client_id, scenario")
+      .from("conversations").select("id, client_id, scenario, scenario_type")
       .eq("id", convId).single();
 
     if (convErr || !conv) { res.status(404).json({ error: "Conversation not found" }); return; }
@@ -100,6 +101,17 @@ export default async function handler(req, res) {
     if (client && !isAdmin && conv.client_id !== client.id) {
       res.status(403).json({ error: "Access denied" });
       return;
+    }
+
+    // Persist scenario_type on the conv si l'user a flipé un sous-mode DM
+    // depuis le dernier draft (DM_1st → DM_relance, etc.). Sinon l'auto-stage
+    // (Bloc 2) n'aurait qu'une valeur figée à la création — jamais "follow_up"
+    // ni "closing".
+    if (scenarioType && conv.scenario_type !== scenarioType) {
+      await supabase
+        .from("conversations")
+        .update({ scenario_type: scenarioType })
+        .eq("id", convId);
     }
 
     // Load last 40 chat messages from DB. Filter out `message_type='meta'`
@@ -138,6 +150,11 @@ export default async function handler(req, res) {
         }));
       }
       convId = newConv?.id || null;
+      // Pipeline stage auto (Bloc 2) : conv créée = 'to_contact' par défaut.
+      // Best-effort, non-bloquant si la recompute échoue.
+      if (convId) {
+        recomputeStage(supabase, convId).catch(() => {});
+      }
     }
 
     messages = [...history, { role: "user", content: message }];

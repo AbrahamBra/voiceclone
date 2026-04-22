@@ -108,13 +108,15 @@
     >
       {#if message.role === "user"}
         {message.content}
-        <div class="msg-actions user-actions">
-          {#if ruleSaved}
-            <span class="action-validated">Sauvegardé ✓</span>
-          {:else}
-            <button class="action-btn" onclick={() => { ruleSaved = true; onSaveRule?.(message); }}>Sauver comme règle</button>
-          {/if}
-        </div>
+        {#if !isProspect}
+          <div class="msg-actions user-actions">
+            {#if ruleSaved}
+              <span class="action-validated">Sauvegardé ✓</span>
+            {:else}
+              <button class="action-btn" onclick={() => { ruleSaved = true; onSaveRule?.(message); }}>Sauver comme règle</button>
+            {/if}
+          </div>
+        {/if}
       {:else if message.typing}
         <div class="typing-indicator">
           <span></span><span></span><span></span>
@@ -237,6 +239,19 @@
   /* Sent (toi): back to neutral — indistinguishable from a historical sent message. */
   .msg-row-sent :global(.msg-bot) {
     background: var(--paper);
+  }
+  /* Prospect (incoming reply): left-aligned, paper-subtle bg, grey border —
+     visuellement distinct des consignes user (dark-right) et des drafts clone. */
+  .msg-row-prospect .msg-col {
+    align-self: flex-start;
+    align-items: flex-start;
+  }
+  .msg-row-prospect .msg-user {
+    background: var(--paper-subtle);
+    color: var(--ink);
+    font-family: var(--font);
+    font-size: var(--fs-standout);
+    border-left: 2px solid var(--ink-40);
   }
   /* Highlight animation triggered when rail feedback entry is clicked */
   :global(.msg-highlight) {

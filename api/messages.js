@@ -1,4 +1,5 @@
 import { authenticateRequest, supabase, setCors, hasPersonaAccess } from "../lib/supabase.js";
+import { recomputeStage } from "../lib/stage.js";
 
 const VALID_TURN_KINDS = new Set([
   "prospect", "clone_draft", "toi", "draft_rejected", "legacy", "meta",
@@ -55,6 +56,12 @@ export default async function handler(req, res) {
       .update({ last_message_at: new Date().toISOString() })
       .eq("id", conversation_id);
 
+    // Pipeline stage auto (Bloc 2) : un message 'prospect' déclenche 'in_conv'.
+    // Best-effort — on n'échoue pas la réponse si la recompute plante.
+    if (data?.turn_kind === "prospect") {
+      recomputeStage(supabase, conversation_id).catch(() => {});
+    }
+
     res.status(201).json(data);
     return;
   }
@@ -95,5 +102,13 @@ export default async function handler(req, res) {
 
   const { error } = await supabase.from("messages").update(patch).eq("id", id);
   if (error) { res.status(500).json({ error: error.message }); return; }
+
+  // Pipeline stage auto : un flip vers 'toi' = message clone validé ⇒ stage avance
+  // (first_message si 0 prospect, follow_up si DM_relance + prospect, etc.).
+  // Best-effort, async, ne bloque pas la réponse.
+  if (turn_kind === "toi") {
+    recomputeStage(supabase, msg.conversation_id).catch(() => {});
+  }
+
   res.json({ ok: true, patch });
 }
