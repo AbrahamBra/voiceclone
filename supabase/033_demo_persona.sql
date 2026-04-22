@@ -12,20 +12,21 @@
 
 DO $$
 DECLARE
-  v_client_id       uuid := '00000000-dem0-c11e-0000-000000000001';
-  v_persona_id      uuid := '00000000-dem0-per5-0000-000000000001';
-  v_conv_reply      uuid := '00000000-dem0-c0n0-0000-000000000001';
-  v_conv_relance    uuid := '00000000-dem0-c0n0-0000-000000000002';
-  v_conv_closing    uuid := '00000000-dem0-c0n0-0000-000000000003';
-  v_conv_post       uuid := '00000000-dem0-c0n0-0000-000000000004';
-  v_msg_reply_u     uuid := '00000000-dem0-0msg-0001-000000000001';
-  v_msg_reply_a     uuid := '00000000-dem0-0msg-0001-000000000002';
-  v_msg_relance_u   uuid := '00000000-dem0-0msg-0002-000000000001';
-  v_msg_relance_a   uuid := '00000000-dem0-0msg-0002-000000000002';
-  v_msg_closing_u   uuid := '00000000-dem0-0msg-0003-000000000001';
-  v_msg_closing_a   uuid := '00000000-dem0-0msg-0003-000000000002';
-  v_msg_post_u      uuid := '00000000-dem0-0msg-0004-000000000001';
-  v_msg_post_a      uuid := '00000000-dem0-0msg-0004-000000000002';
+  -- All-hex fixed UUIDs (0-9, a-f only). "d" prefix groups = demo rows.
+  v_client_id       uuid := '00000000-0000-0000-0000-00000000d001';
+  v_persona_id      uuid := '00000000-0000-0000-0000-00000000d002';
+  v_conv_reply      uuid := '00000000-0000-0000-0000-00000000dc01';
+  v_conv_relance    uuid := '00000000-0000-0000-0000-00000000dc02';
+  v_conv_closing    uuid := '00000000-0000-0000-0000-00000000dc03';
+  v_conv_post       uuid := '00000000-0000-0000-0000-00000000dc04';
+  v_msg_reply_u     uuid := '00000000-0000-0000-0000-00000000da11';
+  v_msg_reply_a     uuid := '00000000-0000-0000-0000-00000000da12';
+  v_msg_relance_u   uuid := '00000000-0000-0000-0000-00000000da21';
+  v_msg_relance_a   uuid := '00000000-0000-0000-0000-00000000da22';
+  v_msg_closing_u   uuid := '00000000-0000-0000-0000-00000000da31';
+  v_msg_closing_a   uuid := '00000000-0000-0000-0000-00000000da32';
+  v_msg_post_u      uuid := '00000000-0000-0000-0000-00000000da41';
+  v_msg_post_a      uuid := '00000000-0000-0000-0000-00000000da42';
 BEGIN
   -- ───────── 1) Demo client (access_code = 'demo') ─────────
   INSERT INTO clients (id, access_code, name, tier, max_clones, is_active)
