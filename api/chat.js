@@ -9,7 +9,7 @@ import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, 
 import { selectModel } from "../lib/model-router.js";
 import { consolidateCorrections } from "../lib/correction-consolidation.js";
 import { logLearningEvent } from "../lib/learning-events.js";
-import { isScenarioId } from "../src/lib/scenarios.js";
+import { isScenarioId, CANONICAL_SCENARIOS } from "../src/lib/scenarios.js";
 
 /** Extract a smart conversation title from the first message */
 function extractConvTitle(message, scenario) {
@@ -173,6 +173,12 @@ Structure : accroche → framework en étapes numérotées ou liste → insight 
 Génère directement un post en mode storytelling interne/transparence.
 Structure : situation concrète → ce que j'ai appris/découvert → leçon universelle.`,
 
+    post_cas_client: `## MODE : Post Cas Client
+Génère directement un post centré sur un résultat client concret. Si le starter chip a été utilisé, les infos clés (client/secteur, situation de départ, résultat, durée, levier) sont dans le message de l'opérateur — reprends-les sans les inventer.
+Structure : accroche sur le résultat chiffré ou l'avant/après → contexte court (situation de départ) → ce qui a été fait → résultat détaillé → leçon transférable (pas un CTA clickbait).
+Si des infos manquent pour un cas crédible (chiffre, durée, levier), demande-les en UNE question avant d'écrire. Pas d'invention de chiffres.
+Longueur : 1000-2000 caractères.`,
+
     post_autonome: `## MODE : Post Autonome
 Génère directement un post standalone sans CTA fort. Si le sujet manque, pose UNE question.`,
 
@@ -202,6 +208,14 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
   const scenarioContent = override
     ? (override + "\n\n" + (baseScenarioContent || ""))
     : baseScenarioContent;
+
+  // Kind drives the FORMAT DE REPONSE (post = single block, dm = WhatsApp thread).
+  // Canonical id is authoritative. Without one, only scenario==="post" is a
+  // reliable post signal — everything else (qualification, default, empty)
+  // stays on DM defaults for back-compat.
+  const scenarioKind = scenarioType
+    ? CANONICAL_SCENARIOS[scenarioType].kind
+    : scenario === "post" ? "post" : "dm";
 
   // Entities + corrections in parallel (corrections don't depend on ontology)
   const [ontology, corrections] = await Promise.all([
@@ -234,6 +248,7 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
     scenarioContent,
     corrections,
     ontology,
+    scenarioKind,
   });
 
   // Audit trail: what actually shaped THIS response — sent to the UI so the

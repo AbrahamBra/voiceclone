@@ -1,5 +1,8 @@
 # Couche 1c — LinkedIn Posts Baseline
 
+> **STATUT : SPEC NON IMPLÉMENTÉE (2026-04-22).**
+> Ce fichier décrit un `PostCritic` qui n'existe pas dans le code. Aucune règle ci-dessous n'est branchée dans le pipeline. Le seul critic actif est `RhythmCritic` (DM only — [lib/critic/rhythmCritic.js](lib/critic/rhythmCritic.js)). Pour intégrer cette baseline, il faut d'abord vérifier le volume réel de génération de posts en prod, puis bâtir `PostCritic` par étapes (shadow → guard) à l'image de `RhythmCritic`.
+
 **Scope** : génération de **posts LinkedIn** (feed, personal branding, thought-leadership). **Différent des DMs.** Critic séparé : `PostCritic` (vs `RhythmCritic` qui reste sur DMs).
 
 **Contraintes plateforme fondamentales :**
@@ -201,3 +204,12 @@ App génère :
 Cela implique Phase 1bis à dédoubler : pour les posts, le signal "heat" n'existe pas (pas de prospect qui répond). Le signal business est : `impressions`, `comments`, `profile_views`, `inbound_leads`.
 
 **À discuter avant de coder :** est-ce que tu veux dès maintenant traiter les posts en pipeline séparé, ou on reste focus DMs pour l'instant et on traite posts plus tard ?
+
+---
+
+## 2026-04-22 — État d'avancement
+
+- Les 7 sous-types post canoniques ([src/lib/scenarios.js](src/lib/scenarios.js)) ont bien des overrides prompt dans [api/chat.js](api/chat.js) (incl. `post_cas_client` ajouté en même temps que ce commit).
+- `buildSystemPrompt` ([lib/prompt.js](lib/prompt.js)) connaît maintenant `scenarioKind` et arrête d'imposer le format WhatsApp-multi-messages aux posts.
+- Les 3 `post.md` par persona (Victor / Paolo / Thomas) ont été réalignés : plus de typologie contradictoire, plus de header `**Format :**` forcé.
+- Le `PostCritic` décrit ci-dessus reste à construire. Pré-requis : vérifier usage prod (`critic_commit_date` vs `last_prod_message_date` côté posts) avant de planifier.
