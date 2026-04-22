@@ -219,11 +219,13 @@ export default async function handler(req, res) {
     console.log(JSON.stringify({ event: "embed_error", error: e.message, path }));
   }
 
-  await extractGraphKnowledgeFromFile(intellId, content, client).catch((e) => {
-    console.log(JSON.stringify({ event: "graph_extraction_failed", error: e.message }));
+  const graphResult = await extractGraphKnowledgeFromFile(intellId, content, client).catch((e) => {
+    console.log(JSON.stringify({ event: "graph_extraction_failed", persona: intellId, path, error: e.message }));
+    return { count: 0, debug: `catch: ${e.message}` };
   });
+  console.log(JSON.stringify({ event: "graph_extraction_done", persona: intellId, path, count: graphResult?.count ?? 0, debug: graphResult?.debug }));
 
-  res.json({ file: { path } });
+  res.json({ file: { path }, graph: graphResult });
 
   // Keywords: fire-and-forget OK (cosmétique, pas critique)
   (async () => {
