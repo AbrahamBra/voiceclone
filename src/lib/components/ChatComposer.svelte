@@ -48,6 +48,7 @@
   // Charcount target (POST/DM) — repris de ChatInput.svelte
   const POST_RANGE = { min: 1200, max: 1500 };
   const DM_RANGE = { min: 150, max: 280 };
+  const INGEST_MIN = 50;
 
   let target = $derived(
     !scenarioType ? null :
@@ -57,9 +58,11 @@
   );
   let chars = $derived(text.length);
   let countState = $derived(
-    !target || chars === 0 ? "idle" :
-    chars < target.min ? "under" :
-    chars > target.max ? "over" : "ok"
+    ingestMode
+      ? (chars === 0 ? "idle" : chars < INGEST_MIN ? "under" : "ok")
+      : !target || chars === 0 ? "idle"
+      : chars < target.min ? "under"
+      : chars > target.max ? "over" : "ok"
   );
 
   let ctaLabel = $derived.by(() => {
@@ -190,6 +193,16 @@
   {#if scenarioMissing}
     <div class="scenario-gate mono" role="status">
       → Choisis un scénario (haut de la page) avant d'écrire — le draft en dépend.
+    </div>
+  {:else if ingestMode}
+    <div class="char-counter mono" data-state={countState} aria-live="polite">
+      <span class="count">{chars}</span>
+      <span class="sep"> · </span>
+      <span class="target">
+        {chars < INGEST_MIN
+          ? `encore ${INGEST_MIN - chars} car. avant d'ingérer`
+          : "prêt à ingérer"}
+      </span>
     </div>
   {:else if target}
     <div class="char-counter mono" data-state={countState} aria-live="polite">
@@ -422,6 +435,12 @@
   .btn-ingest-toggle:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .btn-ingest { background: var(--ink); border-color: var(--ink); }
+  .btn-ingest:disabled {
+    background: var(--paper);
+    color: var(--ink-40);
+    border: 1px dashed var(--rule-strong);
+    opacity: 1;
+  }
   .btn-cancel-ingest {
     font-family: var(--font-mono);
     font-size: 11px;
