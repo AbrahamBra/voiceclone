@@ -407,6 +407,20 @@ Génère directement un post standalone sans CTA fort. Si le sujet manque, pose 
             error: updTitle.error.message, code: updTitle.error.code,
           }));
         }
+        // Bug #1 — emit the real DB message IDs so the front can rebind its
+        // temporary client-generated UUIDs. Without this, PATCH /api/messages
+        // and POST /api/feedback-events (FK on message_id) 404/500 silently
+        // and the FeedbackRail stays empty after "c'est ça".
+        if (inserted?.data && !inserted?.error) {
+          const dbUser = inserted.data.find((m) => m.role === "user");
+          const dbBot = inserted.data.find((m) => m.role === "assistant");
+          if (dbUser || dbBot) {
+            sse("ids", {
+              user_message_id: dbUser?.id || null,
+              bot_message_id: dbBot?.id || null,
+            });
+          }
+        }
         // Shadow: log prospect heat for the user/prospect message.
         // Non-blocking. Noise from test-prompts filtered later via business_outcomes join.
         const userMsg = inserted?.data?.find(m => m.role === "user");
