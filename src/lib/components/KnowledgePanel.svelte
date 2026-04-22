@@ -104,37 +104,24 @@
     }
   }
 
-  const BLOCK_SIZE = 20_000;
-
   async function processAndUpload(filename, content) {
     if (content.length > 200_000) {
       content = content.slice(0, 200_000);
       showToast("Document tronqué à 200 000 caractères");
     }
 
-    // Split into blocks of ~20K chars
-    const blocks = [];
-    for (let i = 0; i < content.length; i += BLOCK_SIZE) {
-      blocks.push(content.slice(i, i + BLOCK_SIZE));
-    }
-
     uploading = true;
     startFakeProgress(content.length);
 
     try {
-      let firstFile = null;
-      for (let i = 0; i < blocks.length; i++) {
-        const blockName = blocks.length > 1 ? `${filename} (${i + 1}/${blocks.length})` : filename;
-        const data = await api("/api/knowledge", {
-          method: "POST",
-          body: JSON.stringify({ personaId, filename: blockName, content: blocks[i] }),
-        });
-        if (i === 0) firstFile = data.file;
-      }
+      const data = await api("/api/knowledge", {
+        method: "POST",
+        body: JSON.stringify({ personaId, filename, content }),
+      });
       stopFakeProgress();
       await new Promise(r => setTimeout(r, 600));
-      files = [{ ...firstFile, displayName: filename }, ...files];
-      showToast(`Document ajouté (${blocks.length} bloc${blocks.length > 1 ? "s" : ""})`);
+      files = [{ ...data.file, displayName: filename }, ...files];
+      showToast("Document ajouté");
       onupload?.();
     } catch (e) {
       for (const t of stepTimers) clearTimeout(t);

@@ -10,7 +10,7 @@ Retourne UNIQUEMENT un tableau JSON de strings, sans aucun autre texte ni balise
 Exemple: ["stratégie", "linkedin", "contenu", "audience", "engagement"]`;
 
 const FILE_GRAPH_PROMPT = `Tu es un expert en extraction de connaissances business.
-Analyse ce document et extrais toutes les entités et relations NOUVELLES pour enrichir la connaissance d'un clone IA.
+Analyse ce document et extrais toutes les entités et relations NOUVELLES pour enrichir la connaissance d'un clone IA en appelant l'outil extract_graph.
 
 IMPORTANT : Un graphe d'entités existe déjà. Tu DOIS chercher ce qui est NOUVEAU ou COMPLÉMENTAIRE :
 - Nouveaux segments d'audience, personas, ICPs, noms de personnes
@@ -28,18 +28,61 @@ Concentre-toi sur :
 5. Métriques et objectifs clés
 6. Croyances et principes (ce que la personne croit fermement)
 
-Types d'entités : concept, framework, person, company, metric, belief, tool, style_rule
-Types de relations : equals, includes, contradicts, causes, uses, prerequisite, enforces
+Sois EXHAUSTIF. Extrais au minimum 10 entités de tout document non-trivial. Ne retourne has_graph_update: false que si le document est réellement vide ou sans aucune information exploitable.`;
 
-Reponds en JSON :
-{
-  "has_graph_update": true,
-  "new_entities": [{ "name": "...", "type": "...", "description": "..." }],
-  "new_relations": [{ "from": "...", "to": "...", "type": "...", "description": "..." }],
-  "updated_entities": [{ "name": "...", "description": "description enrichie" }]
-}
+const ENTITY_TYPES = ["concept", "framework", "person", "company", "metric", "belief", "tool", "style_rule"];
+const RELATION_TYPES = ["equals", "includes", "contradicts", "causes", "uses", "prerequisite", "enforces"];
 
-Sois EXHAUSTIF. Extrais au minimum 10 entités de tout document non-trivial. Ne reponds has_graph_update: false que si le document est réellement vide ou sans aucune information exploitable.`;
+const GRAPH_EXTRACTION_TOOL = {
+  name: "extract_graph",
+  description: "Upsert new entities, relations, and enriched descriptions into the clone's knowledge graph.",
+  input_schema: {
+    type: "object",
+    properties: {
+      has_graph_update: {
+        type: "boolean",
+        description: "false only if the document is truly empty or has no exploitable information.",
+      },
+      new_entities: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            type: { type: "string", enum: ENTITY_TYPES },
+            description: { type: "string" },
+          },
+          required: ["name", "type", "description"],
+        },
+      },
+      new_relations: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            from: { type: "string" },
+            to: { type: "string" },
+            type: { type: "string", enum: RELATION_TYPES },
+            description: { type: "string" },
+          },
+          required: ["from", "to", "type"],
+        },
+      },
+      updated_entities: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            description: { type: "string" },
+          },
+          required: ["name", "description"],
+        },
+      },
+    },
+    required: ["has_graph_update"],
+  },
+};
 
 export default async function handler(req, res) {
   setCors(res, "GET, POST, DELETE, OPTIONS");
@@ -273,30 +316,25 @@ async function extractGraphKnowledgeFromFile(intellId, content, client) {
     const startMs = Date.now();
     const extractPromise = anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 4096,
+      max_tokens: 8192,
       system: FILE_GRAPH_PROMPT + entityContext,
+      tools: [GRAPH_EXTRACTION_TOOL],
+      tool_choice: { type: "tool", name: "extract_graph" },
       messages: [{
         role: "user",
-        content: `Document :\n${content.slice(0, 20000)}`,
+        content: `Document :\n${content.slice(0, 100000)}`,
       }],
     });
     const result = await Promise.race([
       extractPromise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 45000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 60000)),
     ]);
 
-    const raw = result.content[0].text.trim();
-    console.log(JSON.stringify({ event: "graph_extraction_raw", persona: intellId, raw_length: raw.length, stop_reason: result.stop_reason, ms: Date.now() - startMs }));
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { count: 0, debug: "no_json_in_response" };
+    const toolUse = result.content.find((b) => b.type === "tool_use" && b.name === "extract_graph");
+    console.log(JSON.stringify({ event: "graph_extraction_raw", persona: intellId, stop_reason: result.stop_reason, ms: Date.now() - startMs, has_tool_use: !!toolUse }));
+    if (!toolUse) return { count: 0, debug: `no_tool_use: stop_reason=${result.stop_reason}` };
 
-    let graphData;
-    try {
-      graphData = JSON.parse(jsonMatch[0]);
-    } catch (parseErr) {
-      console.log(JSON.stringify({ event: "graph_extraction_json_error", persona: intellId, error: parseErr.message }));
-      return { count: 0, debug: "json_parse_error" };
-    }
+    const graphData = toolUse.input;
 
     if (!graphData.has_graph_update) return { count: 0, debug: `has_graph_update=false` };
 
