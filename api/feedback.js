@@ -58,9 +58,36 @@ export default async function handler(req, res) {
       ? Math.round((confidences.reduce((a, b) => a + b, 0) / confidences.length) * 100) / 100
       : 0;
 
-    const corrections = [...data.corrections]
+    // Bug #2 — Intelligence panel should show deduced rules, not raw user
+    // comments or meta markers. Filter out:
+    //   - [VALIDATED]/[CLIENT_VALIDATED]/[EXCELLENT] prefixes (entity-boost
+    //     markers, not rules)
+    //   - Default-flow raw user text (no distillation applied)
+    // Keep:
+    //   - save_rule rows (Haiku-distilled, bot_message='[saved-by-user]')
+    //   - implicit-diff rows (Sonnet-described, user_message='[diff implicite]')
+    //   - consolidated rows (status='graduated')
+    const META_MARKERS = ["[VALIDATED]", "[CLIENT_VALIDATED]", "[EXCELLENT]"];
+    const isDeducedRule = (c) => {
+      const text = c.correction || "";
+      if (META_MARKERS.some((m) => text.startsWith(m))) return false;
+      if (c.bot_message === "[saved-by-user]") return true;
+      if (c.user_message === "[diff implicite]") return true;
+      if (c.status === "graduated") return true;
+      return false;
+    };
+    const deducedRules = data.corrections.filter(isDeducedRule);
+    const corrections = [...deducedRules]
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-      .slice(0, 50);
+      .slice(0, 50)
+      .map((c) => ({
+        ...c,
+        // For graduated rows, show the synthesized rule instead of the
+        // raw original correction text.
+        correction: c.status === "graduated" && c.graduated_rule
+          ? c.graduated_rule
+          : c.correction,
+      }));
 
     // Find contradiction relations
     const contradictions = data.relations
@@ -74,7 +101,7 @@ export default async function handler(req, res) {
 
     res.json({
       stats: {
-        corrections_total: data.corrections.length,
+        corrections_total: deducedRules.length,
         entities_total: entities.length,
         relations_total: data.relations.length,
         confidence_avg: confidenceAvg,
