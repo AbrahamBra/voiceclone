@@ -124,10 +124,10 @@
 
     <p class="sub">
       Un client = son cerveau à lui. Son style, ses tics, ses dossiers prospects.
-      Ton setter drafte <em>avec</em>, pas à côté.
+      Ton setter écrit avec lui, pas à sa place.
       <br /><br />
-      Tu tiens une agence ghostwriting ? Le même cerveau drafte aussi les
-      <em>posts LinkedIn</em> de tes clients — DM et posts, une seule voix par clone.
+      Tu tiens une agence ghostwriting ? Le même clone drafte aussi les
+      <em>posts LinkedIn</em> de tes clients. DM et posts, une seule voix.
     </p>
 
     <ul class="triptyque" aria-label="Ce que VoiceClone fait concrètement">
@@ -136,18 +136,18 @@
         <p class="beat-body">
           Les posts qu'il a écrits. Les mots qu'il évite.
           Les prospects qu'il suit. VoiceClone garde tout
-          en tête — ton setter zappe entre 5 clients
+          en tête. Ton setter zappe entre 5 clients
           sans perdre la voix.
         </p>
       </li>
       <li class="beat">
         <h3 class="beat-title">DM au cœur. Posts inclus.</h3>
         <p class="beat-body">
-          L'outil est né pour le setting DM : 1er message,
-          relance, reply, closing — ton setter drafte en
-          <strong>30 secondes au lieu de 30 minutes</strong>.
-          Pour les agences ghostwriting, active les posts
-          LinkedIn de tes clients — même cerveau, mêmes règles.
+          Conçu pour les DM : 1er message, relance, reply, closing.
+          Ton setter passe de
+          <strong>30 minutes à 30 secondes par draft</strong>.
+          Les agences ghostwriting activent aussi les posts
+          LinkedIn. Un seul clone pour les deux canaux.
         </p>
       </li>
       <li class="beat">
@@ -220,7 +220,7 @@
         <figcaption>
           <span class="cap-num mono">02</span>
           Un mot interdit traîne dans le draft ?<br />
-          Un clic pour le virer. La règle reste — pour toujours.
+          Un clic pour le virer. La règle reste pour toujours.
         </figcaption>
       </figure>
 
@@ -258,14 +258,15 @@
 
     <div class="moat-body">
       <p class="moat-para">
-        Trois mois d'utilisation.
+        Trois mois d'utilisation sur un client pilote.
         <strong class="big-num">{PILOT_RULES_COUNT}</strong>
-        règles accumulées pour un seul client.
-        Un setter junior qui arrive ce matin est à un clic
-        de la voix, sans passer la semaine en onboarding.
+        règles apprises à partir de tes corrections.
+        Quand un setter rejoint l'équipe, il écrit dans
+        la bonne voix dès son premier draft. Plus de semaine
+        à relire les archives du client.
       </p>
       <p class="moat-punch">
-        Tes setters tournent. Les clients, non. Les règles, non plus.
+        Tes setters changent. Le clone reste. Les règles apprises aussi.
       </p>
     </div>
 
