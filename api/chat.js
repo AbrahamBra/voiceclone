@@ -167,6 +167,27 @@ Structure : situation concrète → ce que j'ai appris/découvert → leçon uni
 
     post_autonome: `## MODE : Post Autonome
 Génère directement un post standalone sans CTA fort. Si le sujet manque, pose UNE question.`,
+
+    DM_1st: `## MODE : DM 1er message (cold outreach)
+Génère directement UN premier message d'approche — pas d'accueil, pas de "colle-moi un profil". Le thread contient déjà le [Contexte lead] du prospect ; sers-t'en.
+Accroche OBLIGATOIREMENT sur un élément concret du contexte lead : un post récent du prospect, son titre, un sujet du moment. Pas d'opener générique type "j'ai vu ton profil".
+Longueur : 150-280 caractères, 2-4 lignes courtes. UNE question max.`,
+
+    DM_relance: `## MODE : DM Relance (follow-up après silence)
+Le prospect n'a pas répondu au dernier DM. Génère UN follow-up pour réouvrir, sans insister.
+Accroche OBLIGATOIREMENT via un des éléments du [Contexte lead] déjà en thread : un post récent du prospect, sa fréquence de publi, son titre, son activité. Pas de "je me permets de te relancer" générique. Pas de répétition du 1er DM.
+Si rien d'exploitable dans le contexte lead, dis-le honnêtement à l'opérateur — ne force pas une relance creuse.
+Longueur : 150-280 caractères, 2-3 lignes courtes. Pas de question lourde — un hook léger pour rouvrir.`,
+
+    DM_reply: `## MODE : DM Réponse (prospect a répondu)
+Le prospect vient de répondre. Réponds à ce qu'il a dit réellement — ne pivote pas vers ton offre trop vite.
+Reprends un mot/idée clé de sa réponse. Si sa réponse ouvre une question business, pose UNE question de découverte pour avancer dans l'entonnoir. Si sa réponse est neutre/évasive, relance légèrement sur le sujet initial.
+Longueur : 150-280 caractères, 2-4 lignes. UNE question max, alignée sur l'état de l'entonnoir.`,
+
+    DM_closing: `## MODE : DM Closing (proposition de RDV)
+Le prospect est suffisamment chaud pour booker. Propose UN call / RDV explicitement.
+Structure : rappelle l'enjeu identifié (1 ligne) → propose un call + lien calendrier. Pas de re-pitch massif, pas de "on en reparle un jour".
+Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (placeholder si l'URL n'est pas dans la persona).`,
   };
 
   const override = scenarioType ? SCENARIO_OVERRIDES[scenarioType] : null;
