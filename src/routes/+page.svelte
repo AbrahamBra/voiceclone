@@ -145,7 +145,7 @@
       <span class="brand-mark">◎</span>
       <span class="brand-name">VoiceClone</span>
     </div>
-    <a class="top-cta" href={DEMO_CTA_HREF}>liste d'attente →</a>
+    <a class="top-cta" href="/demo">essaie en 5 min →</a>
   </header>
 
   <!-- ═══════ Écran 1 — Hero ═══════ -->
@@ -198,14 +198,17 @@
       </li>
     </ul>
 
-    <div class="hero-cta">
-      <a class="btn-primary" href={DEMO_CTA_HREF}>
-        → Rejoindre la liste d'attente. 20 premiers clients.
+    <div class="hero-cta" id="cta">
+      <a class="btn-primary" href="/demo">
+        → Essaie ton clone en 5 min.
       </a>
-      <p class="cta-sub mono">on t'ouvre l'accès + 20 min pour te brancher sur un de tes clients.</p>
-      <button type="button" class="demo-link mono" onclick={openDemo} disabled={demoLoading}>
-        {demoLoading ? "chargement…" : "ou fouiller dans la démo →"}
-      </button>
+      <p class="cta-sub mono">colle 3 posts, un brief prospect, le DM sort dans ta voix. pas de compte, pas de stockage.</p>
+      <div class="sub-ctas">
+        <button type="button" class="demo-link mono" onclick={openDemo} disabled={demoLoading}>
+          {demoLoading ? "chargement…" : "fouiller une démo pré-entraînée →"}
+        </button>
+        <a class="demo-link mono" href={DEMO_CTA_HREF}>rejoindre la waitlist →</a>
+      </div>
     </div>
   </section>
 
@@ -312,10 +315,11 @@
     </div>
 
     <div class="moat-cta">
-      <a class="btn-primary" href={DEMO_CTA_HREF}>
-        → Rejoindre la liste d'attente.
+      <a class="btn-primary" href="/demo">
+        → Essaie le clone en 5 min.
       </a>
-      <p class="cta-sub mono">20 premiers clients. On calibre avec toi.</p>
+      <p class="cta-sub mono">stateless. pas de compte. tu colles, tu vois.</p>
+      <a class="demo-link mono" href={DEMO_CTA_HREF}>ou rejoins la waitlist →</a>
     </div>
   </section>
 
@@ -560,8 +564,16 @@
     letter-spacing: 0.02em;
     cursor: pointer;
     align-self: flex-start;
+    text-decoration: none;
     transition: color var(--dur-fast, 120ms) var(--ease, ease),
                 border-color var(--dur-fast, 120ms) var(--ease, ease);
+  }
+  .sub-ctas {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px 20px;
+    margin-top: 2px;
   }
   .demo-link:hover:not(:disabled) {
     color: var(--vermillon);
