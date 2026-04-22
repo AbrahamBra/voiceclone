@@ -29,6 +29,7 @@
   // AuditStrip/HeatThermometer/LiveMetricsStrip removed (Chunk 3 cleanup).
   import LeadPanel from "$lib/components/LeadPanel.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
+  import IngestPreviewBubble from "$lib/components/IngestPreviewBubble.svelte";
 
   let personaId = $derived($page.data.personaId);
   let scenario = $derived($page.data.scenario);
@@ -49,6 +50,12 @@
   let showCommandPalette = $state(false);
   let switcherOpen = $state(false);
   let pendingScenarioType = $state(/** @type {string|null} */(null));
+
+  // Ingest post flow : paste un post écrit à la main → extraire règles candidates
+  // → user valide celles qu'il veut push dans le cerveau. Preview uniquement côté
+  // bubble, pas persisté tant que validé.
+  let ingestPending = $state(/** @type {{sourcePost: string, rules: Array<{text: string, rationale: string}>}|null} */(null));
+  let ingesting = $state(false);
 
   // Populate personas list for the inline clone switcher (top-bar dropdown).
   // triage=true attache last_message_at → point de triage par clone dans le menu.
@@ -668,6 +675,49 @@
     handleSend(text);
   }
 
+  // "📝 j'ai écrit ce post" — user colle un post écrit main, on extrait des règles
+  // candidates et on ouvre la bulle de validation. Aucune écriture DB à ce stade.
+  async function handleIngestPost(post) {
+    ingesting = true;
+    ingestPending = null;
+    try {
+      const result = await api("/api/feedback", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "extract_rules_from_post",
+          post,
+          persona: get(currentPersonaId),
+        }),
+      });
+      ingestPending = { sourcePost: post, rules: result.rules || [] };
+      if (!result.rules || result.rules.length === 0) {
+        showToast("Rien d'actionnable à extraire de ce post");
+      }
+    } catch (e) {
+      showToast("Erreur extraction : " + (e.message || "inconnue"));
+    } finally {
+      ingesting = false;
+    }
+  }
+
+  // Validation d'une règle candidate → push dans le cerveau via save_rule_direct.
+  async function handleValidateIngestRule(ruleText) {
+    await api("/api/feedback", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "save_rule_direct",
+        ruleText,
+        sourcePost: ingestPending?.sourcePost?.slice(0, 200) || "",
+        persona: get(currentPersonaId),
+      }),
+    });
+    showToast("Règle ajoutée au cerveau ✓");
+  }
+
+  function handleDismissIngest() {
+    ingestPending = null;
+  }
+
   // ✓ valider : PATCH message turn_kind='toi' + POST feedback-events.
   // Also fires the legacy /api/feedback validate signal so detect-validate
   // pipeline (positive feedback loop) keeps working.
@@ -987,15 +1037,28 @@
                 onCopyBlock={() => {}}
               />
             {/each}
+            {#if ingesting}
+              <div class="ingest-loading mono">📝 Extraction des règles…</div>
+            {/if}
+            {#if ingestPending}
+              <IngestPreviewBubble
+                rules={ingestPending.rules}
+                sourcePost={ingestPending.sourcePost}
+                onValidate={handleValidateIngestRule}
+                onDismiss={handleDismissIngest}
+              />
+            {/if}
             <div bind:this={scrollAnchor}></div>
           </div>
 
           <ChatComposer
             disabled={$sending}
             scenarioType={$currentScenarioType}
+            isEmptyConversation={$messages.length === 0}
             onDraftNext={handleDraftNext}
             onSwitchScenario={handleScenarioChange}
             onAnalyzeProspect={(url) => { leadInitialUrl = url; leadOpen = true; }}
+            onIngestPost={handleIngestPost}
           />
         </div>
 
@@ -1196,6 +1259,15 @@
 
   @media (max-width: 480px) {
     .chat-messages { padding: 0.75rem; }
+  }
+
+  .ingest-loading {
+    align-self: flex-start;
+    font-size: 11px;
+    color: var(--ink-40);
+    padding: 8px 12px;
+    border: 1px dashed var(--rule);
+    background: var(--paper-subtle, #f6f5f1);
   }
 
   .scenario-confirm-backdrop {

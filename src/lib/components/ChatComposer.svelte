@@ -7,9 +7,11 @@
   let {
     disabled = false,
     scenarioType = null,
+    isEmptyConversation = false,
     onDraftNext,          // ({ consigne }) => void
     onAnalyzeProspect,    // (url: string) => void — called when user confirms paste-detected LinkedIn URL
     onSwitchScenario,     // (scenarioId) => Promise<void> — flip scenario_type before drafting (DM sub-mode)
+    onIngestPost,         // (post: string) => void — called when user submits a hand-written post to ingest as rules
   } = $props();
 
   // DM sub-modes exposed as CTAs in the composer. Clicking one switches
@@ -21,6 +23,12 @@
     { id: "DM_closing", label: "✨ closer" },
   ];
   let isDmMode = $derived(scenarioType?.startsWith("DM") ?? false);
+  let isPostMode = $derived(scenarioType?.startsWith("post") ?? false);
+
+  // Ingest mode : user wants to paste a hand-written post to teach the clone.
+  // Flip les CTA + placeholder. Reset à chaque changement de scénario.
+  let ingestMode = $state(false);
+  $effect(() => { scenarioType; ingestMode = false; });
 
   const LINKEDIN_URL_RE = /https?:\/\/(?:www\.)?linkedin\.com\/in\/[^\s/?#]+/i;
 
@@ -67,9 +75,11 @@
   let placeholderText = $derived(
     scenarioMissing
       ? "Sélectionne un scénario pour débloquer le composer"
-      : scenarioType?.startsWith("post")
-        ? "Décris le sujet du post ou colle une inspiration (Cmd+Enter = générer)"
-        : "Colle la réponse du prospect, une URL LinkedIn, ou tape une consigne (Cmd+Enter)"
+      : ingestMode
+        ? "Colle ton post ici — on en extraira des règles à valider (min 50 caractères)"
+        : scenarioType?.startsWith("post")
+          ? "Décris le sujet du post ou colle une inspiration (Cmd+Enter = générer)"
+          : "Colle la réponse du prospect, une URL LinkedIn, ou tape une consigne (Cmd+Enter)"
   );
 
   // Paste-detected LinkedIn URL → inline "Analyser" banner. Dismissable.
@@ -80,6 +90,12 @@
     const match = text.match(LINKEDIN_URL_RE);
     detectedUrl = match ? match[0] : null;
   });
+
+  // Empty-state hint: guide l'user DM vers le scrape LinkedIn quand conv vierge.
+  // Masqué dès qu'une URL est collée (banner prend le relai) ou qu'un message part.
+  let showLeadHint = $derived(
+    isEmptyConversation && !scenarioMissing && isDmMode && text.length === 0 && !detectedUrl
+  );
 
   function analyzeDetected() {
     if (!detectedUrl) return;
@@ -136,9 +152,37 @@
     // Cmd/Ctrl+Enter = draft la suite (action fréquente en itération)
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      draftNext();
+      if (ingestMode) ingestPost();
+      else draftNext();
     }
     // Shift+Enter = newline (default)
+  }
+
+  function startIngest() {
+    if (effectiveDisabled) return;
+    ingestMode = true;
+    text = "";
+    requestAnimationFrame(() => {
+      if (!textareaEl) return;
+      textareaEl.focus();
+      autoResize();
+    });
+  }
+
+  function cancelIngest() {
+    ingestMode = false;
+    text = "";
+    if (textareaEl) textareaEl.style.height = "auto";
+  }
+
+  function ingestPost() {
+    if (effectiveDisabled) return;
+    const post = text.trim();
+    if (post.length < 50) return;
+    text = "";
+    ingestMode = false;
+    if (textareaEl) textareaEl.style.height = "auto";
+    onIngestPost?.(post);
   }
 </script>
 
@@ -166,6 +210,10 @@
           ×
         </button>
       </div>
+    </div>
+  {:else if showLeadHint && onAnalyzeProspect}
+    <div class="lead-hint mono" role="note">
+      🔗 Colle une URL LinkedIn pour démarrer — on extrait le profil + posts
     </div>
   {/if}
 
@@ -196,7 +244,20 @@
   ></textarea>
 
   <div class="actions">
-    {#if isDmMode}
+    {#if ingestMode}
+      <button
+        class="btn-primary btn-ingest"
+        type="button"
+        onclick={ingestPost}
+        disabled={effectiveDisabled || text.trim().length < 50}
+        title="Extrait des règles candidates depuis ton post. Cmd+Enter"
+      >
+        📝 ingérer ce post
+      </button>
+      <button class="btn-cancel-ingest" type="button" onclick={cancelIngest}>
+        annuler
+      </button>
+    {:else if isDmMode}
       <!-- 4 sub-mode CTAs replace the single adaptive button. Each click
            switches scenario_type (same kind = no conv reset) then drafts.
            The currently active sub-mode is visually marked. Cmd+Enter still
@@ -218,6 +279,17 @@
       <button class="btn-primary" type="button" onclick={draftNext} disabled={effectiveDisabled} title="Génère un clone_draft (textarea = consigne optionnelle). Cmd+Enter">
         {ctaLabel}
       </button>
+      {#if isPostMode && onIngestPost}
+        <button
+          class="btn-ingest-toggle"
+          type="button"
+          onclick={startIngest}
+          disabled={effectiveDisabled}
+          title="Ingère un post que le client a écrit à la main — on en extrait des règles pour le cerveau"
+        >
+          📝 j'ai écrit ce post
+        </button>
+      {/if}
     {/if}
   </div>
 </div>
@@ -274,6 +346,14 @@
   }
   .lead-dismiss:hover { color: var(--ink); }
 
+  .lead-hint {
+    padding: 6px 10px;
+    background: var(--paper-subtle, #f6f5f1);
+    border: 1px dashed var(--rule);
+    font-size: 11px;
+    color: var(--ink-60, #666);
+  }
+
   .composer-locked textarea { background: var(--paper-subtle, #f6f5f1); }
   .scenario-gate {
     font-size: 11px;
@@ -328,6 +408,30 @@
   }
   .btn-primary:hover { opacity: 0.9; }
   .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-ingest-toggle {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 6px 10px;
+    cursor: pointer;
+    border: 1px dashed var(--rule-strong);
+    background: var(--paper);
+    color: var(--ink-70);
+  }
+  .btn-ingest-toggle:hover:not(:disabled) { border-color: var(--ink); color: var(--ink); }
+  .btn-ingest-toggle:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-ingest { background: var(--ink); border-color: var(--ink); }
+  .btn-cancel-ingest {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 6px 10px;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: var(--ink-40);
+  }
+  .btn-cancel-ingest:hover { color: var(--ink); }
 
   /* DM sub-mode CTAs. Row of 4 compact buttons. Active sub-mode is filled
      vermillon to signal "this is what will fire on Cmd+Enter", inactive ones
