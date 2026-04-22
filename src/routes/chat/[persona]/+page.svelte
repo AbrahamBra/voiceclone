@@ -1,6 +1,7 @@
 <script>
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
+  import { untrack } from "svelte";
   import { get } from "svelte/store";
   import { accessCode } from "$lib/stores/auth.js";
   import { personaConfig, currentPersonaId, personas } from "$lib/stores/persona.js";
@@ -202,11 +203,18 @@
     }
   });
 
-  // Initialize on mount / persona change
+  // Initialize on mount / persona change only. URL changes from
+  // applyScenarioChange() update $page.data.scenario/scenarioType — we do NOT
+  // want those to re-run init(), which would reload the last conversation from
+  // localStorage and override the scenario the user just picked. Scenario
+  // changes are already handled inline by applyScenarioChange.
+  let initedPersonaId = $state(/** @type {string|null} */ (null));
   $effect(() => {
-    if (personaId) {
-      init(personaId, scenario, scenarioTypeFromUrl);
-    }
+    if (!personaId || personaId === initedPersonaId) return;
+    initedPersonaId = personaId;
+    // Read scenario/scenarioTypeFromUrl untracked so later URL updates don't
+    // retrigger this effect.
+    init(personaId, untrack(() => scenario), untrack(() => scenarioTypeFromUrl));
   });
 
   async function init(pid, scn, scnType) {
