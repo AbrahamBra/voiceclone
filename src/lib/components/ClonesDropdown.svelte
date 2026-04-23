@@ -1,6 +1,5 @@
 <script>
   import { fly } from "svelte/transition";
-  import { prefetchPersona } from "$lib/prefetchCache.js";
 
   let {
     personas = [],
@@ -59,8 +58,6 @@
           class:current={p.id === currentPersonaId}
           disabled={p.id === currentPersonaId}
           onclick={() => handleSelect(p)}
-          onmouseenter={() => p.id !== currentPersonaId && prefetchPersona(p.id)}
-          onfocus={() => p.id !== currentPersonaId && prefetchPersona(p.id)}
           role="option"
           aria-selected={p.id === currentPersonaId}
         >
