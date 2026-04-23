@@ -607,21 +607,25 @@
               )
             );
           } else if (type === "reconnecting") {
+            const attempt = (detail ?? 0) + 1;
             messages.update((msgs) =>
               msgs.map((m) =>
                 m.id === botId
-                  ? { ...m, status: "Reconnexion..." }
+                  ? { ...m, status: `Reconnexion (${attempt}/5)...` }
                   : m
               )
             );
-          } else if (type === "failed") {
+          } else if (type === "failed" || type === "disconnected") {
+            // "disconnected" = stream broke mid-response after deltas were
+            // received. Preserve partial content if any (user can read what
+            // was generated before the cut), otherwise show the error.
             messages.update((msgs) =>
               msgs.map((m) =>
                 m.id === botId
                   ? {
                       ...m,
                       typing: false,
-                      content: "Connexion perdue. Reessayez.",
+                      content: m.content || "Connexion perdue. Reessayez.",
                     }
                   : m
               )
