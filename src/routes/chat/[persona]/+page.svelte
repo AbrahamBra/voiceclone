@@ -18,43 +18,18 @@
   import { track } from "$lib/tracking.js";
   import { streamChat } from "$lib/sse.js";
   import { legacyKeyFor, isScenarioId } from "$lib/scenarios.js";
-  import {
-    getFidelityBatch,
-    prefetchConversation,
-    prefetchFeedbackEvents,
-    takeConversation,
-    takeFeedbackEvents,
-  } from "$lib/prefetchCache.js";
   import ChatMessage from "$lib/components/ChatMessage.svelte";
   import ChatComposer from "$lib/components/ChatComposer.svelte";
   import ProspectDossierHeader from "$lib/components/ProspectDossierHeader.svelte";
   import FeedbackRail from "$lib/components/FeedbackRail.svelte";
   import ConversationSidebar from "$lib/components/ConversationSidebar.svelte";
   import ChatTopBar from "$lib/components/ChatTopBar.svelte";
-  // Modals lazy-loaded : tous optionnels / ouverts via interaction utilisateur.
-  // Les sortir du bundle initial allège le chunk /chat/[persona] de ~30-40%.
-  // Chaque panel est chargé on-demand la 1re fois qu'il est invoqué, puis
-  // gardé en mémoire pour les ouvertures suivantes.
-  let FeedbackPanel = $state(/** @type {any} */ (null));
-  let LeadPanel = $state(/** @type {any} */ (null));
-  let CommandPalette = $state(/** @type {any} */ (null));
-  let IngestPreviewBubble = $state(/** @type {any} */ (null));
-  function loadFeedbackPanel() {
-    if (FeedbackPanel) return Promise.resolve();
-    return import("$lib/components/FeedbackPanel.svelte").then((m) => { FeedbackPanel = m.default; });
-  }
-  function loadLeadPanel() {
-    if (LeadPanel) return Promise.resolve();
-    return import("$lib/components/LeadPanel.svelte").then((m) => { LeadPanel = m.default; });
-  }
-  function loadCommandPalette() {
-    if (CommandPalette) return Promise.resolve();
-    return import("$lib/components/CommandPalette.svelte").then((m) => { CommandPalette = m.default; });
-  }
-  function loadIngestPreviewBubble() {
-    if (IngestPreviewBubble) return Promise.resolve();
-    return import("$lib/components/IngestPreviewBubble.svelte").then((m) => { IngestPreviewBubble = m.default; });
-  }
+  import FeedbackPanel from "$lib/components/FeedbackPanel.svelte";
+  // SettingsPanel removed from chat — settings now live in /brain/[persona]#reglages.
+  // AuditStrip/HeatThermometer/LiveMetricsStrip removed (Chunk 3 cleanup).
+  import LeadPanel from "$lib/components/LeadPanel.svelte";
+  import CommandPalette from "$lib/components/CommandPalette.svelte";
+  import IngestPreviewBubble from "$lib/components/IngestPreviewBubble.svelte";
 
   let personaId = $derived($page.data.personaId);
   let scenario = $derived($page.data.scenario);
@@ -111,7 +86,8 @@
     if (ids.length === 0) return;
     (async () => {
       try {
-        fidelityByPersona = await getFidelityBatch(ids);
+        const data = await api(`/api/fidelity?personas=${ids.join(",")}`);
+        fidelityByPersona = data?.scores || {};
       } catch {
         // best-effort
       }
@@ -183,21 +159,20 @@
   );
   let heatSignal = $state(null);  // { state: 'cold'|'warm'|'hot', delta }
 
-  // Sequence numbers per role, precomputed once per $messages change. Avant :
-  // seqForMessage(msg, all) parcourait `all` pour CHAQUE msg du {#each} —
-  // O(n²) recalculé à chaque delta SSE (sur thread 50+ msgs × 200 deltas =
-  // 500k ops/s). Map id→seq = O(n) build, O(1) lookup au render.
-  let seqByMessageId = $derived.by(() => {
-    const map = new Map();
-    let userN = 0;
-    let botN = 0;
-    for (const m of $messages) {
-      if (m.id === "welcome") continue;
-      if (m.role === "user") map.set(m.id, ++userN);
-      else map.set(m.id, ++botN);
+  // Bot message sequence number generator (per conversation)
+  let botSeq = $state(0);
+  let userSeq = $state(0);
+  function seqForMessage(msg, allMessages) {
+    // Count messages of the same role up to and including this one
+    let n = 0;
+    for (const m of allMessages) {
+      if (m.role !== msg.role) continue;
+      if (m.id === "welcome") continue; // welcome isn't numbered
+      n++;
+      if (m.id === msg.id) return n;
     }
-    return map;
-  });
+    return null;
+  }
 
   async function refreshFidelity() {
     if (!personaId) return;
@@ -231,23 +206,19 @@
 
   // Events feedback pré-chargés pendant init() pour éviter que FeedbackRail
   // n'attende la fin de loadConversation avant de lancer son fetch. Format :
-  // { convId, events?, promise? } — FeedbackRail n'utilise le cache que si
-  // convId match. `events` prêts = hydratation instantanée ; `promise` in-flight
-  // = rail attend la résolution sans déclencher son propre fetch.
-  let preloadedFeedbackEvents = $state(
-    /** @type {{convId:string, events?:any[]|null, promise?:Promise<any[]>}|null} */ (null)
-  );
+  // { convId, events } — FeedbackRail n'utilise le cache que si convId match.
+  let preloadedFeedbackEvents = $state(/** @type {{convId:string,events:any[]}|null} */ (null));
 
-  // Scroll to bottom when messages change. During an SSE stream we get a scroll
-  // per delta — `smooth` queues up dozens of concurrent smooth-scrolls and
-  // janks. Use `auto` while streaming, `smooth` only once idle.
+  // Scroll to bottom when messages change
   $effect(() => {
+    // Subscribe to messages store reactively
     const msgs = $messages;
-    if (!scrollAnchor) return;
-    const behavior = get(sending) ? "auto" : "smooth";
-    requestAnimationFrame(() => {
-      scrollAnchor.scrollIntoView({ behavior, block: "end" });
-    });
+    if (scrollAnchor) {
+      // Small delay so DOM renders first
+      requestAnimationFrame(() => {
+        scrollAnchor.scrollIntoView({ behavior: "smooth", block: "end" });
+      });
+    }
   });
 
   // Initialize on mount / persona change only. URL changes from
@@ -266,14 +237,6 @@
 
   async function init(pid, scn, scnType) {
     loading = true;
-    // Switching personas : flush stale chrome so the previous clone's name,
-    // conv list and thread don't flash under the new clone's URL during the
-    // init fetches.
-    if ($personaConfig && $personaConfig.id !== pid) {
-      personaConfig.set(null);
-      conversations.set([]);
-      messages.set([]);
-    }
     currentPersonaId.set(pid);
     currentScenario.set(scn);
     currentScenarioType.set(scnType || null);
@@ -298,53 +261,43 @@
     const needsConfig = !$personaConfig || $personaConfig.id !== pid;
 
     try {
-      // Hover-prefetch from the clones dropdown : best-effort optimization.
-      // Si le prefetch a échoué (réseau flaky, 401 transient pendant qu'on
-      // hovait), on DOIT retomber sur un fetch frais — sinon init() throw
-      // "Failed to load config" alors que l'API marche très bien maintenant.
-      const prefetched = takePersonaPrefetch(pid);
-      const jsonOrNull = (r) => (r && r.ok ? r.json() : null);
-      const fetchConfig = () => fetch(`/api/config?persona=${pid}`, { headers: authHeaders() }).then(jsonOrNull).catch(() => null);
-      const fetchConvs = () => fetch(`/api/conversations?persona=${pid}`, { headers: authHeaders() }).then(jsonOrNull).catch(() => null);
-
-      const configPromise = !needsConfig ? Promise.resolve(null) : (prefetched?.config || fetchConfig());
-      const convsPromise = prefetched?.convs || fetchConvs();
-      const savedConvPromise = savedConvId
-        ? fetch(`/api/conversations?id=${savedConvId}`, { headers: authHeaders() }).then(jsonOrNull).catch(() => null)
-        : Promise.resolve(null);
-      const savedEventsPromise = savedConvId
-        ? fetch(`/api/feedback-events?conversation=${savedConvId}`, { headers: authHeaders() }).then(jsonOrNull).catch(() => null)
-        : Promise.resolve(null);
-
-      let [config, convData, savedConvData, savedEventsData] = await Promise.all([
-        configPromise, convsPromise, savedConvPromise, savedEventsPromise,
+      const [configResp, listResp, savedConvResp, savedEventsResp] = await Promise.all([
+        needsConfig
+          ? fetch(`/api/config?persona=${pid}`, { headers: authHeaders() }).catch(() => null)
+          : Promise.resolve(null),
+        fetch(`/api/conversations?persona=${pid}`, { headers: authHeaders() }).catch(() => null),
+        savedConvId
+          ? fetch(`/api/conversations?id=${savedConvId}`, { headers: authHeaders() }).catch(() => null)
+          : Promise.resolve(null),
+        savedConvId
+          ? fetch(`/api/feedback-events?conversation=${savedConvId}`, { headers: authHeaders() }).catch(() => null)
+          : Promise.resolve(null),
       ]);
 
-      // Prefetch fallback : si le hover-fetch a résolu null, on relance frais.
-      if (needsConfig && !config && prefetched?.config) config = await fetchConfig();
-      if (!convData && prefetched?.convs) convData = await fetchConvs();
-
-      if (savedConvId && savedEventsData) {
-        preloadedFeedbackEvents = {
-          convId: savedConvId,
-          events: Array.isArray(savedEventsData.events) ? savedEventsData.events : [],
-        };
+      if (savedConvId && savedEventsResp && savedEventsResp.ok) {
+        try {
+          const d = await savedEventsResp.json();
+          preloadedFeedbackEvents = { convId: savedConvId, events: Array.isArray(d.events) ? d.events : [] };
+        } catch {}
       }
 
       if (needsConfig) {
-        if (!config) throw new Error("Failed to load config");
+        if (!configResp || !configResp.ok) throw new Error("Failed to load config");
+        const config = await configResp.json();
         personaConfig.set(config);
         applyTheme(config.theme || {});
       }
 
       let convList = [];
-      if (convData) {
-        convList = convData.conversations || [];
+      if (listResp && listResp.ok) {
+        const d = await listResp.json();
+        convList = d.conversations || [];
         conversations.set(convList);
       }
 
-      if (savedConvData) {
-        await loadConversation(savedConvId, savedConvData);
+      if (savedConvResp && savedConvResp.ok) {
+        const data = await savedConvResp.json();
+        await loadConversation(savedConvId, data);
       } else if (convList[0]?.id) {
         await loadConversation(convList[0].id);
       } else {
@@ -374,48 +327,12 @@
     currentConversationId.set(null);
   }
 
-  // Guards against the "fast-switch race" : click A (slow) → click B (fast)
-  // → A resolves second and overwrites B. AbortController cancels A before B
-  // fires so only the freshest switch wins.
-  let convLoadController = /** @type {AbortController|null} */ (null);
   async function loadConversation(convId, preloadedData = null) {
-    if (convLoadController) convLoadController.abort();
-    convLoadController = new AbortController();
-    const signal = convLoadController.signal;
     try {
       let data = preloadedData;
-      // Hover-prefetch cache : if the sidebar warmed this conv, reuse its
-      // promise ; otherwise start a fresh fetch. Both conv payload and events
-      // are kicked off *before* the atomic flip so they overlap with the
-      // effects Svelte runs in response.
-      let eventsPromise = takeFeedbackEvents(personaId, convId);
-      if (!eventsPromise) {
-        eventsPromise = fetch(`/api/feedback-events?conversation=${convId}`, {
-          headers: authHeaders(),
-          signal,
-        })
-          .then((r) => (r.ok ? r.json() : null))
-          .then((d) => (d && Array.isArray(d.events) ? d.events : []))
-          .catch(() => []);
-      }
-      const cachedConvPromise = !data ? takeConversation(personaId, convId) : null;
-
-      // Atomic flip : update preloadedFeedbackEvents + currentConversationId in
-      // the same sync block (no awaits between) so FeedbackRail's $effect sees
-      // both new values in a single flush cycle. Otherwise the rail would see
-      // new-convId-with-stale-preload (or vice-versa), fire a redundant fetch,
-      // and race with the preloaded promise.
-      preloadedFeedbackEvents = { convId, events: null, promise: eventsPromise };
-      currentConversationId.set(convId);
-      localStorage.setItem("conv_" + personaId, convId);
-
-      if (!data && cachedConvPromise) {
-        data = await cachedConvPromise;
-      }
       if (!data) {
         const resp = await fetch(`/api/conversations?id=${convId}`, {
           headers: authHeaders(),
-          signal,
         });
         if (!resp.ok) {
           showWelcome();
@@ -425,6 +342,9 @@
       }
       const conv = data.conversation || data;
       const convMessages = conv.messages || data.messages || [];
+
+      currentConversationId.set(convId);
+      localStorage.setItem("conv_" + personaId, convId);
 
       // Sync scenario stores with the conversation's stored values so the
       // composer unlocks (scenario-gate) and the ScenarioSwitcher reflects
@@ -450,8 +370,7 @@
         });
       }
       messages.set(msgs);
-    } catch (e) {
-      if (e?.name === "AbortError") return; // superseded by another switch
+    } catch {
       showWelcome();
     }
   }
@@ -534,34 +453,6 @@
     });
 
     let botText = "";
-    // Delta coalescing : SSE chunks arrive faster than the display can refresh
-    // (often 10+ per 16ms). Batch writes to the store via rAF so we do at most
-    // 1 messages.update per frame — same visual result, ~10× fewer Svelte
-    // reactivity passes during a stream. patchBot() also avoids the .map(...)
-    // over the whole array : findIndex + spread touches one slot.
-    let deltaRafId = /** @type {number|null} */ (null);
-    function patchBot(patch) {
-      messages.update((msgs) => {
-        const idx = msgs.findIndex((m) => m.id === botId);
-        if (idx === -1) return msgs;
-        const next = msgs.slice();
-        next[idx] = { ...msgs[idx], ...patch };
-        return next;
-      });
-    }
-    function flushDelta() {
-      if (deltaRafId !== null) {
-        cancelAnimationFrame(deltaRafId);
-        deltaRafId = null;
-      }
-    }
-    function scheduleDeltaFlush() {
-      if (deltaRafId !== null) return;
-      deltaRafId = requestAnimationFrame(() => {
-        deltaRafId = null;
-        patchBot({ content: botText, typing: false });
-      });
-    }
 
     await streamChat(
       {
@@ -574,48 +465,61 @@
       {
         onDelta(chunk) {
           botText += chunk;
-          scheduleDeltaFlush();
+          messages.update((msgs) =>
+            msgs.map((m) =>
+              m.id === botId ? { ...m, content: botText, typing: false } : m
+            )
+          );
         },
         onThinking() {
-          patchBot({ status: "Analyse du contexte..." });
+          messages.update((msgs) =>
+            msgs.map((m) =>
+              m.id === botId ? { ...m, status: "Analyse du contexte..." } : m
+            )
+          );
         },
         onRewriting(attempt) {
-          patchBot({ status: `Amelioration (tentative ${attempt})...` });
+          messages.update((msgs) =>
+            msgs.map((m) =>
+              m.id === botId
+                ? { ...m, status: `Amelioration (tentative ${attempt})...` }
+                : m
+            )
+          );
         },
         onClear() {
-          flushDelta();
+          // Rewrite is about to start — preserve the pass-1 text as `original`
           const originalText = botText;
           botText = "";
-          messages.update((msgs) => {
-            const idx = msgs.findIndex((m) => m.id === botId);
-            if (idx === -1) return msgs;
-            const next = msgs.slice();
-            const prev = msgs[idx];
-            next[idx] = { ...prev, content: "", status: undefined, original: originalText || prev.original };
-            return next;
-          });
+          messages.update((msgs) =>
+            msgs.map((m) =>
+              m.id === botId
+                ? { ...m, content: "", status: undefined, original: originalText || m.original }
+                : m
+            )
+          );
         },
         onDone(evt) {
-          // Cancel any pending rAF delta flush — otherwise it could race
-          // against this final patch and overwrite the telemetry fields with
-          // just {content, typing}.
-          flushDelta();
-          // Attach per-message telemetry (and the final content) on the bot
-          // message. `content: botText` guards against the case where onDone
-          // arrives before the last rAF fired.
-          patchBot({
-            content: botText,
-            typing: false,
-            status: undefined,
-            rewritten: evt?.rewritten || false,
-            timing: evt?.timing || null,
-            tokens: evt?.tokens || null,
-            model: evt?.model || null,
-            fidelity: evt?.fidelity || null,
-            live_style: evt?.live_style || null,
-            violations: evt?.violations || [],
-            sources: evt?.sources || null,
-          });
+          // Attach per-message telemetry on the bot message for the
+          // lab-notebook strip to consume.
+          messages.update((msgs) =>
+            msgs.map((m) =>
+              m.id === botId
+                ? {
+                    ...m,
+                    status: undefined,
+                    rewritten: evt?.rewritten || false,
+                    timing: evt?.timing || null,
+                    tokens: evt?.tokens || null,
+                    model: evt?.model || null,
+                    fidelity: evt?.fidelity || null,
+                    live_style: evt?.live_style || null,
+                    violations: evt?.violations || [],
+                    sources: evt?.sources || null,
+                  }
+                : m
+            )
+          );
 
           // Bump rule activation counters from the SSE violations payload
           const now = Date.now();
@@ -677,19 +581,42 @@
           }
         },
         onError(type, detail) {
-          flushDelta();
           if (type === "rate_limit") {
             showToast("Trop de messages, patientez");
             messages.update((msgs) => msgs.filter((m) => m.id !== botId));
           } else if (type === "budget") {
-            patchBot({
-              typing: false,
-              content: "**Budget depasse.** Ajoutez votre cle API Anthropic dans les parametres (&#9881;) pour continuer.",
-            });
+            messages.update((msgs) =>
+              msgs.map((m) =>
+                m.id === botId
+                  ? {
+                      ...m,
+                      typing: false,
+                      content:
+                        "**Budget depasse.** Ajoutez votre cle API Anthropic dans les parametres (&#9881;) pour continuer.",
+                    }
+                  : m
+              )
+            );
           } else if (type === "reconnecting") {
-            patchBot({ status: "Reconnexion..." });
+            messages.update((msgs) =>
+              msgs.map((m) =>
+                m.id === botId
+                  ? { ...m, status: "Reconnexion..." }
+                  : m
+              )
+            );
           } else if (type === "failed") {
-            patchBot({ typing: false, content: "Connexion perdue. Reessayez." });
+            messages.update((msgs) =>
+              msgs.map((m) =>
+                m.id === botId
+                  ? {
+                      ...m,
+                      typing: false,
+                      content: "Connexion perdue. Reessayez.",
+                    }
+                  : m
+              )
+            );
           }
         },
       }
@@ -712,8 +639,7 @@
 
   let feedbackMessageId = $state(null);
 
-  async function handleCorrect(message) {
-    await loadFeedbackPanel();
+  function handleCorrect(message) {
     feedbackTarget = message.content;
     feedbackMessageId = message.id;
     feedbackOpen = true;
@@ -831,9 +757,6 @@
   async function handleIngestPost(post) {
     ingesting = true;
     ingestPending = null;
-    // Load the preview bubble in parallel with the extraction request — by the
-    // time rules come back, the component is ready.
-    loadIngestPreviewBubble();
     try {
       const result = await api("/api/feedback", {
         method: "POST",
@@ -1086,11 +1009,7 @@
     }
     if (mod && e.key === "k") {
       e.preventDefault();
-      if (!showCommandPalette) {
-        loadCommandPalette().then(() => { showCommandPalette = true; });
-      } else {
-        showCommandPalette = false;
-      }
+      showCommandPalette = !showCommandPalette;
     }
     if (mod && e.key === "n") {
       e.preventDefault();
@@ -1136,6 +1055,11 @@
 
 <svelte:window onkeydown={handleKeyboard} />
 
+{#if loading}
+  <div class="loading-screen">
+    <div class="loading-dot"></div>
+  </div>
+{:else}
   <div class="chat-layout">
     <ConversationSidebar
       {personaId}
@@ -1181,13 +1105,10 @@
           {/if}
 
           <div class="chat-messages" bind:this={messagesEl}>
-            {#if loading && $messages.length === 0}
-              <div class="thread-skeleton"><div class="loading-dot"></div></div>
-            {/if}
             {#each $messages as message (message.id)}
               <ChatMessage
                 {message}
-                seq={seqByMessageId.get(message.id) ?? null}
+                seq={seqForMessage(message, $messages)}
                 onCorrect={handleCorrect}
                 onValidate={handleValidate}
                 onClientValidate={handleClientValidate}
@@ -1200,7 +1121,7 @@
             {#if ingesting}
               <div class="ingest-loading mono">📝 Extraction des règles…</div>
             {/if}
-            {#if ingestPending && IngestPreviewBubble}
+            {#if ingestPending}
               <IngestPreviewBubble
                 rules={ingestPending.rules}
                 sourcePost={ingestPending.sourcePost}
@@ -1217,7 +1138,7 @@
             isEmptyConversation={$messages.length === 0}
             onDraftNext={handleDraftNext}
             onSwitchScenario={handleScenarioChange}
-            onAnalyzeProspect={(url) => { loadLeadPanel().then(() => { leadInitialUrl = url; leadOpen = true; }); }}
+            onAnalyzeProspect={(url) => { leadInitialUrl = url; leadOpen = true; }}
             onIngestPost={handleIngestPost}
             onAddProspectReply={handleAddProspectReply}
           />
@@ -1240,56 +1161,52 @@
     </div>
   </div>
 
-  {#if feedbackOpen && FeedbackPanel}
-    <FeedbackPanel
-      open={feedbackOpen}
-      botMessage={feedbackTarget || ""}
-      onClose={() => { feedbackOpen = false; feedbackTarget = null; feedbackMessageId = null; }}
-      onReplace={handleReplace}
-      onCorrected={async (correctionText) => {
-        if (!feedbackMessageId || !$currentConversationId) return;
-        try {
-          const resp = await fetch("/api/feedback-events", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...authHeaders() },
-            body: JSON.stringify({
-              conversation_id: $currentConversationId,
-              message_id: feedbackMessageId,
-              event_type: "corrected",
-              correction_text: correctionText,
-            }),
+  <FeedbackPanel
+    open={feedbackOpen}
+    botMessage={feedbackTarget || ""}
+    onClose={() => { feedbackOpen = false; feedbackTarget = null; feedbackMessageId = null; }}
+    onReplace={handleReplace}
+    onCorrected={async (correctionText) => {
+      if (!feedbackMessageId || !$currentConversationId) return;
+      try {
+        const resp = await fetch("/api/feedback-events", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({
+            conversation_id: $currentConversationId,
+            message_id: feedbackMessageId,
+            event_type: "corrected",
+            correction_text: correctionText,
+          }),
+        });
+        if (resp.ok) {
+          const ev = await resp.json();
+          feedbackRailRef?.appendEvent?.({
+            id: ev.id,
+            message_id: feedbackMessageId,
+            event_type: "corrected",
+            correction_text: correctionText,
+            created_at: ev.created_at,
+            rules_fired: [],
           });
-          if (resp.ok) {
-            const ev = await resp.json();
-            feedbackRailRef?.appendEvent?.({
-              id: ev.id,
-              message_id: feedbackMessageId,
-              event_type: "corrected",
-              correction_text: correctionText,
-              created_at: ev.created_at,
-              rules_fired: [],
-            });
-          }
-        } catch { /* best-effort */ }
-      }}
-    />
-  {/if}
+        }
+      } catch { /* best-effort */ }
+    }}
+  />
 
-  {#if leadOpen && LeadPanel}
-    <LeadPanel
-      open={leadOpen}
-      initialUrl={leadInitialUrl}
-      onClose={() => { leadOpen = false; leadInitialUrl = ""; }}
-      onAnalyzed={handleLeadAnalyzed}
-    />
-  {/if}
+  <LeadPanel
+    open={leadOpen}
+    initialUrl={leadInitialUrl}
+    onClose={() => { leadOpen = false; leadInitialUrl = ""; }}
+    onAnalyzed={handleLeadAnalyzed}
+  />
 
-  {#if showCommandPalette && CommandPalette}
+  {#if showCommandPalette}
     <CommandPalette
       conversations={$conversations}
       commands={[
         { id: "new-conv", label: "Nouvelle conversation", hint: "⌘N", action: handleNewConversation },
-        { id: "analyse-prospect", label: "Analyser un prospect", hint: "URL LinkedIn", action: () => { loadLeadPanel().then(() => { leadInitialUrl = ""; leadOpen = true; }); } },
+        { id: "analyse-prospect", label: "Analyser un prospect", hint: "URL LinkedIn", action: () => { leadInitialUrl = ""; leadOpen = true; } },
         { id: "open-brain", label: "Cerveau du clone", hint: "persona", action: () => goto(`/brain/${personaId}`) },
         { id: "switch-clone", label: "Changer de clone", hint: "⌘⇧C", action: () => { switcherOpen = true; } },
       ]}
@@ -1313,6 +1230,7 @@
       </div>
     </div>
   {/if}
+{/if}
 
 <style>
   .chat-layout {
@@ -1388,12 +1306,11 @@
 
   /* ScenarioSwitcher relocated to ProspectDossierHeader; composer-toolbar CSS removed. */
 
-  .thread-skeleton {
+  .loading-screen {
     display: flex;
     align-items: center;
     justify-content: center;
-    flex: 1;
-    min-height: 120px;
+    height: 100dvh;
   }
 
   .loading-dot {
