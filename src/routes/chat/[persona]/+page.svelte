@@ -298,16 +298,17 @@
     const needsConfig = !$personaConfig || $personaConfig.id !== pid;
 
     try {
-      // Hover-prefetch from the clones dropdown : if we warmed config + convs
-      // while the user hovered this clone, skip the re-fetch. Saved conv and
-      // its events still fetch fresh — not prefetchable until we know the id.
+      // Hover-prefetch from the clones dropdown : best-effort optimization.
+      // Si le prefetch a échoué (réseau flaky, 401 transient pendant qu'on
+      // hovait), on DOIT retomber sur un fetch frais — sinon init() throw
+      // "Failed to load config" alors que l'API marche très bien maintenant.
       const prefetched = takePersonaPrefetch(pid);
       const jsonOrNull = (r) => (r && r.ok ? r.json() : null);
-      const configPromise = !needsConfig
-        ? Promise.resolve(null)
-        : prefetched?.config || fetch(`/api/config?persona=${pid}`, { headers: authHeaders() }).then(jsonOrNull).catch(() => null);
-      const convsPromise = prefetched?.convs
-        || fetch(`/api/conversations?persona=${pid}`, { headers: authHeaders() }).then(jsonOrNull).catch(() => null);
+      const fetchConfig = () => fetch(`/api/config?persona=${pid}`, { headers: authHeaders() }).then(jsonOrNull).catch(() => null);
+      const fetchConvs = () => fetch(`/api/conversations?persona=${pid}`, { headers: authHeaders() }).then(jsonOrNull).catch(() => null);
+
+      const configPromise = !needsConfig ? Promise.resolve(null) : (prefetched?.config || fetchConfig());
+      const convsPromise = prefetched?.convs || fetchConvs();
       const savedConvPromise = savedConvId
         ? fetch(`/api/conversations?id=${savedConvId}`, { headers: authHeaders() }).then(jsonOrNull).catch(() => null)
         : Promise.resolve(null);
@@ -315,9 +316,13 @@
         ? fetch(`/api/feedback-events?conversation=${savedConvId}`, { headers: authHeaders() }).then(jsonOrNull).catch(() => null)
         : Promise.resolve(null);
 
-      const [config, convData, savedConvData, savedEventsData] = await Promise.all([
+      let [config, convData, savedConvData, savedEventsData] = await Promise.all([
         configPromise, convsPromise, savedConvPromise, savedEventsPromise,
       ]);
+
+      // Prefetch fallback : si le hover-fetch a résolu null, on relance frais.
+      if (needsConfig && !config && prefetched?.config) config = await fetchConfig();
+      if (!convData && prefetched?.convs) convData = await fetchConvs();
 
       if (savedConvId && savedEventsData) {
         preloadedFeedbackEvents = {
