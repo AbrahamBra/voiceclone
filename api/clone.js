@@ -350,7 +350,7 @@ ${neverDoes}
         persona_id: persona.id, path: "documents/client-docs.md",
         keywords: ["document", "doc", "methode", "offre", "service", "client"],
         content: documents, source_type: "document",
-      }).catch(() => {});
+      }).catch(e => console.log(JSON.stringify({ event: "doc_insert_error", persona: persona.id, error: e.message })));
       // Extraction d'entités dédiée sur le doc (ontologie globale ne voit que 20K tronqués)
       await extractEntitiesFromContent(persona.id, documents, "documents/client-docs.md", client)
         .catch(e => console.log(JSON.stringify({ event: "doc_graph_error", persona: persona.id, error: e.message })));
