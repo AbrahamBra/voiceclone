@@ -15,6 +15,7 @@
     'info',
     ...(cloneType !== 'dm'    ? ['posts'] : []),
     ...(cloneType !== 'posts' ? ['dm']    : []),
+    'protocol',
     'docs',
   ]);
   const TOTAL = $derived(steps.length);
@@ -34,6 +35,26 @@
 
   // Step 3: DMs LinkedIn
   let dmsText = $state("");
+
+  // Step 4: Protocole opérationnel (optionnel — parsed async après création)
+  let protocolFile = $state(/** @type {{name: string, content: string}|null} */(null));
+  let protoFileInputEl;
+  async function handleProtocolFile(e) {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const content = await extractFileText(file);
+      if (!content.trim()) {
+        showToast("Document vide ou illisible");
+        return;
+      }
+      protocolFile = { name: file.name, content };
+    } catch (err) {
+      showToast(/unsupported/i.test(err?.message || "") ? "Format non supporté (.txt .md .pdf .docx)" : "Erreur de lecture");
+    }
+  }
+  function removeProtocolFile() { protocolFile = null; }
 
   // Detect conversations with < 2 distinct speakers (monologue = useless for cloning turn-taking).
   // A "speaker" = a line starting with "Name:" (letters up to 30 chars then colon).
@@ -177,6 +198,7 @@
       track("clone_created", {
         type: cloneType,
         has_docs: pendingFiles.filter(f => f.status === "pending").length > 0,
+        has_protocol: !!protocolFile,
       });
     } catch (err) {
       clearInterval(stepTimer);
@@ -192,6 +214,28 @@
       return;
     }
     clearInterval(stepTimer);
+
+    // Phase 1.5: upload protocole si fourni. Le parsing tourne async côté cron
+    // (10 min), donc on n'attend pas ici — juste l'insert DB.
+    if (protocolFile && protocolFile.content.trim()) {
+      generatingPhase = "protocol";
+      currentFileLabel = protocolFile.name;
+      try {
+        await api("/api/knowledge", {
+          method: "POST",
+          body: JSON.stringify({
+            personaId: persona.id,
+            filename: protocolFile.name,
+            content: protocolFile.content.slice(0, 200_000),
+            document_type: "operating_protocol",
+          }),
+        });
+      } catch (err) {
+        // Ne pas bloquer la création — l'utilisateur pourra re-uploader depuis
+        // Cerveau → Protocole si l'API a foiré.
+        console.warn("protocol upload failed", err);
+      }
+    }
 
     // Phase 2: absorb each queued file via /api/knowledge (sequential — each call is LLM-heavy)
     const toUpload = pendingFiles.filter(f => f.status === "pending" && f.content.trim());
@@ -428,6 +472,44 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
             </div>
           </div>
 
+        {:else if step === 'protocol'}
+          <!-- Step: Protocole opérationnel (optionnel) -->
+          <div class="create-step">
+            <div class="step-header">
+              <strong>Protocole opérationnel</strong>
+              <span>Les règles absolues du clone — optionnel</span>
+            </div>
+
+            <p class="step-desc">
+              Si votre méthode suit un playbook précis (<em>jamais 2 questions</em>, <em>max 8 lignes</em>, <em>pas de mention d'offre</em>…), uploadez-le ici. Le clone <strong>appliquera ces règles en dur</strong> à chaque message : il réécrira automatiquement tout draft qui les viole. Sans protocole, le clone reste stylistiquement fidèle mais ne bloque rien.
+            </p>
+
+            <div class="protocol-zone">
+              {#if !protocolFile}
+                <button class="file-upload-btn" onclick={() => protoFileInputEl.click()}>
+                  + Uploader le protocole (.txt .md .pdf .docx)
+                </button>
+                <input type="file" accept=".txt,.md,.pdf,.docx" hidden bind:this={protoFileInputEl} onchange={handleProtocolFile} />
+                <p class="upload-hint">Pas de protocole ? Passez cette étape — vous pourrez l'ajouter plus tard depuis Cerveau → Protocole.</p>
+              {:else}
+                <div class="protocol-uploaded">
+                  <span class="proto-check">✓</span>
+                  <span class="proto-name">{protocolFile.name}</span>
+                  <span class="proto-size mono">{(protocolFile.content.length / 1000).toFixed(1)}k chars</span>
+                  <button class="pf-remove" onclick={removeProtocolFile} aria-label="Retirer">×</button>
+                </div>
+                <p class="upload-hint">Parsing automatique après création (≈ 10 min). Vous validerez les règles extraites avant activation depuis Cerveau → Protocole.</p>
+              {/if}
+            </div>
+
+            <div class="create-actions">
+              <button class="btn-secondary" onclick={prevStep}>← Retour</button>
+              <button onclick={nextStep}>
+                {protocolFile ? "Suivant →" : "Passer →"}
+              </button>
+            </div>
+          </div>
+
         {:else if step === 'docs'}
           <!-- Step 4: Documents + Génération -->
           <div class="create-step">
@@ -492,6 +574,12 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
                   <span>{dmsText.trim() ? `${dmsText.trim().split(/\n---\n/).filter(d => d.trim().length > 20).length} conversations` : "non renseigné"}</span>
                 </div>
               {/if}
+              {#if protocolFile}
+                <div class="recap-item">
+                  <span class="recap-label">Protocole</span>
+                  <span>{protocolFile.name}</span>
+                </div>
+              {/if}
               {#if pendingFiles.length > 0}
                 <div class="recap-item">
                   <span class="recap-label">Docs</span>
@@ -508,6 +596,11 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
               <div class="generate-status generating-active">
                 <span class="gen-spinner" aria-hidden="true"></span>
                 <span>{cloneStepMessage}</span>
+              </div>
+            {:else if generatingPhase === "protocol"}
+              <div class="generate-status generating-active">
+                <span class="gen-spinner" aria-hidden="true"></span>
+                <span>Importation du protocole — {currentFileLabel}</span>
               </div>
             {:else if generatingPhase === "files"}
               <div class="generate-status generating-active">
@@ -828,6 +921,37 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
   }
 
   .pf-remove:hover { color: var(--text); }
+
+  .protocol-zone {
+    margin-bottom: 0.5rem;
+  }
+  .protocol-uploaded {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--vermillon);
+    border-radius: var(--radius);
+    font-size: 0.8125rem;
+    margin-bottom: 0.5rem;
+  }
+  .proto-check {
+    color: var(--vermillon);
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .proto-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+  }
+  .proto-size {
+    color: var(--text-tertiary);
+    font-size: 0.6875rem;
+  }
 
   .generate-recap {
     background: var(--surface);

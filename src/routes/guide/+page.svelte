@@ -73,6 +73,14 @@
       content: "Frameworks maison, methodologies, acronymes proprietaires, process signatures. Tout ce qui fait la \"patte\" intellectuelle de cette personne.",
       example: "Ex: \"Methode SCALE: S=Strategie, C=Contenu, A=Audience, L=Leads, E=Engagement. Utilise dans chaque post et chaque accompagnement.\"",
       priority: "Recommande"
+    },
+    {
+      id: "protocol",
+      title: "Protocole operationnel",
+      desc: "Les regles absolues que le clone doit respecter",
+      content: "Un playbook precis avec des regles imperatives (jamais X, toujours Y, max N). Contrairement aux autres contenus qui sont du contexte, le protocole est enforce en dur : le clone reecrit automatiquement tout message qui viole une regle. A fournir lors de la creation du clone, ou depuis Cerveau → Protocole. Activation manuelle apres parsing.",
+      example: "Ex playbook setter : \"Jamais 2 questions dans un meme message. Jamais plus de 8 lignes. Pas de liste a puces. Pas de mention d'offre ou de prix avant le call. Toujours signer par le prenom.\"",
+      priority: "Essentiel"
     }
   ];
 
@@ -104,7 +112,7 @@
     {
       num: "02",
       title: "Creer le clone",
-      desc: "Suivez le formulaire de creation: choisissez le type (Posts / DMs / Les deux), remplissez les infos, collez vos posts et documents.",
+      desc: "Suivez le formulaire de creation : type (Posts / DMs / Les deux), infos, posts, conversations, puis uploadez votre protocole operationnel si vous en avez un (les regles absolues que le clone doit respecter) et vos documents.",
       time: "5 min"
     },
     {
