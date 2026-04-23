@@ -37,6 +37,20 @@
   let prospectMode = $state(false);
   $effect(() => { scenarioType; ingestMode = false; prospectMode = false; });
 
+  // --- Zone paste (réponse prospect) — NEW ---
+  let pasteDismissed = $state(false);
+  let pasteText = $state("");
+  let showPasteZone = $derived(
+    shouldShowPasteZone({ isDmMode, lastTurnKind, pasteDismissed })
+  );
+  // Reset dismiss + text quand lastTurnKind change (nouvel envoi → re-propose la zone)
+  $effect(() => { lastTurnKind; pasteDismissed = false; pasteText = ""; });
+
+  // --- CTA primaire inféré — NEW ---
+  let inferredPrimary = $derived(
+    inferPrimary({ isDmMode, isEmptyConversation, lastTurnKind })
+  );
+
   const LINKEDIN_URL_RE = /https?:\/\/(?:www\.)?linkedin\.com\/in\/[^\s/?#]+/i;
 
   let starters = $derived(
