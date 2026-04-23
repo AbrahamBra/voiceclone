@@ -117,8 +117,9 @@ let {
 Dans `src/routes/chat/[persona]/+page.svelte`, ajouter :
 
 ```js
+// messages est un writable store importé, donc lecture via $messages
 let lastTurnKind = $derived.by(() => {
-  const narrative = messages.filter(m =>
+  const narrative = $messages.filter(m =>
     ['toi', 'prospect', 'clone_draft', 'draft_rejected'].includes(m.turn_kind)
   );
   return narrative.at(-1)?.turn_kind ?? null;
@@ -134,14 +135,14 @@ Les messages avec `turn_kind='meta'` ou `'legacy'` sont ignorés du calcul (ils 
 ```js
 async function handlePasteDismiss() {
   // Trouve le dernier message 'toi' (celui qui a déclenché l'apparition de la zone)
-  const lastToi = [...messages].reverse().find(m => m.turn_kind === 'toi');
+  const lastToi = [...$messages].reverse().find(m => m.turn_kind === 'toi');
   if (!lastToi) return; // defensive: zone paste ne devrait pas être visible sans 'toi'
 
   await fetch('/api/feedback-events', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      conversation_id: conversationId,
+      conversation_id: $currentConversationId,
       message_id: lastToi.id,
       persona_id: personaId,
       event_type: 'paste_zone_dismissed',
