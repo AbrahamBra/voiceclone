@@ -1,6 +1,7 @@
 import { rateLimit } from "./_rateLimit.js";
 import { buildSystemPrompt } from "../lib/prompt.js";
 import { runPipeline } from "../lib/pipeline.js";
+import { persistShadow } from "../lib/critic/rhythmCritic.js";
 import { initSSE } from "../lib/sse.js";
 import { validateInput } from "../lib/validate.js";
 import { authenticateRequest, checkBudget, getApiKey, logUsage, hasPersonaAccess, setCors, supabase } from "../lib/supabase.js";
@@ -481,6 +482,32 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
             sse("ids", {
               user_message_id: dbUser?.id || null,
               bot_message_id: dbBot?.id || null,
+            });
+          }
+          // Persist rhythm critic shadow ici (post-insert) pour obtenir un
+          // vrai message_id. Avant ce fix, persistShadow était appelé depuis
+          // pipeline.js avant insert → toutes les rows avaient message_id=NULL.
+          if (dbBot?.id && result.criticResult && result.criticDraft) {
+            persistShadow({
+              personaId: persona.id,
+              conversationId: convId,
+              messageId: dbBot.id,
+              draft: result.criticDraft,
+              result: result.criticResult,
+            }).then((r) => {
+              if (r?.error) {
+                console.log(JSON.stringify({
+                  event: "persist_error", ts: new Date().toISOString(),
+                  conversation_id: convId, stage: "rhythm_shadow_insert",
+                  error: r.error.message, code: r.error.code, details: r.error.details,
+                }));
+              }
+            }).catch((err) => {
+              console.log(JSON.stringify({
+                event: "persist_error", ts: new Date().toISOString(),
+                conversation_id: convId, stage: "rhythm_shadow_throw",
+                error: err?.message || String(err),
+              }));
             });
           }
         }
