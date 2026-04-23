@@ -1,6 +1,7 @@
 <script>
   import { api } from "$lib/api.js";
   import { showToast } from "$lib/stores/ui.js";
+  import { getRelativeTime } from "$lib/utils.js";
   import LearningFeed from "./LearningFeed.svelte";
   import FidelityCard from "./FidelityCard.svelte";
   import PostsIngestModal from "./PostsIngestModal.svelte";
