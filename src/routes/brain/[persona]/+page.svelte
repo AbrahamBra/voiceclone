@@ -5,6 +5,7 @@
   import { personaConfig } from "$lib/stores/persona.js";
   import KnowledgePanel from "$lib/components/KnowledgePanel.svelte";
   import IntelligencePanel from "$lib/components/IntelligencePanel.svelte";
+  import ProtocolPanel from "$lib/components/ProtocolPanel.svelte";
   import SettingsPanel from "$lib/components/SettingsPanel.svelte";
 
   let { data } = $props();
@@ -12,6 +13,7 @@
 
   const TABS = [
     { id: "connaissance", label: "connaissance" },
+    { id: "protocole",    label: "protocole" },
     { id: "intelligence", label: "intelligence" },
     { id: "reglages",     label: "réglages" },
   ];
@@ -81,6 +83,8 @@
   <div class="tab-body" role="tabpanel">
     {#if activeTab === "connaissance"}
       <KnowledgePanel {personaId} onupload={handleKnowledgeUpload} />
+    {:else if activeTab === "protocole"}
+      <ProtocolPanel {personaId} />
     {:else if activeTab === "intelligence"}
       <IntelligencePanel {personaId} extracting={intelligenceExtracting} />
     {:else if activeTab === "reglages"}

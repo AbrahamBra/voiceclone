@@ -6,6 +6,7 @@ import { validateInput } from "../lib/validate.js";
 import { authenticateRequest, checkBudget, getApiKey, logUsage, hasPersonaAccess, setCors, supabase } from "../lib/supabase.js";
 import { recomputeStage } from "../lib/stage.js";
 import { getPersonaFromDb, findRelevantKnowledgeFromDb, loadScenarioFromDb, getCorrectionsFromDb, findRelevantEntities, getIntelligenceId } from "../lib/knowledge-db.js";
+import { getActiveHardRules } from "../lib/protocol-db.js";
 import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, detectMetacognitiveInsights, looksLikeDirectInstruction, looksLikeNegativeFeedback, detectNegativeFeedback, classifyMessage, looksLikeHorsCible } from "../lib/feedback-detect.js";
 import { selectModel } from "../lib/model-router.js";
 import { consolidateCorrections } from "../lib/correction-consolidation.js";
@@ -234,10 +235,12 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
     ? CANONICAL_SCENARIOS[scenarioType].kind
     : scenario === "post" ? "post" : "dm";
 
-  // Entities + corrections in parallel (corrections don't depend on ontology)
-  const [ontology, corrections] = await Promise.all([
+  // Entities + corrections + protocol rules in parallel.
+  // Protocol rules fail silently: an opt-in layer must never block the chat.
+  const [ontology, corrections, protocolRules] = await Promise.all([
     findRelevantEntities(personaId, messages),
     getCorrectionsFromDb(personaId),
+    getActiveHardRules(personaId, scenario).catch(() => []),
   ]);
 
   // Knowledge uses boost terms from graph — must wait for ontology
@@ -266,6 +269,8 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
     corrections,
     ontology,
     scenarioKind,
+    protocolRules,
+    scenarioSlug: scenario,
   });
 
   // Audit trail: what actually shaped THIS response — sent to the UI so the
@@ -421,6 +426,7 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
         isFirstContact: !convId || (Array.isArray(messages) && messages.length <= 1),
         personaOverrides: Array.isArray(persona.voice?.setter_overrides) ? persona.voice.setter_overrides : [],
         personaVoice: persona.voice || null,
+        scenario,
       },
     });
     // Persist messages + update conversation (await to avoid Vercel killing the function)

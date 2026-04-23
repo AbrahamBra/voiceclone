@@ -40,7 +40,7 @@ export default async function handler(req, res) {
 
     const { data: files, error } = await supabase
       .from("knowledge_files")
-      .select("path, created_at, extraction_status, extraction_error, extraction_attempts")
+      .select("path, created_at, extraction_status, extraction_error, extraction_attempts, document_type")
       .eq("persona_id", intellId)
       .order("created_at", { ascending: false });
 
@@ -66,6 +66,7 @@ export default async function handler(req, res) {
       extraction_status: f.extraction_status,
       extraction_error: f.extraction_error,
       extraction_attempts: f.extraction_attempts,
+      document_type: f.document_type || "generic",
     }));
 
     res.json({ files: enriched });
@@ -137,7 +138,7 @@ export default async function handler(req, res) {
   }
 
   // ── POST: Upload file ──
-  const { personaId, filename, content } = req.body || {};
+  const { personaId, filename, content, document_type: rawDocType } = req.body || {};
   if (!personaId || !filename || !content) {
     res.status(400).json({ error: "personaId, filename, content are required" }); return;
   }
@@ -145,6 +146,9 @@ export default async function handler(req, res) {
   if (content.length > 250_000) {
     res.status(400).json({ error: "Content too large (max 250 000 characters)" }); return;
   }
+
+  const VALID_DOC_TYPES = ["voice_reference", "operating_protocol", "generic"];
+  const document_type = VALID_DOC_TYPES.includes(rawDocType) ? rawDocType : "generic";
 
   // Resolve intelligence source + ownership check
   const { data: postKnPersona } = await supabase
@@ -164,7 +168,7 @@ export default async function handler(req, res) {
 
   // Insert file record with extraction_status='pending' — graph extraction
   // is offloaded to api/cron-consolidate.js (async, within its 300s budget).
-  const { error: insertError } = await supabase.from("knowledge_files").insert({
+  const { data: inserted, error: insertError } = await supabase.from("knowledge_files").insert({
     persona_id: intellId,
     path,
     keywords: [],
@@ -172,11 +176,33 @@ export default async function handler(req, res) {
     contributed_by: client?.id || null,
     extraction_status: "pending",
     extraction_attempts: 0,
-  });
+    document_type,
+  }).select("id").single();
 
   if (insertError) {
     console.log(JSON.stringify({ event: "knowledge_insert_error", error: insertError.message, code: insertError.code, intellId, path }));
     res.status(500).json({ error: "Failed to save file", detail: insertError.message }); return;
+  }
+
+  // If this is an operating protocol, create the parse-pending row.
+  // Protocol parsing runs async in cron-consolidate phase 3.
+  let protocolId = null;
+  if (document_type === "operating_protocol") {
+    const { data: protoRow, error: protoErr } = await supabase
+      .from("operating_protocols")
+      .insert({
+        persona_id: intellId,
+        source_file_id: inserted.id,
+        status: "pending",
+        raw_document: content,
+      })
+      .select("id")
+      .single();
+    if (protoErr) {
+      console.log(JSON.stringify({ event: "protocol_insert_error", error: protoErr.message, intellId, fileId: inserted.id }));
+    } else {
+      protocolId = protoRow.id;
+    }
   }
 
   clearIntelligenceCache(intellId);
@@ -190,7 +216,10 @@ export default async function handler(req, res) {
     console.log(JSON.stringify({ event: "embed_error", error: e.message, path }));
   }
 
-  res.json({ file: { path, extraction_status: "pending" } });
+  res.json({
+    file: { path, extraction_status: "pending", document_type },
+    protocol: protocolId ? { id: protocolId, status: "pending" } : null,
+  });
 
   // Keywords: fire-and-forget OK (cosmétique, pas critique)
   (async () => {

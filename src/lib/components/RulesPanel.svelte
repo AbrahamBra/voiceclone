@@ -12,7 +12,23 @@
   // embedded=true: render only inner content (no aside wrapper, no header/footer),
   // intended for use inside PersonaBrainDrawer. Default keeps legacy standalone
   // slide-from-right behavior so external callers (if any) don't break.
-  let { open = false, ruleStats = {}, onClose, embedded = false } = $props();
+  //
+  // protocolRules: optional [{rule_id, description, severity, source_quote}]
+  // from the persona's active operating_protocol — merged with the universal
+  // catalog so protocol violations (type="protocol:<rule_id>") appear next to
+  // the built-in rules.
+  let { open = false, ruleStats = {}, protocolRules = [], onClose, embedded = false } = $props();
+
+  let fusedCatalog = $derived([
+    ...RULE_CATALOG,
+    ...(protocolRules || []).map((r) => ({
+      type: `protocol:${r.rule_id}`,
+      severity: r.severity || "hard",
+      label: r.description || r.rule_id,
+      desc: r.source_quote ? `« ${r.source_quote.slice(0, 140)}${r.source_quote.length > 140 ? "…" : ""} »` : "règle de protocole opérationnel",
+      isProtocol: true,
+    })),
+  ]);
 
   let now = $state(Date.now());
   let timer;
@@ -32,20 +48,23 @@
   }
 
   let totalFirings = $derived(
-    RULE_CATALOG.reduce((n, r) => n + (ruleStats[r.type]?.count || 0), 0)
+    fusedCatalog.reduce((n, r) => n + (ruleStats[r.type]?.count || 0), 0)
   );
 </script>
 
 {#snippet rulesList()}
   <ul class="rp-list">
-    {#each RULE_CATALOG as rule}
+    {#each fusedCatalog as rule}
       {@const stats = ruleStats[rule.type] || { count: 0, lastFiredAt: null, lastDetail: null, lastSeverity: null }}
       {@const fired = stats.count > 0}
       {@const sevLabel = rule.severity === "hard" ? "dur" : rule.severity === "strong" ? "fort" : "léger"}
-      <li class="rp-rule" class:fired>
+      <li class="rp-rule" class:fired class:protocol={rule.isProtocol}>
         <div class="rp-rule-head">
           <span class="rp-rule-tick" aria-hidden="true">{fired ? "●" : "○"}</span>
           <span class="rp-rule-name mono">{rule.label}</span>
+          {#if rule.isProtocol}
+            <span class="rp-rule-tag mono">proto</span>
+          {/if}
           <span class="rp-rule-sev mono sev-{rule.severity}">{sevLabel}</span>
           <span class="rp-rule-count mono">{stats.count}</span>
         </div>
@@ -171,11 +190,20 @@
   .rp-rule:last-child { border-bottom: none; }
 
   .rp-rule-head {
-    display: grid;
-    grid-template-columns: 14px auto auto 1fr;
+    display: flex;
     align-items: baseline;
     gap: 8px;
   }
+  .rp-rule-name { flex: 1; }
+  .rp-rule-tag {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 1px 5px;
+    border: 1px solid var(--vermillon);
+    color: var(--vermillon);
+  }
+  .rp-rule.protocol { border-left: 2px solid var(--vermillon); padding-left: 14px; }
   .rp-rule-tick { color: var(--ink-20); font-size: 10px; line-height: 1; }
   .rp-rule-name { color: var(--ink-70); font-size: 12px; }
   .rp-rule-sev {
