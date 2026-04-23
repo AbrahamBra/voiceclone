@@ -18,6 +18,13 @@
   import { track } from "$lib/tracking.js";
   import { streamChat } from "$lib/sse.js";
   import { legacyKeyFor, isScenarioId } from "$lib/scenarios.js";
+  import {
+    getFidelityBatch,
+    prefetchConversation,
+    prefetchFeedbackEvents,
+    takeConversation,
+    takeFeedbackEvents,
+  } from "$lib/prefetchCache.js";
   import ChatMessage from "$lib/components/ChatMessage.svelte";
   import ChatComposer from "$lib/components/ChatComposer.svelte";
   import ProspectDossierHeader from "$lib/components/ProspectDossierHeader.svelte";
@@ -86,8 +93,7 @@
     if (ids.length === 0) return;
     (async () => {
       try {
-        const data = await api(`/api/fidelity?personas=${ids.join(",")}`);
-        fidelityByPersona = data?.scores || {};
+        fidelityByPersona = await getFidelityBatch(ids);
       } catch {
         // best-effort
       }
@@ -206,19 +212,23 @@
 
   // Events feedback pré-chargés pendant init() pour éviter que FeedbackRail
   // n'attende la fin de loadConversation avant de lancer son fetch. Format :
-  // { convId, events } — FeedbackRail n'utilise le cache que si convId match.
-  let preloadedFeedbackEvents = $state(/** @type {{convId:string,events:any[]}|null} */ (null));
+  // { convId, events?, promise? } — FeedbackRail n'utilise le cache que si
+  // convId match. `events` prêts = hydratation instantanée ; `promise` in-flight
+  // = rail attend la résolution sans déclencher son propre fetch.
+  let preloadedFeedbackEvents = $state(
+    /** @type {{convId:string, events?:any[]|null, promise?:Promise<any[]>}|null} */ (null)
+  );
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom when messages change. During an SSE stream we get a scroll
+  // per delta — `smooth` queues up dozens of concurrent smooth-scrolls and
+  // janks. Use `auto` while streaming, `smooth` only once idle.
   $effect(() => {
-    // Subscribe to messages store reactively
     const msgs = $messages;
-    if (scrollAnchor) {
-      // Small delay so DOM renders first
-      requestAnimationFrame(() => {
-        scrollAnchor.scrollIntoView({ behavior: "smooth", block: "end" });
-      });
-    }
+    if (!scrollAnchor) return;
+    const behavior = get(sending) ? "auto" : "smooth";
+    requestAnimationFrame(() => {
+      scrollAnchor.scrollIntoView({ behavior, block: "end" });
+    });
   });
 
   // Initialize on mount / persona change only. URL changes from
@@ -237,6 +247,14 @@
 
   async function init(pid, scn, scnType) {
     loading = true;
+    // Switching personas : flush stale chrome so the previous clone's name,
+    // conv list and thread don't flash under the new clone's URL during the
+    // init fetches.
+    if ($personaConfig && $personaConfig.id !== pid) {
+      personaConfig.set(null);
+      conversations.set([]);
+      messages.set([]);
+    }
     currentPersonaId.set(pid);
     currentScenario.set(scn);
     currentScenarioType.set(scnType || null);
@@ -261,43 +279,48 @@
     const needsConfig = !$personaConfig || $personaConfig.id !== pid;
 
     try {
-      const [configResp, listResp, savedConvResp, savedEventsResp] = await Promise.all([
-        needsConfig
-          ? fetch(`/api/config?persona=${pid}`, { headers: authHeaders() }).catch(() => null)
-          : Promise.resolve(null),
-        fetch(`/api/conversations?persona=${pid}`, { headers: authHeaders() }).catch(() => null),
-        savedConvId
-          ? fetch(`/api/conversations?id=${savedConvId}`, { headers: authHeaders() }).catch(() => null)
-          : Promise.resolve(null),
-        savedConvId
-          ? fetch(`/api/feedback-events?conversation=${savedConvId}`, { headers: authHeaders() }).catch(() => null)
-          : Promise.resolve(null),
+      // Hover-prefetch from the clones dropdown : if we warmed config + convs
+      // while the user hovered this clone, skip the re-fetch. Saved conv and
+      // its events still fetch fresh — not prefetchable until we know the id.
+      const prefetched = takePersonaPrefetch(pid);
+      const jsonOrNull = (r) => (r && r.ok ? r.json() : null);
+      const configPromise = !needsConfig
+        ? Promise.resolve(null)
+        : prefetched?.config || fetch(`/api/config?persona=${pid}`, { headers: authHeaders() }).then(jsonOrNull).catch(() => null);
+      const convsPromise = prefetched?.convs
+        || fetch(`/api/conversations?persona=${pid}`, { headers: authHeaders() }).then(jsonOrNull).catch(() => null);
+      const savedConvPromise = savedConvId
+        ? fetch(`/api/conversations?id=${savedConvId}`, { headers: authHeaders() }).then(jsonOrNull).catch(() => null)
+        : Promise.resolve(null);
+      const savedEventsPromise = savedConvId
+        ? fetch(`/api/feedback-events?conversation=${savedConvId}`, { headers: authHeaders() }).then(jsonOrNull).catch(() => null)
+        : Promise.resolve(null);
+
+      const [config, convData, savedConvData, savedEventsData] = await Promise.all([
+        configPromise, convsPromise, savedConvPromise, savedEventsPromise,
       ]);
 
-      if (savedConvId && savedEventsResp && savedEventsResp.ok) {
-        try {
-          const d = await savedEventsResp.json();
-          preloadedFeedbackEvents = { convId: savedConvId, events: Array.isArray(d.events) ? d.events : [] };
-        } catch {}
+      if (savedConvId && savedEventsData) {
+        preloadedFeedbackEvents = {
+          convId: savedConvId,
+          events: Array.isArray(savedEventsData.events) ? savedEventsData.events : [],
+        };
       }
 
       if (needsConfig) {
-        if (!configResp || !configResp.ok) throw new Error("Failed to load config");
-        const config = await configResp.json();
+        if (!config) throw new Error("Failed to load config");
         personaConfig.set(config);
         applyTheme(config.theme || {});
       }
 
       let convList = [];
-      if (listResp && listResp.ok) {
-        const d = await listResp.json();
-        convList = d.conversations || [];
+      if (convData) {
+        convList = convData.conversations || [];
         conversations.set(convList);
       }
 
-      if (savedConvResp && savedConvResp.ok) {
-        const data = await savedConvResp.json();
-        await loadConversation(savedConvId, data);
+      if (savedConvData) {
+        await loadConversation(savedConvId, savedConvData);
       } else if (convList[0]?.id) {
         await loadConversation(convList[0].id);
       } else {
@@ -327,12 +350,48 @@
     currentConversationId.set(null);
   }
 
+  // Guards against the "fast-switch race" : click A (slow) → click B (fast)
+  // → A resolves second and overwrites B. AbortController cancels A before B
+  // fires so only the freshest switch wins.
+  let convLoadController = /** @type {AbortController|null} */ (null);
   async function loadConversation(convId, preloadedData = null) {
+    if (convLoadController) convLoadController.abort();
+    convLoadController = new AbortController();
+    const signal = convLoadController.signal;
     try {
       let data = preloadedData;
+      // Hover-prefetch cache : if the sidebar warmed this conv, reuse its
+      // promise ; otherwise start a fresh fetch. Both conv payload and events
+      // are kicked off *before* the atomic flip so they overlap with the
+      // effects Svelte runs in response.
+      let eventsPromise = takeFeedbackEvents(personaId, convId);
+      if (!eventsPromise) {
+        eventsPromise = fetch(`/api/feedback-events?conversation=${convId}`, {
+          headers: authHeaders(),
+          signal,
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => (d && Array.isArray(d.events) ? d.events : []))
+          .catch(() => []);
+      }
+      const cachedConvPromise = !data ? takeConversation(personaId, convId) : null;
+
+      // Atomic flip : update preloadedFeedbackEvents + currentConversationId in
+      // the same sync block (no awaits between) so FeedbackRail's $effect sees
+      // both new values in a single flush cycle. Otherwise the rail would see
+      // new-convId-with-stale-preload (or vice-versa), fire a redundant fetch,
+      // and race with the preloaded promise.
+      preloadedFeedbackEvents = { convId, events: null, promise: eventsPromise };
+      currentConversationId.set(convId);
+      localStorage.setItem("conv_" + personaId, convId);
+
+      if (!data && cachedConvPromise) {
+        data = await cachedConvPromise;
+      }
       if (!data) {
         const resp = await fetch(`/api/conversations?id=${convId}`, {
           headers: authHeaders(),
+          signal,
         });
         if (!resp.ok) {
           showWelcome();
@@ -342,9 +401,6 @@
       }
       const conv = data.conversation || data;
       const convMessages = conv.messages || data.messages || [];
-
-      currentConversationId.set(convId);
-      localStorage.setItem("conv_" + personaId, convId);
 
       // Sync scenario stores with the conversation's stored values so the
       // composer unlocks (scenario-gate) and the ScenarioSwitcher reflects
@@ -370,7 +426,8 @@
         });
       }
       messages.set(msgs);
-    } catch {
+    } catch (e) {
+      if (e?.name === "AbortError") return; // superseded by another switch
       showWelcome();
     }
   }
@@ -1055,11 +1112,6 @@
 
 <svelte:window onkeydown={handleKeyboard} />
 
-{#if loading}
-  <div class="loading-screen">
-    <div class="loading-dot"></div>
-  </div>
-{:else}
   <div class="chat-layout">
     <ConversationSidebar
       {personaId}
@@ -1105,6 +1157,9 @@
           {/if}
 
           <div class="chat-messages" bind:this={messagesEl}>
+            {#if loading && $messages.length === 0}
+              <div class="thread-skeleton"><div class="loading-dot"></div></div>
+            {/if}
             {#each $messages as message (message.id)}
               <ChatMessage
                 {message}
@@ -1230,7 +1285,6 @@
       </div>
     </div>
   {/if}
-{/if}
 
 <style>
   .chat-layout {
@@ -1306,11 +1360,12 @@
 
   /* ScenarioSwitcher relocated to ProspectDossierHeader; composer-toolbar CSS removed. */
 
-  .loading-screen {
+  .thread-skeleton {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 100dvh;
+    flex: 1;
+    min-height: 120px;
   }
 
   .loading-dot {
