@@ -403,16 +403,25 @@
     const url = new URL(window.location.href);
     url.searchParams.set("scenario_type", scenarioType);
     url.searchParams.set("scenario", legacy);
-    await goto(url.pathname + "?" + url.searchParams.toString(), {
-      replaceState: true,
-      noScroll: true,
-      keepFocus: true,
-    });
+    const newPath = url.pathname + "?" + url.searchParams.toString();
 
     if (kindChanged) {
+      // Kind change (post↔dm) : full SvelteKit navigation — +page.js load()
+      // re-runs, which is fine since we reset the conversation thread anyway.
+      await goto(newPath, {
+        replaceState: true,
+        noScroll: true,
+        keepFocus: true,
+      });
       localStorage.removeItem("conv_" + personaId);
       currentConversationId.set(null);
       showWelcome();
+    } else {
+      // Same-kind switch (post↔post) : update URL in place. goto() would
+      // re-trigger +page.js load() (it reads url.searchParams), causing a
+      // visible page remount between post variants. history.replaceState
+      // keeps bookmarks honest without the reload.
+      history.replaceState(history.state, "", newPath);
     }
   }
 
