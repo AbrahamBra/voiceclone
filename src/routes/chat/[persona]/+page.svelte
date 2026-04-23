@@ -31,30 +31,12 @@
   import FeedbackRail from "$lib/components/FeedbackRail.svelte";
   import ConversationSidebar from "$lib/components/ConversationSidebar.svelte";
   import ChatTopBar from "$lib/components/ChatTopBar.svelte";
-  // Modals lazy-loaded : tous optionnels / ouverts via interaction utilisateur.
-  // Les sortir du bundle initial allège le chunk /chat/[persona] de ~30-40%.
-  // Chaque panel est chargé on-demand la 1re fois qu'il est invoqué, puis
-  // gardé en mémoire pour les ouvertures suivantes.
-  let FeedbackPanel = $state(/** @type {any} */ (null));
-  let LeadPanel = $state(/** @type {any} */ (null));
-  let CommandPalette = $state(/** @type {any} */ (null));
-  let IngestPreviewBubble = $state(/** @type {any} */ (null));
-  function loadFeedbackPanel() {
-    if (FeedbackPanel) return Promise.resolve();
-    return import("$lib/components/FeedbackPanel.svelte").then((m) => { FeedbackPanel = m.default; });
-  }
-  function loadLeadPanel() {
-    if (LeadPanel) return Promise.resolve();
-    return import("$lib/components/LeadPanel.svelte").then((m) => { LeadPanel = m.default; });
-  }
-  function loadCommandPalette() {
-    if (CommandPalette) return Promise.resolve();
-    return import("$lib/components/CommandPalette.svelte").then((m) => { CommandPalette = m.default; });
-  }
-  function loadIngestPreviewBubble() {
-    if (IngestPreviewBubble) return Promise.resolve();
-    return import("$lib/components/IngestPreviewBubble.svelte").then((m) => { IngestPreviewBubble = m.default; });
-  }
+  import FeedbackPanel from "$lib/components/FeedbackPanel.svelte";
+  // SettingsPanel removed from chat — settings now live in /brain/[persona]#reglages.
+  // AuditStrip/HeatThermometer/LiveMetricsStrip removed (Chunk 3 cleanup).
+  import LeadPanel from "$lib/components/LeadPanel.svelte";
+  import CommandPalette from "$lib/components/CommandPalette.svelte";
+  import IngestPreviewBubble from "$lib/components/IngestPreviewBubble.svelte";
 
   let personaId = $derived($page.data.personaId);
   let scenario = $derived($page.data.scenario);
@@ -183,21 +165,20 @@
   );
   let heatSignal = $state(null);  // { state: 'cold'|'warm'|'hot', delta }
 
-  // Sequence numbers per role, precomputed once per $messages change. Avant :
-  // seqForMessage(msg, all) parcourait `all` pour CHAQUE msg du {#each} —
-  // O(n²) recalculé à chaque delta SSE (sur thread 50+ msgs × 200 deltas =
-  // 500k ops/s). Map id→seq = O(n) build, O(1) lookup au render.
-  let seqByMessageId = $derived.by(() => {
-    const map = new Map();
-    let userN = 0;
-    let botN = 0;
-    for (const m of $messages) {
-      if (m.id === "welcome") continue;
-      if (m.role === "user") map.set(m.id, ++userN);
-      else map.set(m.id, ++botN);
+  // Bot message sequence number generator (per conversation)
+  let botSeq = $state(0);
+  let userSeq = $state(0);
+  function seqForMessage(msg, allMessages) {
+    // Count messages of the same role up to and including this one
+    let n = 0;
+    for (const m of allMessages) {
+      if (m.role !== msg.role) continue;
+      if (m.id === "welcome") continue; // welcome isn't numbered
+      n++;
+      if (m.id === msg.id) return n;
     }
-    return map;
-  });
+    return null;
+  }
 
   async function refreshFidelity() {
     if (!personaId) return;
@@ -529,34 +510,6 @@
     });
 
     let botText = "";
-    // Delta coalescing : SSE chunks arrive faster than the display can refresh
-    // (often 10+ per 16ms). Batch writes to the store via rAF so we do at most
-    // 1 messages.update per frame — same visual result, ~10× fewer Svelte
-    // reactivity passes during a stream. patchBot() also avoids the .map(...)
-    // over the whole array : findIndex + spread touches one slot.
-    let deltaRafId = /** @type {number|null} */ (null);
-    function patchBot(patch) {
-      messages.update((msgs) => {
-        const idx = msgs.findIndex((m) => m.id === botId);
-        if (idx === -1) return msgs;
-        const next = msgs.slice();
-        next[idx] = { ...msgs[idx], ...patch };
-        return next;
-      });
-    }
-    function flushDelta() {
-      if (deltaRafId !== null) {
-        cancelAnimationFrame(deltaRafId);
-        deltaRafId = null;
-      }
-    }
-    function scheduleDeltaFlush() {
-      if (deltaRafId !== null) return;
-      deltaRafId = requestAnimationFrame(() => {
-        deltaRafId = null;
-        patchBot({ content: botText, typing: false });
-      });
-    }
 
     await streamChat(
       {
@@ -569,48 +522,61 @@
       {
         onDelta(chunk) {
           botText += chunk;
-          scheduleDeltaFlush();
+          messages.update((msgs) =>
+            msgs.map((m) =>
+              m.id === botId ? { ...m, content: botText, typing: false } : m
+            )
+          );
         },
         onThinking() {
-          patchBot({ status: "Analyse du contexte..." });
+          messages.update((msgs) =>
+            msgs.map((m) =>
+              m.id === botId ? { ...m, status: "Analyse du contexte..." } : m
+            )
+          );
         },
         onRewriting(attempt) {
-          patchBot({ status: `Amelioration (tentative ${attempt})...` });
+          messages.update((msgs) =>
+            msgs.map((m) =>
+              m.id === botId
+                ? { ...m, status: `Amelioration (tentative ${attempt})...` }
+                : m
+            )
+          );
         },
         onClear() {
-          flushDelta();
+          // Rewrite is about to start — preserve the pass-1 text as `original`
           const originalText = botText;
           botText = "";
-          messages.update((msgs) => {
-            const idx = msgs.findIndex((m) => m.id === botId);
-            if (idx === -1) return msgs;
-            const next = msgs.slice();
-            const prev = msgs[idx];
-            next[idx] = { ...prev, content: "", status: undefined, original: originalText || prev.original };
-            return next;
-          });
+          messages.update((msgs) =>
+            msgs.map((m) =>
+              m.id === botId
+                ? { ...m, content: "", status: undefined, original: originalText || m.original }
+                : m
+            )
+          );
         },
         onDone(evt) {
-          // Cancel any pending rAF delta flush — otherwise it could race
-          // against this final patch and overwrite the telemetry fields with
-          // just {content, typing}.
-          flushDelta();
-          // Attach per-message telemetry (and the final content) on the bot
-          // message. `content: botText` guards against the case where onDone
-          // arrives before the last rAF fired.
-          patchBot({
-            content: botText,
-            typing: false,
-            status: undefined,
-            rewritten: evt?.rewritten || false,
-            timing: evt?.timing || null,
-            tokens: evt?.tokens || null,
-            model: evt?.model || null,
-            fidelity: evt?.fidelity || null,
-            live_style: evt?.live_style || null,
-            violations: evt?.violations || [],
-            sources: evt?.sources || null,
-          });
+          // Attach per-message telemetry on the bot message for the
+          // lab-notebook strip to consume.
+          messages.update((msgs) =>
+            msgs.map((m) =>
+              m.id === botId
+                ? {
+                    ...m,
+                    status: undefined,
+                    rewritten: evt?.rewritten || false,
+                    timing: evt?.timing || null,
+                    tokens: evt?.tokens || null,
+                    model: evt?.model || null,
+                    fidelity: evt?.fidelity || null,
+                    live_style: evt?.live_style || null,
+                    violations: evt?.violations || [],
+                    sources: evt?.sources || null,
+                  }
+                : m
+            )
+          );
 
           // Bump rule activation counters from the SSE violations payload
           const now = Date.now();
@@ -672,19 +638,42 @@
           }
         },
         onError(type, detail) {
-          flushDelta();
           if (type === "rate_limit") {
             showToast("Trop de messages, patientez");
             messages.update((msgs) => msgs.filter((m) => m.id !== botId));
           } else if (type === "budget") {
-            patchBot({
-              typing: false,
-              content: "**Budget depasse.** Ajoutez votre cle API Anthropic dans les parametres (&#9881;) pour continuer.",
-            });
+            messages.update((msgs) =>
+              msgs.map((m) =>
+                m.id === botId
+                  ? {
+                      ...m,
+                      typing: false,
+                      content:
+                        "**Budget depasse.** Ajoutez votre cle API Anthropic dans les parametres (&#9881;) pour continuer.",
+                    }
+                  : m
+              )
+            );
           } else if (type === "reconnecting") {
-            patchBot({ status: "Reconnexion..." });
+            messages.update((msgs) =>
+              msgs.map((m) =>
+                m.id === botId
+                  ? { ...m, status: "Reconnexion..." }
+                  : m
+              )
+            );
           } else if (type === "failed") {
-            patchBot({ typing: false, content: "Connexion perdue. Reessayez." });
+            messages.update((msgs) =>
+              msgs.map((m) =>
+                m.id === botId
+                  ? {
+                      ...m,
+                      typing: false,
+                      content: "Connexion perdue. Reessayez.",
+                    }
+                  : m
+              )
+            );
           }
         },
       }
@@ -707,8 +696,7 @@
 
   let feedbackMessageId = $state(null);
 
-  async function handleCorrect(message) {
-    await loadFeedbackPanel();
+  function handleCorrect(message) {
     feedbackTarget = message.content;
     feedbackMessageId = message.id;
     feedbackOpen = true;
@@ -826,9 +814,6 @@
   async function handleIngestPost(post) {
     ingesting = true;
     ingestPending = null;
-    // Load the preview bubble in parallel with the extraction request — by the
-    // time rules come back, the component is ready.
-    loadIngestPreviewBubble();
     try {
       const result = await api("/api/feedback", {
         method: "POST",
@@ -1081,11 +1066,7 @@
     }
     if (mod && e.key === "k") {
       e.preventDefault();
-      if (!showCommandPalette) {
-        loadCommandPalette().then(() => { showCommandPalette = true; });
-      } else {
-        showCommandPalette = false;
-      }
+      showCommandPalette = !showCommandPalette;
     }
     if (mod && e.key === "n") {
       e.preventDefault();
@@ -1182,7 +1163,7 @@
             {#each $messages as message (message.id)}
               <ChatMessage
                 {message}
-                seq={seqByMessageId.get(message.id) ?? null}
+                seq={seqForMessage(message, $messages)}
                 onCorrect={handleCorrect}
                 onValidate={handleValidate}
                 onClientValidate={handleClientValidate}
@@ -1195,7 +1176,7 @@
             {#if ingesting}
               <div class="ingest-loading mono">📝 Extraction des règles…</div>
             {/if}
-            {#if ingestPending && IngestPreviewBubble}
+            {#if ingestPending}
               <IngestPreviewBubble
                 rules={ingestPending.rules}
                 sourcePost={ingestPending.sourcePost}
@@ -1212,7 +1193,7 @@
             isEmptyConversation={$messages.length === 0}
             onDraftNext={handleDraftNext}
             onSwitchScenario={handleScenarioChange}
-            onAnalyzeProspect={(url) => { loadLeadPanel().then(() => { leadInitialUrl = url; leadOpen = true; }); }}
+            onAnalyzeProspect={(url) => { leadInitialUrl = url; leadOpen = true; }}
             onIngestPost={handleIngestPost}
             onAddProspectReply={handleAddProspectReply}
           />
@@ -1235,56 +1216,52 @@
     </div>
   </div>
 
-  {#if feedbackOpen && FeedbackPanel}
-    <FeedbackPanel
-      open={feedbackOpen}
-      botMessage={feedbackTarget || ""}
-      onClose={() => { feedbackOpen = false; feedbackTarget = null; feedbackMessageId = null; }}
-      onReplace={handleReplace}
-      onCorrected={async (correctionText) => {
-        if (!feedbackMessageId || !$currentConversationId) return;
-        try {
-          const resp = await fetch("/api/feedback-events", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...authHeaders() },
-            body: JSON.stringify({
-              conversation_id: $currentConversationId,
-              message_id: feedbackMessageId,
-              event_type: "corrected",
-              correction_text: correctionText,
-            }),
+  <FeedbackPanel
+    open={feedbackOpen}
+    botMessage={feedbackTarget || ""}
+    onClose={() => { feedbackOpen = false; feedbackTarget = null; feedbackMessageId = null; }}
+    onReplace={handleReplace}
+    onCorrected={async (correctionText) => {
+      if (!feedbackMessageId || !$currentConversationId) return;
+      try {
+        const resp = await fetch("/api/feedback-events", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({
+            conversation_id: $currentConversationId,
+            message_id: feedbackMessageId,
+            event_type: "corrected",
+            correction_text: correctionText,
+          }),
+        });
+        if (resp.ok) {
+          const ev = await resp.json();
+          feedbackRailRef?.appendEvent?.({
+            id: ev.id,
+            message_id: feedbackMessageId,
+            event_type: "corrected",
+            correction_text: correctionText,
+            created_at: ev.created_at,
+            rules_fired: [],
           });
-          if (resp.ok) {
-            const ev = await resp.json();
-            feedbackRailRef?.appendEvent?.({
-              id: ev.id,
-              message_id: feedbackMessageId,
-              event_type: "corrected",
-              correction_text: correctionText,
-              created_at: ev.created_at,
-              rules_fired: [],
-            });
-          }
-        } catch { /* best-effort */ }
-      }}
-    />
-  {/if}
+        }
+      } catch { /* best-effort */ }
+    }}
+  />
 
-  {#if leadOpen && LeadPanel}
-    <LeadPanel
-      open={leadOpen}
-      initialUrl={leadInitialUrl}
-      onClose={() => { leadOpen = false; leadInitialUrl = ""; }}
-      onAnalyzed={handleLeadAnalyzed}
-    />
-  {/if}
+  <LeadPanel
+    open={leadOpen}
+    initialUrl={leadInitialUrl}
+    onClose={() => { leadOpen = false; leadInitialUrl = ""; }}
+    onAnalyzed={handleLeadAnalyzed}
+  />
 
-  {#if showCommandPalette && CommandPalette}
+  {#if showCommandPalette}
     <CommandPalette
       conversations={$conversations}
       commands={[
         { id: "new-conv", label: "Nouvelle conversation", hint: "⌘N", action: handleNewConversation },
-        { id: "analyse-prospect", label: "Analyser un prospect", hint: "URL LinkedIn", action: () => { loadLeadPanel().then(() => { leadInitialUrl = ""; leadOpen = true; }); } },
+        { id: "analyse-prospect", label: "Analyser un prospect", hint: "URL LinkedIn", action: () => { leadInitialUrl = ""; leadOpen = true; } },
         { id: "open-brain", label: "Cerveau du clone", hint: "persona", action: () => goto(`/brain/${personaId}`) },
         { id: "switch-clone", label: "Changer de clone", hint: "⌘⇧C", action: () => { switcherOpen = true; } },
       ]}
