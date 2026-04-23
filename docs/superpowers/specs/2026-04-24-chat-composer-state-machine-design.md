@@ -5,13 +5,13 @@
 **Chantier:** #1 d'une série de 4 chantiers UX issus du brainstorm 2026-04-24 (refonte du chat cockpit). Les 3 suivants (drawer cerveau, parler au clone, signal visuel transverse) font l'objet de specs distinctes.
 **Relation avec specs existantes :**
 - `2026-04-19-chat-dossier-prospect-2-zones-design.md` a introduit `ChatComposer`, `turn_kind`, `feedback_events`. Cette spec **modifie** `ChatComposer.svelte` et réutilise `feedback_events` tel que défini en 029 (puis étendu en 031/032).
-- **Une migration ajoutée** : `033_feedback_paste_dismiss.sql` qui étend uniquement l'énumération `event_type` (aucune colonne ajoutée, pas d'index, pas de changement de RLS).
+- **Une migration ajoutée** : `037_feedback_paste_dismiss.sql` qui étend uniquement l'énumération `event_type` (aucune colonne ajoutée, pas d'index, pas de changement de RLS).
 - Côté rail feedback (`FeedbackRail.svelte` issu de la spec 2026-04-19) : l'event `paste_zone_dismissed` est loggé en DB mais **non rendu dans le rail au MVP**. Le rail affiche aujourd'hui les events actionnables (`validated`/`corrected`/`saved_rule`/...) ; `paste_zone_dismissed` est un signal silencieux destiné aux analytics / prochaine iteration rail, pas au feedback journal visible. Si besoin de rendu, le faire dans un chantier de mise à jour du rail.
 
 **Files:**
 - modified `src/lib/components/ChatComposer.svelte` — refonte ligne d'actions + ajout zone paste conditionnelle + handler dismiss qui émet un signal
 - modified `src/routes/chat/[persona]/+page.svelte` — ajout `$derived lastTurnKind`, nouveau prop passé au composer, handler `handlePasteDismiss` qui insère un `feedback_events` row
-- new migration `supabase/033_feedback_paste_dismiss.sql` — étend le CHECK de `feedback_events.event_type` avec `'paste_zone_dismissed'` (suit la séquence 029/031/032 qui ont déjà étendu ce CHECK)
+- new migration `supabase/037_feedback_paste_dismiss.sql` — étend le CHECK de `feedback_events.event_type` avec `'paste_zone_dismissed'` (suit la séquence 029/031/032 qui ont déjà étendu ce CHECK)
 - new `test/composer-infer-primary.test.js` — unit tests inférence CTA
 - new `test/composer-paste-zone.test.js` — unit tests visibilité zone paste + émission du signal dismiss
 - new `e2e/chat-composer-paste-flow.spec.js` — smoke Playwright flow complet (draft → validate → paste prospect reply → draft suite)
@@ -151,7 +151,7 @@ async function handlePasteDismiss() {
 }
 ```
 
-L'API `/api/feedback-events` existe déjà (cf. `api/feedback-events.js`) et est utilisée pour les event_types existants (`validated`, `corrected`, `client_validated`, `excellent`, `saved_rule`). Reuse direct du même endpoint, seul `event_type: 'paste_zone_dismissed'` est nouveau — c'est pourquoi la migration 033 est nécessaire pour étendre le CHECK.
+L'API `/api/feedback-events` existe déjà (cf. `api/feedback-events.js`) et est utilisée pour les event_types existants (`validated`, `corrected`, `client_validated`, `excellent`, `saved_rule`). Reuse direct du même endpoint, seul `event_type: 'paste_zone_dismissed'` est nouveau — c'est pourquoi la migration 037 est nécessaire pour étendre le CHECK.
 
 ### Dérivation dans le composer
 
@@ -287,12 +287,12 @@ Pas de backcompat, pas de code mort (cf. convictions user `feedback_feature_prag
 
 Les conv legacy (tous messages `turn_kind='legacy'`) → `lastTurnKind === null` → fallback 4 chips + pas de zone paste. Cohérent avec `2026-04-19-chat-dossier-prospect-2-zones-design.md` §6 du plan de déploiement : "legacy = pas d'actions ✓/✎". On respecte le principe : les conv legacy fonctionnent en mode dégradé.
 
-### Migration 033 — signal paste_zone_dismissed
+### Migration 037 — signal paste_zone_dismissed
 
-Fichier `supabase/033_feedback_paste_dismiss.sql` — suit la séquence 029 / 031 / 032 qui ont déjà étendu le CHECK :
+Fichier `supabase/037_feedback_paste_dismiss.sql` — suit la séquence 029 / 031 / 032 qui ont déjà étendu le CHECK :
 
 ```sql
--- 033_feedback_paste_dismiss.sql
+-- 037_feedback_paste_dismiss.sql
 -- Ajoute 'paste_zone_dismissed' aux event_types autorisés pour feedback_events.
 -- Émis quand l'opérateur dismiss la zone paste "réponse prospect" dans le
 -- composer, signal que la conv n'attend plus de réponse (ou que l'opérateur

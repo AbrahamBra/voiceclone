@@ -15,7 +15,7 @@
 ## File Structure
 
 **New:**
-- `supabase/033_feedback_paste_dismiss.sql` — étend CHECK sur `feedback_events.event_type`.
+- `supabase/037_feedback_paste_dismiss.sql` — étend CHECK sur `feedback_events.event_type`.
 - `src/lib/composer-state.js` — module JS pur : `inferPrimary(args)`, `shouldShowPasteZone(args)`. Testable hors Svelte.
 - `test/composer-state.test.js` — unit tests des deux fonctions (node:test).
 
@@ -31,21 +31,23 @@
 
 ## Chunk 1: Migration DB
 
-### Task 1.1: Créer la migration 033
+### Task 1.1: Créer la migration 037
 
 **Files:**
-- Create: `supabase/033_feedback_paste_dismiss.sql`
+- Create: `supabase/037_feedback_paste_dismiss.sql`
 
 - [ ] **Step 1: Créer le fichier SQL**
 
 ```sql
--- 033_feedback_paste_dismiss.sql
+-- 037_feedback_paste_dismiss.sql
 -- Ajoute 'paste_zone_dismissed' aux event_types autorisés pour feedback_events.
 -- Émis quand l'opérateur dismiss la zone paste "réponse prospect" dans le
 -- composer chat. Signal que la conv n'attend plus de réponse (ou que
 -- l'opérateur ignore ce prospect pour l'instant). Attaché au dernier message
 -- 'toi' de la conv. Suit la séquence 029 → 031 ('excellent') → 032
--- ('client_validated') qui ont déjà étendu ce CHECK.
+-- ('client_validated') qui ont déjà étendu ce CHECK (033–036 sont des
+-- migrations non-feedback : demo_persona, extraction_status, stage_auto,
+-- operating_protocols).
 
 ALTER TABLE feedback_events
   DROP CONSTRAINT IF EXISTS feedback_events_event_type_check;
@@ -65,14 +67,14 @@ ALTER TABLE feedback_events
 
 - [ ] **Step 2: Vérifier la syntaxe en comparant avec 032**
 
-Run: `diff supabase/032_feedback_client_validated.sql supabase/033_feedback_paste_dismiss.sql`
+Run: `diff supabase/032_feedback_client_validated.sql supabase/037_feedback_paste_dismiss.sql`
 Expected: différences = commentaire en-tête + valeur ajoutée dans le CHECK (pattern identique sinon).
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add supabase/033_feedback_paste_dismiss.sql
-git commit -m "feat(db): migration 033 ajoute paste_zone_dismissed à feedback_events"
+git add supabase/037_feedback_paste_dismiss.sql
+git commit -m "feat(db): migration 037 ajoute paste_zone_dismissed à feedback_events"
 ```
 
 ### Task 1.2: Déploiement migration (instructions non-tech pour l'opérateur)
@@ -81,14 +83,14 @@ git commit -m "feat(db): migration 033 ajoute paste_zone_dismissed à feedback_e
 
 - [ ] **Step 1: Lire la migration avant déploiement**
 
-Ouvrir `supabase/033_feedback_paste_dismiss.sql` et vérifier qu'elle ne supprime que l'ancien CHECK et en crée un nouveau (aucune DROP TABLE, aucune DROP COLUMN).
+Ouvrir `supabase/037_feedback_paste_dismiss.sql` et vérifier qu'elle ne supprime que l'ancien CHECK et en crée un nouveau (aucune DROP TABLE, aucune DROP COLUMN).
 
 - [ ] **Step 2: Déployer sur Supabase**
 
 Option A (CLI) : `supabase db push` si configuré.
 Option B (Dashboard) :
 1. Aller sur https://supabase.com/dashboard/project/<project>/sql/new
-2. Coller le contenu de `033_feedback_paste_dismiss.sql`
+2. Coller le contenu de `037_feedback_paste_dismiss.sql`
 3. Cliquer "Run"
 4. Vérifier qu'il n'y a pas d'erreur rouge en bas.
 
@@ -807,20 +809,24 @@ git commit -m "refactor(composer): supprime prospectMode et bouton 'j'ai reçu' 
 **Files:**
 - Modify: `src/routes/chat/[persona]/+page.svelte` (section `<script>`)
 
-- [ ] **Step 1: Repérer où `messages` est déclaré**
+- [ ] **Step 1: Confirmer la nature de `messages`**
 
-Chercher `let messages = $state(` dans le fichier (ou équivalent Svelte 5 runes).
+Dans `+page.svelte`, `messages` est importé depuis un store (ligne ~9, `import { messages, currentConversationId } from ...`) — c'est un **Svelte writable store**, pas un `$state`. Confirmer cela en grep : `grep -n "messages\b" src/routes/chat/\[persona\]/+page.svelte | head -5` doit montrer `messages.update(...)` et `$messages` (auto-subscribe).
 
-- [ ] **Step 2: Ajouter la dérivation juste après**
+Conséquence : pour lire le contenu du store de façon réactive, on utilise `$messages` (qui retourne le tableau sous-jacent).
+
+- [ ] **Step 2: Ajouter la dérivation juste après les autres `$derived` du script (ex. après `let personaId = $derived(...)` ligne ~34)**
 
 ```js
 let lastTurnKind = $derived.by(() => {
-  const narrative = messages.filter(m =>
+  const narrative = $messages.filter(m =>
     ['toi', 'prospect', 'clone_draft', 'draft_rejected'].includes(m.turn_kind)
   );
   return narrative.at(-1)?.turn_kind ?? null;
 });
 ```
+
+Note : `$messages` à l'intérieur d'un `$derived.by` s'auto-subscribe correctement en Svelte 5.
 
 - [ ] **Step 3: Commit**
 
@@ -838,15 +844,20 @@ git commit -m "feat(chat): derivation lastTurnKind depuis messages narratifs"
 
 Chercher `POST feedback-events` dans le fichier (ex. ligne ~827 `fetch("/api/feedback-events", { method: "POST", headers: { ..., ...authHeaders() }, ... })`). Noter la shape exacte des headers et du body.
 
-- [ ] **Step 2: Ajouter le handler — suivre le pattern existant**
+- [ ] **Step 2: Ajouter le handler — noms de variables confirmés**
 
-Quelque part à côté des autres handlers de feedback (après les existants validated/corrected). Exemple de structure à adapter au pattern observé en step 1 :
+Les noms exacts dans `+page.svelte` :
+- `$currentConversationId` — store (importé ligne ~10, utilisé partout via `$` auto-subscribe).
+- `personaId` — `$derived($page.data.personaId)` (ligne ~34).
+- `$messages` — store auto-subscribe pour le tableau courant.
+
+Ajouter le handler quelque part à côté des autres handlers de feedback (après les existants validated/corrected) :
 
 ```js
   // Signal silencieux — pas de toast, pas de re-fetch. Respecte "chaque action = data".
   async function handlePasteDismiss() {
     // Defensive : la zone paste ne devrait pas être visible sans 'toi', mais on vérifie.
-    const lastToi = [...messages].reverse().find(m => m.turn_kind === 'toi');
+    const lastToi = [...$messages].reverse().find(m => m.turn_kind === 'toi');
     if (!lastToi) return;
 
     try {
@@ -854,9 +865,9 @@ Quelque part à côté des autres handlers de feedback (après les existants val
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({
-          conversation_id: currentConvId,  // adapter au nom exact dans le fichier
+          conversation_id: $currentConversationId,
           message_id: lastToi.id,
-          persona_id: personaId,            // adapter au nom exact
+          persona_id: personaId,
           event_type: 'paste_zone_dismissed',
         }),
       });
@@ -866,8 +877,6 @@ Quelque part à côté des autres handlers de feedback (après les existants val
     }
   }
 ```
-
-**Action** : ajuster les noms de variables (`currentConvId`, `personaId`) selon ce qui existe déjà dans le fichier. Regarder un autre handler `feedback-events` à côté pour le copier-pattern.
 
 - [ ] **Step 3: Commit**
 
@@ -981,11 +990,11 @@ EOF
 )"
 ```
 
-- [ ] **Step 6: Appliquer la migration 033 sur prod AVANT merge master**
+- [ ] **Step 6: Appliquer la migration 037 sur prod AVANT merge master**
 
-Comme la migration 033 étend un CHECK et que le handler parent va POSTer `paste_zone_dismissed`, si on merge master **sans** avoir appliqué 033 en prod d'abord, le POST va 500 (contrainte violée). Donc :
+Comme la migration 037 étend un CHECK et que le handler parent va POSTer `paste_zone_dismissed`, si on merge master **sans** avoir appliqué 037 en prod d'abord, le POST va 500 (contrainte violée). Donc :
 
-1. Appliquer 033 sur le Supabase prod (dashboard SQL editor ou `supabase db push`).
+1. Appliquer 037 sur le Supabase prod (dashboard SQL editor ou `supabase db push`).
 2. Vérifier que le CHECK est bien en place (SELECT sur `pg_constraint` comme en Task 1.2).
 3. **Ensuite** merger la PR master.
 
@@ -1001,7 +1010,7 @@ Après merge, vérifier en prod :
 
 Ordre chronologique attendu :
 
-1. `feat(db): migration 033 ajoute paste_zone_dismissed à feedback_events`
+1. `feat(db): migration 037 ajoute paste_zone_dismissed à feedback_events`
 2. `feat(composer): extraire inferPrimary + shouldShowPasteZone en helpers testables`
 3. `feat(composer): ajoute props lastTurnKind + onPasteDismiss`
 4. `feat(composer): ajoute derivations inferredPrimary et showPasteZone`
