@@ -3,6 +3,7 @@
   // déclenchement du draft clone (textarea = consigne optionnelle).
   // Remplace ChatInput + l'ex-composer-toolbar.
   import { CANONICAL_SCENARIOS } from "$lib/scenarios.js";
+  import { inferPrimary, shouldShowPasteZone } from "$lib/composer-state.js";
 
   let {
     disabled = false,
@@ -13,6 +14,8 @@
     onSwitchScenario,     // (scenarioId) => Promise<void> — flip scenario_type before drafting (DM sub-mode)
     onIngestPost,         // (post: string) => void — called when user submits a hand-written post to ingest as rules
     onAddProspectReply,   // (content: string) => Promise<void> — DM only, logs prospect message with turn_kind='prospect'
+    lastTurnKind = null,              // NEW : 'toi'|'prospect'|'clone_draft'|'draft_rejected'|null
+    onPasteDismiss,                   // NEW : () => void — appelé au dismiss de la zone paste
   } = $props();
 
   // DM sub-modes exposed as CTAs in the composer. Clicking one switches
