@@ -10,7 +10,10 @@
   let error = $state(null);
   let busy = $state(null); // protocolId currently toggling
 
+  let pollTimer = null;
+
   $effect(() => { if (personaId) load(); });
+  $effect(() => () => { if (pollTimer) clearTimeout(pollTimer); });
 
   async function load() {
     loading = true;
@@ -18,11 +21,28 @@
     try {
       const data = await api(`/api/protocol?persona=${personaId}`);
       protocols = data.protocols || [];
+      schedulePoll();
     } catch (e) {
       error = e.message || "Erreur de chargement";
     } finally {
       loading = false;
     }
+  }
+
+  // Poll every 20s while any protocol is still parsing. Cron runs every 10 min,
+  // so in the worst case we catch the flip within 20s after it happens — user
+  // can leave the tab and come back, data is always fresh.
+  function schedulePoll() {
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    const hasWork = protocols.some(p => p.status === "pending");
+    if (!hasWork) return;
+    pollTimer = setTimeout(async () => {
+      try {
+        const data = await api(`/api/protocol?persona=${personaId}`);
+        protocols = data.protocols || [];
+      } catch { /* silent */ }
+      schedulePoll();
+    }, 20000);
   }
 
   async function toggle(p) {
