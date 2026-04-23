@@ -74,7 +74,7 @@ export default async function handler(req, res) {
     //   - save_rule rows (Haiku-distilled, bot_message='[saved-by-user]')
     //   - implicit-diff rows (Sonnet-described, user_message='[diff implicite]')
     //   - consolidated rows (status='graduated')
-    const META_MARKERS = ["[VALIDATED]", "[CLIENT_VALIDATED]", "[EXCELLENT]"];
+    const META_MARKERS = ["[VALIDATED]", "[CLIENT_VALIDATED]", "[EXCELLENT]", "[COPY_PASTE_OUT]", "[REGEN_REJECTED]"];
     const isDeducedRule = (c) => {
       const text = c.correction || "";
       if (META_MARKERS.some((m) => text.startsWith(m))) return false;
@@ -271,6 +271,80 @@ export default async function handler(req, res) {
 
     clearIntelligenceCache(intellId);
     res.json({ ok: true, signal: "excellent" });
+    return;
+  }
+
+  // ── Type "copy_paste_out": implicit positive — user copied the draft out
+  // (LinkedIn message, notes, etc). Weight 0.6 (source_channel), smaller entity
+  // boost (+0.03) than explicit validate (+0.05) because intent is inferred. ──
+  if (type === "copy_paste_out") {
+    if (!botMessage) { res.status(400).json({ error: "botMessage required" }); return; }
+
+    await supabase.from("corrections").insert({
+      persona_id: intellId,
+      correction: "[COPY_PASTE_OUT] Draft copie par l'utilisateur",
+      bot_message: botMessage.slice(0, 300),
+      user_message: userMessage?.slice(0, 200) || null,
+      contributed_by: client?.id || null,
+      source_channel: "copy_paste_out",
+      confidence_weight: 0.6,
+      is_implicit: true,
+    });
+
+    const { data: entities } = await supabase
+      .from("knowledge_entities")
+      .select("id, name, confidence")
+      .eq("persona_id", intellId);
+
+    if (entities?.length > 0) {
+      const msgLower = botMessage.toLowerCase();
+      const matched = entities.filter(e => msgLower.includes(e.name.toLowerCase()));
+      for (const e of matched) {
+        const newConf = Math.min(1.0, (e.confidence || 0.8) + 0.03);
+        await supabase.from("knowledge_entities")
+          .update({ confidence: newConf, last_matched_at: new Date().toISOString() })
+          .eq("id", e.id);
+      }
+    }
+
+    res.json({ ok: true, signal: "copy_paste_out" });
+    return;
+  }
+
+  // ── Type "regen_rejection": implicit negative — user clicked ↻ regen on a
+  // draft (rejected without correction text). Weight 0.5, smaller entity demote
+  // (-0.03) than explicit reject (-0.10). ──
+  if (type === "regen_rejection") {
+    if (!botMessage) { res.status(400).json({ error: "botMessage required" }); return; }
+
+    await supabase.from("corrections").insert({
+      persona_id: intellId,
+      correction: "[REGEN_REJECTED] Draft rejete par l'utilisateur via regen",
+      bot_message: botMessage.slice(0, 300),
+      user_message: userMessage?.slice(0, 200) || null,
+      contributed_by: client?.id || null,
+      source_channel: "regen_rejection",
+      confidence_weight: 0.5,
+      is_implicit: true,
+    });
+
+    const { data: entities } = await supabase
+      .from("knowledge_entities")
+      .select("id, name, confidence")
+      .eq("persona_id", intellId);
+
+    if (entities?.length > 0) {
+      const msgLower = botMessage.toLowerCase();
+      const matched = entities.filter(e => msgLower.includes(e.name.toLowerCase()));
+      for (const e of matched) {
+        const newConf = Math.max(0.0, (e.confidence || 0.8) - 0.03);
+        await supabase.from("knowledge_entities")
+          .update({ confidence: newConf, last_matched_at: new Date().toISOString() })
+          .eq("id", e.id);
+      }
+    }
+
+    res.json({ ok: true, signal: "regen_rejection" });
     return;
   }
 

@@ -1,6 +1,18 @@
 import { authenticateRequest, supabase, setCors, hasPersonaAccess } from "../lib/supabase.js";
 
-const VALID_TYPES = new Set(["validated", "validated_edited", "corrected", "saved_rule", "excellent", "client_validated"]);
+// Event types log (UI feedback rail + consolidation cues):
+// - validated_edited was declared but never fired by the UI — removed.
+// - rule_proposal_* added for Section 4 N4 chip flow (incoming PR).
+const VALID_TYPES = new Set([
+  "validated",
+  "corrected",
+  "saved_rule",
+  "excellent",
+  "client_validated",
+  "rule_proposal_accepted",
+  "rule_proposal_rejected",
+  "rule_proposal_edited",
+]);
 
 export default async function handler(req, res) {
   setCors(res, "GET, POST, OPTIONS");

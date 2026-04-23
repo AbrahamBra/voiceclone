@@ -4,7 +4,7 @@
 
   let {
     message, seq = null,
-    onCorrect, onValidate, onClientValidate, onExcellent, onRegen, onSaveRule, onCopyBlock,
+    onCorrect, onClientValidate, onExcellent, onRegen, onSaveRule, onCopyBlock,
   } = $props();
 
   // Narrative kind derived from message.turn_kind (new axis from migration 028),

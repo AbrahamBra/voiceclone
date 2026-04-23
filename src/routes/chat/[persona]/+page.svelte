@@ -795,54 +795,6 @@
     ingestPending = null;
   }
 
-  // ✓ valider : PATCH message turn_kind='toi' + POST feedback-events.
-  // Also fires the legacy /api/feedback validate signal so detect-validate
-  // pipeline (positive feedback loop) keeps working.
-  async function handleValidate(message) {
-    try {
-      // Legacy positive-feedback signal — best effort, non-blocking
-      api("/api/feedback", {
-        method: "POST",
-        body: JSON.stringify({
-          type: "validate",
-          botMessage: message.content,
-          persona: get(currentPersonaId),
-        }),
-      }).catch(() => { /* ignored: secondary signal */ });
-
-      await fetch(`/api/messages?id=${message.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ turn_kind: "toi" }),
-      });
-      const resp = await fetch("/api/feedback-events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({
-          conversation_id: $currentConversationId,
-          message_id: message.id,
-          event_type: "validated",
-        }),
-      });
-      if (resp.ok) {
-        const ev = await resp.json();
-        feedbackRailRef?.appendEvent?.({
-          id: ev.id,
-          message_id: message.id,
-          event_type: "validated",
-          created_at: ev.created_at,
-          rules_fired: [],
-        });
-        feedbackCount++;
-      }
-      messages.update(msgs => msgs.map(m =>
-        m.id === message.id ? { ...m, turn_kind: "toi" } : m
-      ));
-    } catch {
-      showToast?.("Validation échouée");
-    }
-  }
-
   // ✓ c'est ça : explicit client approval. Flips turn_kind to 'toi' like
   // validate, but fires /api/feedback type=client_validate (stronger entity
   // boost +0.12) and logs feedback_events as 'client_validated'.
@@ -938,9 +890,19 @@
     }
   }
 
-  // ↻ regen : mark current draft as rejected, relaunch last send.
+  // ↻ regen : mark current draft as rejected, emit training signal, relaunch.
   async function handleRegen(message) {
     try {
+      // Implicit negative training signal — non-blocking, best-effort
+      api("/api/feedback", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "regen_rejection",
+          botMessage: message.content,
+          persona: get(currentPersonaId),
+        }),
+      }).catch(() => { /* ignored: implicit signal */ });
+
       await fetch(`/api/messages?id=${message.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...authHeaders() },
@@ -951,6 +913,18 @@
     } catch {
       showToast?.("Regen échoué");
     }
+  }
+
+  // 📋 copy : user copied the draft out (LinkedIn / notes). Implicit positive.
+  async function handleCopyBlock(message, _block) {
+    api("/api/feedback", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "copy_paste_out",
+        botMessage: message.content,
+        persona: get(currentPersonaId),
+      }),
+    }).catch(() => { /* ignored: implicit signal */ });
   }
 
   // Conversation dossier fields update (name / stage / note) from header
@@ -1110,12 +1084,11 @@
                 {message}
                 seq={seqForMessage(message, $messages)}
                 onCorrect={handleCorrect}
-                onValidate={handleValidate}
                 onClientValidate={handleClientValidate}
                 onExcellent={handleExcellent}
                 onRegen={handleRegen}
                 onSaveRule={handleSaveRule}
-                onCopyBlock={() => {}}
+                onCopyBlock={(block) => handleCopyBlock(message, block)}
               />
             {/each}
             {#if ingesting}
