@@ -14,6 +14,7 @@ import { supabase } from "../lib/supabase.js";
 import { consolidateCorrections } from "../lib/correction-consolidation.js";
 import { extractGraphFromFile } from "../lib/graph-extraction-file.js";
 import { clearIntelligenceCache } from "../lib/knowledge-db.js";
+import { parseOperatingProtocol } from "../lib/protocol-parser.js";
 
 // Minimum active corrections to trigger a consolidation
 const MIN_ACTIVE_CORRECTIONS = 3;
@@ -26,6 +27,12 @@ const EXTRACTION_PER_FILE_TIMEOUT_MS = 90_000;      // Haiku call cap
 const EXTRACTION_RESERVE_MS = 120_000;              // stop taking new files when <2min left
 const EXTRACTION_MAX_ATTEMPTS = 3;                  // give up after N failures
 const EXTRACTION_MAX_FILES_PER_RUN = 5;             // safety cap
+
+// Protocol parsing budget (phase 3 — same shape, tighter caps)
+const PROTOCOL_PER_FILE_TIMEOUT_MS = 90_000;
+const PROTOCOL_RESERVE_MS = 30_000;                 // cheaper than graph; smaller reserve
+const PROTOCOL_MAX_ATTEMPTS = 3;
+const PROTOCOL_MAX_PER_RUN = 2;
 
 export default async function handler(req, res) {
   // Vercel cron sends a Bearer token matching CRON_SECRET env var
@@ -101,6 +108,9 @@ export default async function handler(req, res) {
     // ── Phase 2: process pending graph extractions within remaining budget ──
     const extractionResults = await processPendingExtractions(startedAt);
 
+    // ── Phase 3: process pending operating protocols ──
+    const protocolResults = await processPendingProtocols(startedAt);
+
     const summary = {
       ok: true,
       scanned: personas.length,
@@ -108,6 +118,7 @@ export default async function handler(req, res) {
       consolidated: results.filter(r => r.ok).length,
       failed: results.filter(r => !r.ok).length,
       extractions: extractionResults,
+      protocols: protocolResults,
       durationMs: Date.now() - startedAt,
       results,
     };
@@ -236,6 +247,121 @@ async function processPendingExtractions(cronStartedAt) {
         ms: Date.now() - fileStart,
       });
       console.error(JSON.stringify({ event: "cron_extraction_error", file: file.path, persona: file.persona_id, error: err.message, attempts: nextAttempts, terminal }));
+    }
+  }
+
+  return {
+    picked: attempts,
+    processed: processed.length,
+    ok: processed.filter(p => p.ok).length,
+    failed: processed.filter(p => !p.ok).length,
+    details: processed,
+  };
+}
+
+/**
+ * Claim-and-process pending operating_protocols (status='pending').
+ *
+ * Mirrors processPendingExtractions: atomic claim (pending→processing via
+ * attempts bump), load source file + contributing client, call parser,
+ * mark 'failed' on throw with attempt-based terminal flag.
+ *
+ * Uses the dedicated parse_attempts column on operating_protocols (vs.
+ * extraction_attempts on knowledge_files). The parser internally writes
+ * status='parsed' and parsed_json on success.
+ */
+async function processPendingProtocols(cronStartedAt) {
+  const processed = [];
+  let attempts = 0;
+
+  while (processed.length < PROTOCOL_MAX_PER_RUN) {
+    const elapsedMs = Date.now() - cronStartedAt;
+    const remainingMs = (maxDuration * 1000) - elapsedMs;
+    if (remainingMs < PROTOCOL_RESERVE_MS) {
+      console.log(JSON.stringify({ event: "cron_protocol_budget_stop", elapsedMs, remainingMs }));
+      break;
+    }
+
+    const { data: candidates } = await supabase
+      .from("operating_protocols")
+      .select("id, persona_id, source_file_id, parse_attempts")
+      .eq("status", "pending")
+      .lt("parse_attempts", PROTOCOL_MAX_ATTEMPTS)
+      .order("created_at", { ascending: true })
+      .limit(1);
+
+    if (!candidates || candidates.length === 0) break;
+    const proto = candidates[0];
+    attempts++;
+
+    const nowIso = new Date().toISOString();
+    const nextAttempts = (proto.parse_attempts || 0) + 1;
+
+    // Atomic claim via attempts bump (still in 'pending' so re-runnable if crash).
+    const { data: claimed } = await supabase
+      .from("operating_protocols")
+      .update({ parse_attempts: nextAttempts, parse_attempted_at: nowIso })
+      .eq("id", proto.id)
+      .eq("parse_attempts", proto.parse_attempts || 0)
+      .select("id");
+
+    if (!claimed || claimed.length === 0) {
+      console.log(JSON.stringify({ event: "cron_protocol_claim_skipped", protocol: proto.id }));
+      continue;
+    }
+
+    // Load source knowledge_file for content + client (for API key).
+    let content = null;
+    let client = null;
+    if (proto.source_file_id) {
+      const { data: file } = await supabase
+        .from("knowledge_files")
+        .select("content, contributed_by")
+        .eq("id", proto.source_file_id)
+        .single();
+      content = file?.content || null;
+      if (file?.contributed_by) {
+        const { data: cRow } = await supabase
+          .from("clients").select("id, anthropic_api_key").eq("id", file.contributed_by).single();
+        client = cRow || null;
+      }
+    }
+
+    const fileStart = Date.now();
+    try {
+      if (!content) throw new Error("source_file_missing_or_empty");
+      const result = await parseOperatingProtocol(
+        proto.id, content, client,
+        { timeoutMs: PROTOCOL_PER_FILE_TIMEOUT_MS },
+      );
+      processed.push({
+        protocol: proto.id,
+        persona: proto.persona_id,
+        ok: true,
+        count: result.count,
+        debug: result.debug,
+        ms: Date.now() - fileStart,
+      });
+      console.log(JSON.stringify({ event: "cron_protocol_done", protocol: proto.id, persona: proto.persona_id, count: result.count, debug: result.debug, ms: Date.now() - fileStart }));
+    } catch (err) {
+      const terminal = nextAttempts >= PROTOCOL_MAX_ATTEMPTS;
+      await supabase.from("operating_protocols")
+        .update({
+          status: terminal ? "failed" : "pending",
+          parse_error: err.message,
+        })
+        .eq("id", proto.id);
+
+      processed.push({
+        protocol: proto.id,
+        persona: proto.persona_id,
+        ok: false,
+        error: err.message,
+        attempts: nextAttempts,
+        terminal,
+        ms: Date.now() - fileStart,
+      });
+      console.error(JSON.stringify({ event: "cron_protocol_error", protocol: proto.id, persona: proto.persona_id, error: err.message, attempts: nextAttempts, terminal }));
     }
   }
 

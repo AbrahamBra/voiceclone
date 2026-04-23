@@ -12,9 +12,22 @@
   let confirmingDelete = $state(null);
 
   let mode = $state("file"); // "file" | "text"
+  let docType = $state("generic"); // "generic" | "voice_reference" | "operating_protocol"
   let uploading = $state(false);
   let uploadCurrent = $state(0);
   let uploadTotal = $state(0);
+
+  const DOC_TYPES = [
+    { id: "generic",            label: "Générique" },
+    { id: "voice_reference",    label: "Voix" },
+    { id: "operating_protocol", label: "Protocole" },
+  ];
+
+  function docTypeBadge(type) {
+    if (type === "operating_protocol") return "protocole";
+    if (type === "voice_reference")    return "voix";
+    return null;
+  }
 
   // Text mode fields
   let textName = $state("");
@@ -143,12 +156,16 @@
     try {
       const data = await api("/api/knowledge", {
         method: "POST",
-        body: JSON.stringify({ personaId, filename, content }),
+        body: JSON.stringify({ personaId, filename, content, document_type: docType }),
       });
       stopFakeProgress();
       await new Promise(r => setTimeout(r, 600));
       files = [{ ...data.file, displayName: filename }, ...files];
-      showToast("Document ajouté");
+      if (data.protocol) {
+        showToast("Protocole importé — parsing en cours");
+      } else {
+        showToast("Document ajouté");
+      }
       onupload?.();
     } catch (e) {
       for (const t of stepTimers) clearTimeout(t);
@@ -246,6 +263,11 @@
             <span class="kp-file-name">{displayName(f)}</span>
             <span class="kp-file-meta">
               {f.chunk_count} chunks · {getRelativeTime(f.created_at)}
+              {#if docTypeBadge(f.document_type)}
+                <span class="kp-doc-badge" class:protocol={f.document_type === 'operating_protocol'} class:voice={f.document_type === 'voice_reference'}>
+                  {docTypeBadge(f.document_type)}
+                </span>
+              {/if}
               {#if extractionLabel(f.extraction_status)}
                 <span class="kp-ext-badge" class:failed={f.extraction_status === 'failed'} title={f.extraction_error || ''}>
                   · {extractionLabel(f.extraction_status)}
@@ -264,6 +286,29 @@
   </div>
 
   <div class="kp-section kp-add">
+    <div class="kp-doc-type">
+      <div class="kp-doc-type-label">Type de document</div>
+      <div class="kp-doc-type-toggle">
+        {#each DOC_TYPES as dt}
+          <button
+            class="kp-doc-type-btn"
+            class:active={docType === dt.id}
+            onclick={() => docType = dt.id}
+            disabled={uploading}
+          >{dt.label}</button>
+        {/each}
+      </div>
+      {#if docType === "operating_protocol"}
+        <div class="kp-doc-type-hint">
+          Règles absolues extraites puis proposées à l'activation. Parsing async (cron 10 min).
+        </div>
+      {:else if docType === "voice_reference"}
+        <div class="kp-doc-type-hint">
+          Contenus stylistiques pour calibrer la voix (posts, DM de référence…).
+        </div>
+      {/if}
+    </div>
+
     <div class="kp-mode-toggle">
       <button class="kp-mode-btn" class:active={mode === "file"} onclick={() => mode = "file"}>Fichier</button>
       <button class="kp-mode-btn" class:active={mode === "text"} onclick={() => mode = "text"}>Texte</button>
@@ -421,6 +466,56 @@
     color: var(--vermillon);
     font-style: normal;
     cursor: help;
+  }
+  .kp-doc-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 5px;
+    border: 1px solid var(--rule-strong);
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-70);
+  }
+  .kp-doc-badge.protocol { color: var(--vermillon); border-color: var(--vermillon); }
+  .kp-doc-badge.voice    { color: var(--ink); border-color: var(--ink-40); }
+
+  .kp-doc-type { padding: 0 2px 8px; }
+  .kp-doc-type-label {
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    color: var(--ink-40);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+  }
+  .kp-doc-type-toggle {
+    display: flex;
+    gap: 1px;
+    background: var(--rule-strong);
+    border: 1px solid var(--rule-strong);
+  }
+  .kp-doc-type-btn {
+    flex: 1;
+    padding: 5px 4px;
+    background: var(--paper-subtle);
+    border: none;
+    color: var(--ink-40);
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+    cursor: pointer;
+    transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+  }
+  .kp-doc-type-btn:hover:not(:disabled) { color: var(--ink); }
+  .kp-doc-type-btn.active { background: var(--ink); color: var(--paper); }
+  .kp-doc-type-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .kp-doc-type-hint {
+    font-family: var(--font-ui);
+    font-size: var(--fs-nano);
+    color: var(--ink-40);
+    line-height: 1.4;
+    padding: 4px 2px 0;
   }
   .kp-delete {
     background: transparent;
