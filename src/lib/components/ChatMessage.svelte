@@ -4,7 +4,7 @@
 
   let {
     message, seq = null,
-    onCorrect, onValidate, onClientValidate, onExcellent, onRegen, onSaveRule, onCopyBlock,
+    onCorrect, onValidate, onClientValidate, onExcellent, onRegen, onSaveRule, onCopyBlock, onCopyOut,
   } = $props();
 
   // Narrative kind derived from message.turn_kind (new axis from migration 028),
@@ -66,6 +66,7 @@
     copiedLabel = modeObj?.label ?? "Copié";
     clearTimeout(copiedTimer);
     copiedTimer = setTimeout(() => (copiedLabel = ""), 1400);
+    onCopyOut?.(text);
   }
 
   function copyDefault() {
@@ -75,6 +76,7 @@
   function copyBlock(block, btnEl) {
     navigator.clipboard.writeText(formatFor(copyMode, block));
     onCopyBlock?.(block);
+    onCopyOut?.(block);
   }
 
   // Lab-notebook stamp: `[usr:001 14:42:17]` / `[bot:001 14:42:17]`
