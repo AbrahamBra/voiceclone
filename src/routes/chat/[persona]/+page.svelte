@@ -768,6 +768,7 @@
     feedbackTarget = message.content;
     feedbackMessageId = message.id;
     feedbackOpen = true;
+    track("correction_opened", { source: "chat" });
   }
 
   async function handleSaveRule(message) {
@@ -802,6 +803,7 @@
           });
         }
       } catch { /* best-effort */ }
+      track("rule_saved", { source: "chat" });
       showToast("Règle sauvegardée ✓");
     } catch {
       showToast("Erreur lors de la sauvegarde");
@@ -874,6 +876,7 @@
       if (currentConversation && currentConversation.id === convId) {
         currentConversation = { ...currentConversation, last_message_at: saved.created_at };
       }
+      track("prospect_reply_added", {});
     } catch (e) {
       showToast("Ajout échoué : " + (e?.message || "erreur réseau"));
     }
@@ -913,6 +916,7 @@
         persona: get(currentPersonaId),
       }),
     });
+    track("ingest_rule_validated", {});
     showToast("Règle ajoutée au cerveau ✓");
   }
 
@@ -962,6 +966,7 @@
       messages.update(msgs => msgs.map(m =>
         m.id === message.id ? { ...m, turn_kind: "toi" } : m
       ));
+      track("draft_validated", {});
     } catch {
       showToast?.("Validation échouée");
     }
@@ -1009,6 +1014,7 @@
       messages.update(msgs => msgs.map(m =>
         m.id === message.id ? { ...m, turn_kind: "toi" } : m
       ));
+      track("draft_client_validated", {});
     } catch {
       showToast?.("Validation échouée");
     }
@@ -1034,6 +1040,7 @@
         const text = await res.text().catch(() => "");
         console.warn("paste_zone_dismissed HTTP", res.status, text);
       }
+      track("paste_zone_dismissed", {});
     } catch (err) {
       console.warn("paste_zone_dismissed network error:", err);
     }
@@ -1080,6 +1087,7 @@
       messages.update(msgs => msgs.map(m =>
         m.id === message.id ? { ...m, turn_kind: "toi" } : m
       ));
+      track("draft_excellent", {});
     } catch {
       showToast?.("Marquage excellent échoué");
     }
@@ -1094,6 +1102,7 @@
         body: JSON.stringify({ turn_kind: "draft_rejected" }),
       });
       messages.update(msgs => msgs.filter(m => m.id !== message.id));
+      track("draft_regenerated", {});
       // Inject the rejected draft into the prompt so the LLM has concrete
       // context (the prior draft is marked draft_rejected in DB and may be
       // filtered from the conversation it rebuilds — without this, "Regenère
