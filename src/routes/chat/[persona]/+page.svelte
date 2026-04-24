@@ -1201,6 +1201,8 @@
             onAnalyzeProspect={(url) => { leadInitialUrl = url; leadOpen = true; }}
             onIngestPost={handleIngestPost}
             onAddProspectReply={handleAddProspectReply}
+            {lastTurnKind}
+            onPasteDismiss={handlePasteDismiss}
           />
         </div>
 
