@@ -937,7 +937,7 @@
     if (!lastToi) return;
 
     try {
-      await fetch("/api/feedback-events", {
+      const res = await fetch("/api/feedback-events", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({
@@ -946,8 +946,12 @@
           event_type: 'paste_zone_dismissed',
         }),
       });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        console.warn("paste_zone_dismissed HTTP", res.status, text);
+      }
     } catch (err) {
-      console.warn("paste_zone_dismissed signal failed:", err);
+      console.warn("paste_zone_dismissed network error:", err);
     }
   }
 
