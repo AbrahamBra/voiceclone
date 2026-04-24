@@ -7,6 +7,8 @@
     conversation = null,      // { id, prospect_name, stage, note, last_message_at, stage_auto, ... }
     feedbackCount = 0,        // dérivé (passé par parent depuis FeedbackRail)
     heat = null,              // { state: 'cold'|'warm'|'hot', delta: number|null }
+    styleHealth = "unknown",  // 'ok' | 'warn' | 'drift' | 'unknown' — consolidé côté parent
+    fidelity = null,          // 0..1 — similarité voix, pour tooltip du badge
     onUpdate,                 // (patch) => Promise — parent relais vers /api/conversations PATCH
     onToggleRail,             // callback pour toggler le rail feedback en mobile
   } = $props();
@@ -69,6 +71,26 @@
     if (heat.state === "warm") return { emoji: "◐", text: "tiède" };
     if (heat.state === "hot")  return { emoji: "●", text: "chaud" };
     return null;
+  });
+
+  // Badge de santé voix — rendu sans intrusion si 'unknown' (pas de données).
+  // Reproduit la sémantique de styleHealth calculée côté parent pour ne pas
+  // dupliquer les seuils : ok (fidélité ≥ 0.72 et collapse ≥ 70), warn
+  // (collapse 50..70 ou règles actives > 0), drift (collapse < 50 ou
+  // fidélité < 0.72). Voir +page.svelte ≈l.137 pour la source.
+  let healthDot = $derived.by(() => {
+    if (styleHealth === "ok")    return { cls: "ok",    icon: "●", label: "voix ok" };
+    if (styleHealth === "warn")  return { cls: "warn",  icon: "◐", label: "voix à surveiller" };
+    if (styleHealth === "drift") return { cls: "drift", icon: "✗", label: "voix en dérive" };
+    return null;
+  });
+  let healthTitle = $derived.by(() => {
+    if (!healthDot) return "";
+    const fid = typeof fidelity === "number" ? ` · fidélité ${fidelity.toFixed(2)}` : "";
+    if (styleHealth === "ok")    return `Voix alignée${fid}`;
+    if (styleHealth === "warn")  return `Voix à surveiller${fid} — quelques règles ont tiré`;
+    if (styleHealth === "drift") return `Voix en dérive${fid} — corriger une réponse pour recaler`;
+    return "";
   });
 </script>
 
@@ -135,6 +157,13 @@
 
     <span class="sep">·</span>
     <span class="last">dernier : {fmtRelative(conversation?.last_message_at)}</span>
+
+    {#if healthDot}
+      <span class="sep">·</span>
+      <span class="health health-{healthDot.cls}" title={healthTitle} aria-label={healthDot.label}>
+        {healthDot.icon} {healthDot.label}
+      </span>
+    {/if}
   </div>
 
   <div class="row-2">
@@ -224,6 +253,10 @@
   .heat-cold { color: #4a6fa5; }
   .heat-warm { color: #b37e3b; }
   .heat-hot  { color: var(--vermillon); }
+  .health { font-weight: 500; cursor: help; }
+  .health-ok    { color: #2b7a4b; }
+  .health-warn  { color: #b37e3b; }
+  .health-drift { color: var(--vermillon); }
   .fb-count,
   .fb-count-btn { margin-left: auto; font-weight: 500; }
   .fb-count-btn {
