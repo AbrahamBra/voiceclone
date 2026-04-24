@@ -220,72 +220,90 @@
     <div class="captures">
       <figure class="capture">
         <div class="capture-frame" aria-hidden="true">
-          <div class="frame-bar mono"><span>◎</span><span>cockpit · DM</span></div>
+          <div class="frame-bar mono"><span>◎</span><span>onboarding · setup du clone</span></div>
           <div class="frame-body">
-            <div class="frame-stub">
-              <span class="stub-meta mono">prospect · Sophie · signal chaud</span>
-              <div class="stub-bubble stub-prospect">« Ok envoie ton process en 2 lignes. »</div>
-              <div class="stub-bubble stub-draft">
-                Sophie, 2 lignes pile : on mappe ta stack aujourd'hui
-                (15 min), tu reçois le gap-report demain. Si ça accroche
-                on pose un call. Sinon on coupe ici. OK pour l'appel à 14h ?
+            <div class="frame-stub setup-stub">
+              <div class="setup-block">
+                <span class="setup-label mono">ouvertures interdites</span>
+                <span class="setup-detail">jamais « Bonjour ». jamais « J'espère que… »</span>
               </div>
-              <span class="stub-tag mono">draft · voix reconnue</span>
+              <div class="setup-block">
+                <span class="setup-label mono">cadence de relance</span>
+                <span class="setup-detail">J+3 → J+7 → on coupe</span>
+              </div>
+              <div class="setup-block">
+                <span class="setup-label mono">signature</span>
+                <span class="setup-detail">« — A. » sans formule</span>
+              </div>
+              <div class="setup-block">
+                <span class="setup-label mono">process closing</span>
+                <span class="setup-detail">pas de call avant 3 échanges</span>
+              </div>
             </div>
           </div>
         </div>
         <figcaption>
           <span class="cap-num mono">01</span>
-          Ton setter colle le message d'un prospect.<br />
-          Le draft arrive dans la voix que ton client signe.
+          Pas besoin que le clone devine la façon de ton client à partir de 3 posts.<br />
+          Ton client écrit ses règles une fois. Le clone les exécute dès le 1er draft.
         </figcaption>
       </figure>
 
       <figure class="capture">
         <div class="capture-frame" aria-hidden="true">
-          <div class="frame-bar mono"><span>◎</span><span>règle détectée</span></div>
+          <div class="frame-bar mono"><span>◎</span><span>cockpit · correction</span></div>
           <div class="frame-body">
             <div class="frame-stub">
-              <span class="stub-meta mono">moteur de règles · 1 violation</span>
-              <div class="rule-row">
-                <span class="rule-dot">●</span>
-                <span class="rule-label mono">ai_pattern_fr</span>
-                <span class="rule-detail">« n'hésitez pas »</span>
+              <span class="stub-meta mono">setter vire « n'hésitez pas »</span>
+              <div class="dialogue-row dialogue-clone">
+                <span class="dialogue-who mono">clone</span>
+                <span class="dialogue-body">Pourquoi tu vires ça ?</span>
               </div>
-              <div class="rule-action">
-                <button type="button" class="rule-btn mono" disabled>virer + saved</button>
-                <span class="rule-hint">la règle reste sauvée pour les 500 prochains drafts</span>
+              <div class="dialogue-row dialogue-setter">
+                <span class="dialogue-who mono">setter</span>
+                <span class="dialogue-body">trop soft, on ferme, on propose pas</span>
+              </div>
+              <div class="dialogue-row dialogue-clone">
+                <span class="dialogue-who mono">clone</span>
+                <span class="dialogue-body">noté, règle ajoutée. plus jamais dans un DM closing.</span>
               </div>
             </div>
           </div>
         </div>
         <figcaption>
           <span class="cap-num mono">02</span>
-          Un mot interdit traîne dans le draft ?<br />
-          Un clic pour le virer. La règle reste pour toujours.
+          Tu corriges une fois. Tu expliques une fois.<br />
+          Le clone retient le pourquoi. La règle vaut pour toute l'équipe.
         </figcaption>
       </figure>
 
       <figure class="capture">
         <div class="capture-frame" aria-hidden="true">
-          <div class="frame-bar mono"><span>◎</span><span>rail feedback</span></div>
+          <div class="frame-bar mono"><span>◎</span><span>cockpit · Post | DM</span></div>
           <div class="frame-body">
-            <div class="frame-stub">
-              <span class="stub-meta mono">5 dernières corrections · client A.</span>
-              <ul class="fb-list">
-                <li><span class="fb-date mono">mar.</span> « fondamentalement » → virer</li>
-                <li><span class="fb-date mono">mar.</span> ouvrir par une question, pas une affirmation</li>
-                <li><span class="fb-date mono">lun.</span> signature : « — A. » pas « Cdt, »</li>
-                <li><span class="fb-date mono">ven.</span> jamais commencer par « Bonjour »</li>
-                <li><span class="fb-date mono">jeu.</span> relance à J+5, pas J+3</li>
-              </ul>
+            <div class="frame-stub tabs-stub">
+              <div class="tabs-row mono">
+                <span class="tab">Post</span>
+                <span class="tab tab-active">DM</span>
+              </div>
+              <div class="tabs-panels">
+                <div class="tab-panel tab-panel-muted">
+                  <span class="stub-meta mono">post · brouillon</span>
+                  <p class="mini-draft">3 questions à se poser avant de relancer un prospect silencieux. — A.</p>
+                </div>
+                <div class="tab-panel">
+                  <span class="stub-meta mono">dm · draft</span>
+                  <p class="mini-draft">Sophie, 2 lignes pile : on mappe ta stack jeudi. — A.</p>
+                </div>
+              </div>
+              <span class="brain-badge mono">même base · 2 canaux</span>
             </div>
           </div>
         </div>
         <figcaption>
           <span class="cap-num mono">03</span>
-          Le journal des corrections du client, sous la main.<br />
-          Ton setter voit les 5 derniers ajustements et s'aligne.
+          Ton setter drafte les DM. Le ghostwriter drafte les posts.<br />
+          Un seul cerveau, deux onglets.
         </figcaption>
       </figure>
     </div>
