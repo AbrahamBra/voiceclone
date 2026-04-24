@@ -1,7 +1,7 @@
 <script>
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
-  import { untrack } from "svelte";
+  import { untrack, onDestroy } from "svelte";
   import { get } from "svelte/store";
   import { accessCode } from "$lib/stores/auth.js";
   import { personaConfig, currentPersonaId, personas } from "$lib/stores/persona.js";
@@ -14,6 +14,11 @@
     sending,
   } from "$lib/stores/chat.js";
   import { showToast } from "$lib/stores/ui.js";
+  import {
+    getPersonaCache,
+    setPersonaCache,
+    invalidatePersonaCache,
+  } from "$lib/persona-cache.js";
   import { api, authHeaders } from "$lib/api.js";
   import { track } from "$lib/tracking.js";
   import { streamChat } from "$lib/sse.js";
@@ -236,42 +241,106 @@
   let initedPersonaId = $state(/** @type {string|null} */ (null));
   $effect(() => {
     if (!personaId || personaId === initedPersonaId) return;
+    const prevPid = initedPersonaId;
+    // Snapshot outgoing persona's live state into cache so switching back is
+    // instant. Done BEFORE we flip initedPersonaId so the refs still apply to
+    // the clone we're leaving.
+    if (prevPid) snapshotPersona(prevPid);
     initedPersonaId = personaId;
     // Read scenario/scenarioTypeFromUrl untracked so later URL updates don't
     // retrigger this effect.
-    init(personaId, untrack(() => scenario), untrack(() => scenarioTypeFromUrl));
+    init(
+      personaId,
+      prevPid,
+      untrack(() => scenario),
+      untrack(() => scenarioTypeFromUrl),
+    );
   });
 
-  async function init(pid, scn, scnType) {
-    loading = true;
-    currentPersonaId.set(pid);
-    currentScenario.set(scn);
-    currentScenarioType.set(scnType || null);
+  // Snapshot on unmount aussi : user qui navigue /chat/A → /brain/A → /chat/A
+  // doit retrouver ses messages live, pas l'état figé au dernier init().
+  onDestroy(() => {
+    if (initedPersonaId) snapshotPersona(initedPersonaId);
+  });
 
-    // Mémorise le dernier clone visité pour rerouter ici au prochain login.
-    // Si le clone n'existe plus, pickPersona() côté landing nettoie l'id.
+  function snapshotPersona(pid) {
+    const convId = get(currentConversationId);
+    setPersonaCache(pid, {
+      // conversations peut avoir été muté par refreshConversations() /
+      // handleSend optimistic insert depuis le dernier init() — on snapshot
+      // pour que la prochaine peinture montre la liste à jour.
+      convList: get(conversations).slice(),
+      lastConv: convId
+        ? {
+            id: convId,
+            messages: get(messages).slice(),
+            scenario: get(currentScenario),
+            scenarioType: get(currentScenarioType),
+          }
+        : null,
+    });
+  }
+
+  async function init(pid, prevPid, scn, scnType) {
+    currentPersonaId.set(pid);
+
     try { localStorage.setItem("vc_last_persona", pid); } catch {}
 
-    // Score fidelity : fire-and-forget pendant init() (au lieu d'attendre
-    // loading=false via $effect, ce qui ajoutait ~1s de décalage). Le state
-    // `fidelity`/`collapseIdx` se met à jour quand le fetch revient.
+    const savedConvId = localStorage.getItem("conv_" + pid);
+    const cached = getPersonaCache(pid);
+
+    // Cache hit = on a config + convList + (lastConv matching savedConvId ou
+    // pas de savedConvId). On peut peindre instantanément.
+    const canPaintFromCache =
+      !!cached?.config
+      && Array.isArray(cached?.convList)
+      && (
+        !savedConvId
+          ? !cached.lastConv
+          : cached.lastConv?.id === savedConvId
+      );
+
+    // Hot switch = on avait déjà un clone affiché. Dans ce cas on NE passe PAS
+    // par le loading screen plein écran : on laisse l'UI précédente visible
+    // jusqu'à ce que la nouvelle soit prête, puis on swap.
+    const hotSwitch = prevPid !== null;
+
+    if (canPaintFromCache) {
+      personaConfig.set(cached.config);
+      applyTheme(cached.config.theme || {});
+      conversations.set(cached.convList);
+      if (cached.lastConv) {
+        currentConversationId.set(cached.lastConv.id);
+        currentScenario.set(cached.lastConv.scenario || scn || "");
+        currentScenarioType.set(cached.lastConv.scenarioType ?? scnType ?? null);
+        messages.set(cached.lastConv.messages);
+      } else {
+        currentConversationId.set(null);
+        currentScenario.set(scn || "");
+        currentScenarioType.set(scnType || null);
+        showWelcome();
+      }
+      loading = false;
+    } else if (!hotSwitch) {
+      // Premier chargement de la session : pas de cache et rien à l'écran →
+      // loading dot classique.
+      loading = true;
+      currentScenario.set(scn || "");
+      currentScenarioType.set(scnType || null);
+    } else {
+      // Cache miss pendant un switch : on garde l'UI du clone précédent
+      // visible, et on swappera quand les données arrivent.
+      currentScenario.set(scn || "");
+      currentScenarioType.set(scnType || null);
+    }
+
     refreshFidelity();
 
-    // Reprise de fil : d'abord le pointeur localStorage (dernière conv
-    // consultée sur CE device), sinon fallback sur la conv la plus récente
-    // de l'historique DB. Évite le "j'ai plus rien en revenant" quand le
-    // localStorage a été perdu (autre device, nettoyage navigateur, logout).
-    // Comme on connaît savedConvId avant tout fetch, on peut lancer config +
-    // liste + conv-by-id + feedback-events en parallèle (au lieu de 3+
-    // round-trips séquentiels).
-    const savedConvId = localStorage.getItem("conv_" + pid);
-    const needsConfig = !$personaConfig || $personaConfig.id !== pid;
-
+    // Revalidation (ou fetch initial si cache miss). On lance les 4 appels en
+    // parallèle, comme avant.
     try {
       const [configResp, listResp, savedConvResp, savedEventsResp] = await Promise.all([
-        needsConfig
-          ? fetch(`/api/config?persona=${pid}`, { headers: authHeaders() }).catch(() => null)
-          : Promise.resolve(null),
+        fetch(`/api/config?persona=${pid}`, { headers: authHeaders() }).catch(() => null),
         fetch(`/api/conversations?persona=${pid}`, { headers: authHeaders() }).catch(() => null),
         savedConvId
           ? fetch(`/api/conversations?id=${savedConvId}`, { headers: authHeaders() }).catch(() => null)
@@ -281,39 +350,65 @@
           : Promise.resolve(null),
       ]);
 
-      if (savedConvId && savedEventsResp && savedEventsResp.ok) {
-        try {
-          const d = await savedEventsResp.json();
-          preloadedFeedbackEvents = { convId: savedConvId, events: Array.isArray(d.events) ? d.events : [] };
-        } catch {}
-      }
+      // Guard : si l'utilisateur a re-switché pendant le fetch, on laisse
+      // tomber pour ne pas écraser le clone courant.
+      if (get(currentPersonaId) !== pid) return;
 
-      if (needsConfig) {
-        if (!configResp || !configResp.ok) throw new Error("Failed to load config");
-        const config = await configResp.json();
+      let config = cached?.config;
+      if (configResp?.ok) {
+        config = await configResp.json();
         personaConfig.set(config);
         applyTheme(config.theme || {});
+      } else if (!config) {
+        throw new Error("Failed to load config");
       }
 
-      let convList = [];
-      if (listResp && listResp.ok) {
+      let convList = Array.isArray(cached?.convList) ? cached.convList : [];
+      if (listResp?.ok) {
         const d = await listResp.json();
         convList = d.conversations || [];
         conversations.set(convList);
       }
 
-      if (savedConvResp && savedConvResp.ok) {
+      if (savedConvId && savedEventsResp?.ok) {
+        try {
+          const d = await savedEventsResp.json();
+          preloadedFeedbackEvents = {
+            convId: savedConvId,
+            events: Array.isArray(d.events) ? d.events : [],
+          };
+        } catch {}
+      }
+
+      let lastConvSnap = null;
+      if (savedConvResp?.ok) {
         const data = await savedConvResp.json();
         await loadConversation(savedConvId, data);
-      } else if (convList[0]?.id) {
-        await loadConversation(convList[0].id);
-      } else {
-        showWelcome();
+        lastConvSnap = {
+          id: savedConvId,
+          messages: get(messages).slice(),
+          scenario: get(currentScenario),
+          scenarioType: get(currentScenarioType),
+        };
+      } else if (!canPaintFromCache) {
+        if (convList[0]?.id) {
+          await loadConversation(convList[0].id);
+          lastConvSnap = {
+            id: convList[0].id,
+            messages: get(messages).slice(),
+            scenario: get(currentScenario),
+            scenarioType: get(currentScenarioType),
+          };
+        } else {
+          showWelcome();
+        }
       }
+
+      setPersonaCache(pid, { config, convList, lastConv: lastConvSnap });
     } catch {
-      showToast("Erreur de chargement du client");
+      if (!canPaintFromCache) showToast("Erreur de chargement du client");
     } finally {
-      loading = false;
+      if (!canPaintFromCache) loading = false;
     }
   }
 
@@ -1099,9 +1194,10 @@
 
   function handleSwitchToClone(newId) {
     if (!newId || newId === personaId) return;
-    currentConversationId.set(null);
-    currentScenario.set("");
-    messages.set([]);
+    // On NE vide plus l'UI ici : l'effet sur personaId va snapshotter l'état
+    // courant dans le cache persona, puis init() swappera vers la nouvelle
+    // persona (instantané si cache hit, sinon fetch avec UI sortante toujours
+    // visible). Vider ici causerait un flash vide inutile.
     goto(`/chat/${newId}`);
   }
 
@@ -1110,6 +1206,7 @@
     if (!window.confirm(`Supprimer le clone "${name}" ? Cette action est irréversible.`)) return;
     try {
       await api(`/api/personas?id=${personaId}`, { method: "DELETE" });
+      invalidatePersonaCache(personaId);
       goto("/");
     } catch {
       showToast("Erreur lors de la suppression");
