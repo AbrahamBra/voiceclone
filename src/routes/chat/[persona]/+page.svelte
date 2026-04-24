@@ -35,6 +35,13 @@
   let scenario = $derived($page.data.scenario);
   let scenarioTypeFromUrl = $derived($page.data.scenarioType);
 
+  let lastTurnKind = $derived.by(() => {
+    const narrative = $messages.filter(m =>
+      ['toi', 'prospect', 'clone_draft', 'draft_rejected'].includes(m.turn_kind)
+    );
+    return narrative.at(-1)?.turn_kind ?? null;
+  });
+
   let loading = $state(true);
   let sidebarOpen = $state(false);
   let railOpen = $state(false);  // mobile-only: toggles feedback rail drawer below 900px
