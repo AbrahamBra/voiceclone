@@ -49,8 +49,19 @@ Created files (by chunk) :
 - `lib/protocol-v2-versioning.js` — publish atomique + stats preservation via content_hash
 - `api/v2/protocol/publish.js` — endpoint publication
 
+### Chunk 2.5 — Training signal capture (reprise spec archivé 2026-04-23)
+- `supabase/040_corrections_enrichment.sql` — source_channel, confidence_weight, is_implicit sur `corrections`
+- `supabase/041_rule_proposals.sql` — table `rule_proposals` (data only, phase 3b/3c future) + `conversations.last_rescan_at`
+- `supabase/042_n4_pause.sql` — `conversations.n4_paused_until` (anti-fatigue)
+- `supabase/043_promoted_rule_index.sql` — `corrections.promoted_to_rule_index` (réservé)
+- `api/feedback.js` — branches `copy_paste_out` + `regen_rejection` + filtre META_MARKERS étendu
+- `api/feedback-events.js` — VALID_TYPES : retirer `validated_edited`, ajouter `rule_proposal_*`
+- `src/lib/components/ChatMessage.svelte` — wire onCopyBlock handler
+- `src/routes/chat/[persona]/+page.svelte` — handler `handleCopyBlock` + modifier `handleRegen`
+- `lib/correction-consolidation.js` — weighted promotion gate + aggregate-weight eviction + extended log
+
 ### Chunk 5 — Scope agence + hooks client
-- `supabase/040_protocol_v2_templates.sql` — templates agence + inheritance
+- `supabase/044_protocol_v2_templates.sql` — templates agence + inheritance
 - `src/lib/components/AgencyDashboard.svelte` — portfolio agence
 - `api/v2/templates.js` — CRUD templates
 - `api/v2/templates/inherit.js` — propagation opt-in
@@ -1246,6 +1257,75 @@ gh pr merge --merge --delete-branch
 
 ---
 
+## Chunk 2.5: Training signal capture (OUTLINE)
+
+Reprend le spec archivé [`docs/superpowers/specs/2026-04-23-training-signal-capture-design.md`](../specs/2026-04-23-training-signal-capture-design.md) — la PR #50 a été fermée pour collision de numéros de migration (036-039 étaient repris par la PR protocol-v2). On rejoue sur les numéros 040-043, libres depuis les migrations 038/039 du Chunk 1.
+
+**Pourquoi ce Chunk s'insère entre 2 et 3 :**
+- Chunk 2 construit `scripts/feedback-event-to-proposition.js` qui drain `feedback_events → proposition`. Les deux nouveaux signaux implicites (`copy_paste_out` ~60% des actions user quotidiennes, `regen_rejection` ~15%) doivent exister **avant** que ce cron tourne — sinon il ne voit que les corrections explicites, 80% du signal d'apprentissage reste muet.
+- Chunk 3 refond la page chat (retrait FeedbackPanel, ajout badge propositions). On veut les hooks signaux en place **avant** cette refonte, pas bolt-on après — éviter de retoucher `+page.svelte` deux fois.
+
+**Scope :** phases 1 + 2 du spec archivé seulement. Phase 3 (edit_diff UX, N3 cron, N4 chip) reste explicitement future work hors de ce chunk.
+
+### Tâches cadre
+
+- **Task 2.5.1** `supabase/040_corrections_enrichment.sql` — ALTER `corrections` : `source_channel TEXT NOT NULL DEFAULT 'explicit_button'` avec CHECK enum (11 valeurs : `explicit_button`, `client_validated`, `edit_diff`, `copy_paste_out`, `regen_rejection`, `chat_correction`, `negative_feedback`, `direct_instruction`, `coaching_correction`, `metacognitive_n3`, `proactive_n4`), `confidence_weight NUMERIC(3,2) NOT NULL DEFAULT 1.0`, `is_implicit BOOLEAN NOT NULL DEFAULT false`. Index sur `source_channel` et `confidence_weight DESC`. Idempotent `ADD COLUMN IF NOT EXISTS`.
+
+- **Task 2.5.2** `supabase/041_rule_proposals.sql` — créer table `rule_proposals` (id, persona_id FK cascade, conversation_id FK nullable, rule_text, evidence_message_ids uuid[], pattern_type enum [style_drift, repeated_rejection, silent_constraint, contradiction], confidence numeric(3,2) CHECK [0,1], status enum [pending, accepted, rejected, superseded] default pending, proposed_at, decided_at, decided_by_event_id). Ajouter `conversations.last_rescan_at TIMESTAMPTZ` + index partiel `WHERE last_rescan_at IS NULL OR last_rescan_at < last_message_at`. Data only — aucun cron dans ce chunk.
+
+- **Task 2.5.3** `supabase/042_n4_pause.sql` — `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS n4_paused_until TIMESTAMPTZ`. Data only — le chip N4 qui lira cette colonne vient phase 3c future.
+
+- **Task 2.5.4** `supabase/043_promoted_rule_index.sql` — `ALTER TABLE corrections ADD COLUMN IF NOT EXISTS promoted_to_rule_index INTEGER`. Réservé pour tracer quel rule index chaque graduated correction a alimenté. Non lu aujourd'hui.
+
+- **Task 2.5.5** `api/feedback.js` — ajouter deux branches dans le handler :
+  - `if (type === 'copy_paste_out')` → insère `corrections` row avec prefix `[COPY_PASTE_OUT]` sur `correction_text`, `source_channel='copy_paste_out'`, `confidence_weight=0.6`, `is_implicit=true`. Entities matched dans le draft : `confidence += 0.03` (cap 1.0).
+  - `if (type === 'regen_rejection')` → même shape, prefix `[REGEN_REJECTED]`, `confidence_weight=0.5`. Entities matched : `confidence -= 0.03` (floor 0.0).
+  - Étendre `META_MARKERS` côté `/api/feedback` filtre du panel intelligence : ajouter `[COPY_PASTE_OUT]`, `[REGEN_REJECTED]` aux 3 existants.
+
+- **Task 2.5.6** UI wiring :
+  - `src/lib/components/ChatMessage.svelte` — exposer le prop `onCopyBlock` dans le JSX (actuellement déclaré mais jamais câblé — dead code).
+  - `src/routes/chat/[persona]/+page.svelte` — `handleCopyBlock(message, block)` qui POST `/api/feedback` avec `type:'copy_paste_out'`, best-effort (fire-and-forget, pas de spinner).
+  - `handleRegen` — avant le PATCH existant `turn_kind`, fire `POST /api/feedback` `type:'regen_rejection'`. Non-bloquant si erreur.
+
+- **Task 2.5.7** `api/feedback-events.js` — `VALID_TYPES` : retirer `validated_edited` (dead code, aucun UI qui le fire), ajouter `rule_proposal_accepted`, `rule_proposal_rejected`, `rule_proposal_edited` (réservés phase 3c).
+
+- **Task 2.5.8** `lib/correction-consolidation.js` — **promotion gate pondéré** :
+  - Remplacer `const MIN_CLUSTER_SIZE = 3;` par `const MIN_CLUSTER_MEMBERS = 2;` + `const MIN_CLUSTER_WEIGHT_SUM = 2.0;`.
+  - Ajouter `clusterWeight(cluster) = cluster.members.reduce((sum, i) => sum + (corrections[i].confidence ?? 0.8) * (corrections[i].confidence_weight ?? 1.0), 0)`.
+  - Gate : `cluster.members.length >= MIN_CLUSTER_MEMBERS && clusterWeight(cluster) >= MIN_CLUSTER_WEIGHT_SUM`.
+  - Tests étendus dans `test/correction-consolidation.test.js` avec fixtures mix implicit/explicit (cf. table §6.1 du spec archivé).
+
+- **Task 2.5.9** `lib/correction-consolidation.js` — **eviction par poids agrégé** :
+  - Remplacer FIFO eviction par : query `corrections where status='graduated' and graduated_rule IN (currentRules)` → `sum(confidence × confidence_weight)` par rule → rank ASC (ties FIFO) → evict overflow weakest.
+  - Emit log `writing_rules_evicted` avec `{ evicted_count, kept_count, top5_weakest_weights }`.
+
+- **Task 2.5.10** `consolidation_complete` log étendu : ajouter à la payload `weight_sum_by_promotable` (array), `explicit_count` (is_implicit=false), `implicit_count` (is_implicit=true). Purpose : détecter implicit-signal spam (bot copy_paste floods) et weight drift.
+
+- **Task 2.5.11** **Bridge vers Chunk 2** — `scripts/feedback-event-to-proposition.js` (Chunk 2 Task 2.7) doit **aussi** consommer les `corrections` avec `source_channel IN ('copy_paste_out', 'regen_rejection', 'edit_diff', 'chat_correction', …)` et les router vers l'extracteur approprié :
+  - `copy_paste_out` avec entities matched + `confidence_weight >= 0.6` → proposition `intent=refine_pattern` (the draft's patterns were accepted as-is).
+  - `regen_rejection` avec entities → proposition `intent=add_rule` ou `amend_paragraph` (something in the draft was wrong).
+  - Seuil pour créer une proposition single-shot vs. attendre cluster : `confidence_weight >= 0.8` → direct, sinon attend N≥2 signaux similaires (dédup embedding Chunk 2).
+
+### Verif chunk
+
+- `node --test test/correction-consolidation.test.js` avec 8+ scénarios mix implicit/explicit → promote corrects, eviction respecte les poids.
+- Test intégration sur Vercel preview : copier un draft dans la page chat → `SELECT correction_text, source_channel, confidence_weight, is_implicit FROM corrections ORDER BY created_at DESC LIMIT 1;` → row `[COPY_PASTE_OUT]`, `source_channel='copy_paste_out'`, `confidence_weight=0.60`, `is_implicit=true`. Idem `↻ regen` → `[REGEN_REJECTED]`.
+- Test bridge (exécuté une fois Chunk 2 en place) : 3 × `copy_paste_out` sur même règle implicite (même entities matched dans 3 drafts différents) → vérifier une `proposition` pending créée par le cron avec `source='chat_rewrite'` ou équivalent.
+
+### Backward compat
+
+- Toutes migrations `ADD COLUMN IF NOT EXISTS` avec defaults → zero data loss, zero read breakage.
+- `DEFAULT 'explicit_button'` sur `source_channel` = toutes les corrections pré-existantes restent taggées explicit → gate backward compat `3 × 1.0 × 0.8 = 2.40 ≥ 2.0` passe toujours (cf. table §6.1).
+- Rollback : retirer les 2 branches `if (type === …)` dans `api/feedback.js` + les handler wirings UI. Colonnes SQL restent (cheap to keep).
+
+### Notes & risques
+
+- **Regarder PR #50 closed** avant de coder : commits `b29560d` (migrations), `d634195` (Phase 1 UI+api), `61d30d0` (Phase 2 consolidation). Le code était fonctionnel mais les numéros de migration ont collisionné avec master. On peut cherry-pick en réécrivant les numéros.
+- **Risque principal** : `handleCopyBlock` était implémenté dans PR #50 mais la mémoire `feedback_keep_moving` a saved "`onCopyBlock` était wired as `() => {}` — highest-frequency action, zero persistence". Bien vérifier avec un test E2E qu'aucun clic de copy n'est perdu.
+- **Phase 3 (edit_diff UX, N3 rescan cron, N4 chip)** = sous-spec dédié si ces signaux deviennent nécessaires après observation de la courbe implicit/explicit en prod.
+
+---
+
 ## Chunk 3: Sprint 3 — UI Doctrine + Registre + édition prose + SSE (OUTLINE)
 
 **Scope :** toute la surface UI côté persona (page Protocole). Pas la page Propositions (chunk 4).
@@ -1287,7 +1367,7 @@ gh pr merge --merge --delete-branch
 
 **Tâches cadre :**
 
-- **Task 5.1** `supabase/040_protocol_v2_templates.sql` — index sur `protocol_document` pour owner_kind=template
+- **Task 5.1** `supabase/044_protocol_v2_templates.sql` — index sur `protocol_document` pour owner_kind=template
 - **Task 5.2** `api/v2/templates.js` — CRUD template côté agence
 - **Task 5.3** `api/v2/templates/{id}/inherit.js` — mécanique persona hérite d'un template
 - **Task 5.4** Notification opt-in quand template évolue (cron ou realtime Supabase)
