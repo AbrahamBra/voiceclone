@@ -177,6 +177,29 @@
     });
   }
 
+  function dismissPaste() {
+    pasteDismissed = true;
+    pasteText = "";
+    onPasteDismiss?.();
+  }
+
+  async function submitPaste() {
+    const content = pasteText.trim();
+    if (content.length < PROSPECT_MIN) return;
+    pasteText = "";
+    await onAddProspectReply?.(content);
+  }
+
+  function handlePasteKeydown(e) {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      submitPaste();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      dismissPaste();
+    }
+  }
+
   function handleKeydown(e) {
     // Cmd/Ctrl+Enter = action primaire du mode courant
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
