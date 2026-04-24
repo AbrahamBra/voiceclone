@@ -1,5 +1,6 @@
 import { authenticateRequest, setCors } from "../lib/supabase.js";
 import { runEval } from "../lib/eval.js";
+import { respondServerError } from "../lib/api-errors.js";
 
 export default async function handler(req, res) {
   setCors(res, "POST, OPTIONS");
@@ -26,7 +27,6 @@ export default async function handler(req, res) {
     const result = await runEval(persona_id, { limit, client, verbose });
     res.status(200).json(result);
   } catch (err) {
-    console.log(JSON.stringify({ event: "eval_error", ts: new Date().toISOString(), error: err.message }));
-    res.status(500).json({ error: err.message });
+    respondServerError(res, "eval_error", err, "Erreur lors de l'evaluation");
   }
 }

@@ -1,4 +1,5 @@
 import { rateLimit } from "./_rateLimit.js";
+import { respondServerError } from "../lib/api-errors.js";
 import { buildSystemPrompt } from "../lib/prompt.js";
 import { runPipeline } from "../lib/pipeline.js";
 import { initSSE } from "../lib/sse.js";
@@ -590,15 +591,16 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
     if (convId) sse("conversation", { id: convId });
     res.end();
   } catch (err) {
-    console.log(JSON.stringify({
-      event: "chat_error", ts: new Date().toISOString(),
-      scenario, persona: personaId, error: err.message || "Unknown error",
-    }));
     if (res.headersSent) {
+      // Stream already open → log context + signal client, don't try a 500 body
+      try {
+        const { log } = await import("../lib/log.js");
+        log("chat_error", { scenario, persona: personaId, errorMessage: err?.message || "Unknown error" });
+      } catch { /* noop */ }
       sse("error", { text: "Erreur de generation" });
       res.end();
     } else {
-      res.status(500).json({ error: "Erreur serveur : " + err.message });
+      respondServerError(res, "chat_error", err, "Erreur de generation");
     }
   }
 }
