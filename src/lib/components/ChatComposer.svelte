@@ -396,33 +396,56 @@
         annuler
       </button>
     {:else if isDmMode}
-      <!-- 4 sub-mode CTAs replace the single adaptive button. Each click
-           switches scenario_type (same kind = no conv reset) then drafts.
-           The currently active sub-mode is visually marked. Cmd+Enter still
-           drafts in the active sub-mode. -->
-      {#each DM_SUBMODES as sub (sub.id)}
+      {#if inferredPrimary}
+        {@const primary = DM_SUBMODES.find(s => s.id === inferredPrimary)}
         <button
-          class="btn-dm"
-          class:btn-dm-active={sub.id === scenarioType}
+          class="btn-primary btn-dm-primary"
           type="button"
-          onclick={() => draftDmSubmode(sub.id)}
+          onclick={() => draftDmSubmode(primary.id)}
           disabled={effectiveDisabled}
-          aria-pressed={sub.id === scenarioType}
-          title="{sub.label} — bascule en mode {sub.id}"
+          title="{primary.label} — Cmd+Enter sur le textarea draft en mode actif"
         >
-          {sub.label}
+          {primary.label}
         </button>
-      {/each}
-      {#if onAddProspectReply}
-        <button
-          class="btn-prospect-toggle"
-          type="button"
-          onclick={startProspect}
-          disabled={effectiveDisabled}
-          title="Ton prospect vient de répondre ? Colle sa réponse pour la logger dans le fil."
-        >
-          📥 j'ai reçu
-        </button>
+        <details class="action-menu" bind:this={actionMenuEl}>
+          <summary>autre action ▾</summary>
+          <ul>
+            {#each DM_SUBMODES.filter(s => s.id !== inferredPrimary) as sub (sub.id)}
+              <li>
+                <button
+                  type="button"
+                  onclick={() => draftDmSubmode(sub.id)}
+                  disabled={effectiveDisabled}
+                >
+                  {sub.label}
+                </button>
+              </li>
+            {/each}
+            <li>
+              <button
+                type="button"
+                disabled
+                title="bientôt — entraîne ton clone en conversation directe"
+              >
+                💬 parler au clone
+              </button>
+            </li>
+          </ul>
+        </details>
+      {:else}
+        {#each DM_SUBMODES as sub (sub.id)}
+          <button
+            class="btn-dm"
+            class:btn-dm-active={sub.id === scenarioType}
+            type="button"
+            onclick={() => draftDmSubmode(sub.id)}
+            disabled={effectiveDisabled}
+            aria-pressed={sub.id === scenarioType}
+            title="{sub.label} — bascule en mode {sub.id}"
+          >
+            {sub.label}
+          </button>
+        {/each}
       {/if}
     {:else}
       <button class="btn-primary" type="button" onclick={draftNext} disabled={effectiveDisabled} title="Génère un clone_draft (textarea = consigne optionnelle). Cmd+Enter">
