@@ -51,6 +51,17 @@
     inferPrimary({ isDmMode, isEmptyConversation, lastTurnKind })
   );
 
+  let actionMenuEl = $state(undefined);
+  $effect(() => {
+    function onDocClick(e) {
+      if (actionMenuEl && !actionMenuEl.contains(e.target)) {
+        actionMenuEl.open = false;
+      }
+    }
+    document.addEventListener("click", onDocClick);
+    return () => document.removeEventListener("click", onDocClick);
+  });
+
   const LINKEDIN_URL_RE = /https?:\/\/(?:www\.)?linkedin\.com\/in\/[^\s/?#]+/i;
 
   let starters = $derived(
@@ -674,6 +685,58 @@
     }
     .btn-dm { width: 100%; }
   }
+
+  .btn-dm-primary {
+    font-size: 13px;
+    padding: 10px 20px;
+    min-width: 180px;
+    font-weight: 500;
+  }
+
+  .action-menu {
+    position: relative;
+    font-family: var(--font-mono);
+  }
+  .action-menu summary {
+    font-size: 11px;
+    padding: 8px 12px;
+    cursor: pointer;
+    list-style: none;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    color: var(--ink-70);
+    user-select: none;
+  }
+  .action-menu summary::-webkit-details-marker { display: none; }
+  .action-menu summary:hover { border-color: var(--ink); color: var(--ink); }
+  .action-menu[open] summary { background: var(--paper-subtle, #f6f5f1); }
+  .action-menu ul {
+    position: absolute;
+    right: 0;
+    bottom: 100%;
+    margin: 0 0 4px 0;
+    padding: 4px 0;
+    min-width: 200px;
+    list-style: none;
+    background: var(--paper);
+    border: 1px solid var(--rule-strong);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    z-index: 10;
+  }
+  .action-menu li { margin: 0; padding: 0; }
+  .action-menu li button {
+    width: 100%;
+    text-align: left;
+    padding: 8px 14px;
+    background: transparent;
+    border: none;
+    font-family: inherit;
+    font-size: 11px;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .action-menu li button:hover:not(:disabled) { background: var(--paper-subtle, #f6f5f1); }
+  .action-menu li button:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* Zone paste "réponse prospect" — apparaît quand on attend une réponse */
   .paste-zone {
