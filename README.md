@@ -50,6 +50,22 @@ Le système apprend réactivement via feedbacks (5 canaux détectés) et tente d
 
 Le cœur intelligent se trouve dans `lib/pipeline.ts`, `checks.ts`, `rewrite.ts`, `correction-consolidation.js` et `fidelity.js`.
 
+## Déploiement
+
+Procédure de merge + surveillance post-deploy : voir [docs/DEPLOY.md](docs/DEPLOY.md).
+Incident prod → [docs/INCIDENT_RUNBOOK.md](docs/INCIDENT_RUNBOOK.md).
+
+**Règle** : toujours tester le flow chat init sur Vercel Preview URL avant merge master. Le CI ne valide que la syntaxe, pas la feature (memoire incident 2026-04-23).
+
+## Observabilité
+
+- Logs structurés JSON via `lib/log.js` (events `api_error`, `chat_error`, `rate_limit_rpc_error`, etc.) — consultables dans Vercel Functions logs.
+- Sentry wire prêt via `lib/sentry.js` + `lib/api-errors.js`. Pour activer :
+  1. Créer un projet sur [sentry.io](https://sentry.io), copier le DSN.
+  2. `npm install @sentry/node` (import dynamique, pas requis sinon).
+  3. Set `SENTRY_DSN` dans Vercel env vars (Production + Preview).
+  4. Redeploy → toutes les 500 capturées automatiquement.
+
 ## Installation & setup
 
 1. Clone le repo
