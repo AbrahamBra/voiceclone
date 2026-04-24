@@ -25,7 +25,7 @@
   - `test/brain-drawer-store.test.js` — open/close/toggle/setTab, openAt fallback sur lastTab, syncFromUrl bidirectionnel, précédence URL > localStorage > DEFAULT, persistence `brainDrawer:lastTab`.
   - `test/brain-drawer-url.test.js` — helpers URL : parse `?brain=<tab>`, fallback tab invalide → `connaissance`, build URL avec `replaceState:false`, serialisation avec et sans param.
   - `test/brain-redirect.test.js` — `+page.server.js` retourne 307, préserve `#protocole` legacy → `?brain=protocole`, préserve `?tab=X` legacy, fallback tab invalide → `connaissance`, params.persona invalide → propage 404 SvelteKit standard.
-  - `test/brain-signals.test.js` — `emitBrainEvent` : source `top_button`/`cmd_k`/`url_redirect` passé correctement, skip silencieux si aucun message narratif dans la conv, `brain_edit_during_draft` seulement si `hasDraft === true`, best-effort (warn console sans bloquer UX) si le POST échoue.
+  - `test/brain-signals.test.js` — `emitBrainEvent` : POST sur `/api/feedback-events` avec body `{conversation_id, message_id: <dernier message narratif>, event_type}` (pas de dimensions — rationale dans §"Décision de conception"), skip silencieux si aucun message narratif dans la conv (pas de POST émis), best-effort (warn console sans bloquer UX) si le POST échoue. Pour `brain_edit_during_draft` : test de la garde `hasActiveDraft` dans le chemin `celebrateRuleAdded` côté chat page (pas dans le helper lui-même, qui est agnostique).
   - `test/protocol-panel-callback.test.js` — ajout d'une règle dans `ProtocolPanel` déclenche `onRuleAdded` une seule fois si le save backend réussit (assert via mock), n'est **pas** appelé en cas d'erreur save (pas de célébration sur échec).
   - `test/migrations/041-brain-events.test.js` — CHECK accepte les 11 event_types valides (9 existants + 2 nouveaux), rejette un event inventé.
 
@@ -110,10 +110,13 @@ function createBrainDrawerStore() {
         set({ open: true, tab: t });
       }
     },
+    // setTab utilise replaceState:true pour ne pas polluer l'historique à chaque
+    // changement d'onglet (sinon Back cyclerait à travers les onglets avant de
+    // fermer le drawer). Seul open/close génère des entrées historique.
     setTab(tab) {
       if (!VALID_TABS.includes(tab)) return;
       rememberTab(tab);
-      syncUrl(tab);
+      syncUrl(tab, { replaceState: true });
       update(s => ({ ...s, tab }));
     },
     // Appelé depuis le layout chat (via $effect) pour réconcilier URL → store
@@ -131,7 +134,7 @@ function createBrainDrawerStore() {
   };
 }
 
-function syncUrl(tab) {
+function syncUrl(tab, { replaceState = false } = {}) {
   const current = get(page);
   const url = new URL(current.url);
   if (tab) {
@@ -139,7 +142,9 @@ function syncUrl(tab) {
   } else {
     url.searchParams.delete('brain');
   }
-  goto(url, { replaceState: false, noScroll: true, keepFocus: true });
+  // replaceState:false par défaut (open/close = entrée historique → Back ferme le drawer).
+  // replaceState:true pour setTab (changement d'onglet ne pollue pas l'historique).
+  goto(url, { replaceState, noScroll: true, keepFocus: true });
 }
 
 export const brainDrawer = createBrainDrawerStore();
@@ -281,6 +286,16 @@ export const VALID_BRAIN_TABS = VALID_TABS;
 
 `src/lib/api/brainEvents.js` — helper fire-and-forget qui encapsule la résolution `message_id` + le POST. Référencé par les 3 call sites décrits plus bas.
 
+**Décision de conception — pas de payload dimensionnel (source/tab/has_draft) envoyé au serveur :**
+
+La table `feedback_events` n'a **pas** de colonne `meta`/`jsonb` (vérifié : migrations 029, 031, 032, 037, 040 n'ajoutent jamais ce champ). Ajouter une colonne `meta jsonb` serait une évolution DB spéculative hors scope d'un chantier UI (CLAUDE.md : "minimum code that solves the problem, nothing speculative").
+
+Conséquence : on **accepte la perte** des dimensions `source` (`top_button`/`cmd_k`/`url_redirect`) et `tab` côté DB. Les signaux comptent le **fait** qu'un event s'est produit, pas son origine précise. Justification :
+- `brain_edit_during_draft` n'a qu'une source unique aujourd'hui (`ProtocolPanel.onRuleAdded`), donc `tab` est implicitement toujours `'protocole'`.
+- `brain_drawer_opened` : les 3 sources sont corrélées (toutes sont déclenchées par le même user sur la même période). La question "laquelle des 3 est la plus utilisée" sera mesurable via analytics client (`track()` existant — PR #76) **sans** toucher la DB.
+
+Les appels à `track()` côté client conservent donc les dimensions via le pipeline analytics, séparé de `feedback_events`.
+
 ```js
 // src/lib/api/brainEvents.js
 import { get } from 'svelte/store';
@@ -292,11 +307,11 @@ const NARRATIVE_KINDS = ['toi', 'prospect', 'clone_draft', 'draft_rejected'];
 /**
  * Émet un event brain sur /api/feedback-events, fire-and-forget.
  * Skip silencieusement si la conv n'a aucun message narratif (invariant message_id NOT NULL).
+ * Dimensions (source/tab/has_draft) tracked côté analytics client via track(), pas DB.
  *
  * @param {'brain_drawer_opened'|'brain_edit_during_draft'} type
- * @param {{source?: 'top_button'|'cmd_k'|'url_redirect', tab?: string, has_draft?: boolean}} payload
  */
-export async function emitBrainEvent(type, payload = {}) {
+export async function emitBrainEvent(type) {
   const convId = get(currentConversationId);
   if (!convId) return;  // pas de conv active → skip
 
@@ -312,9 +327,6 @@ export async function emitBrainEvent(type, payload = {}) {
         conversation_id: convId,
         message_id: lastNarrative.id,
         event_type: type,
-        // payload stocké dans un champ JSON existant sur feedback_events si présent,
-        // sinon loggé côté console. Vérifier schema actuel lors de l'impl.
-        meta: payload,
       }),
     });
     if (!res.ok) {
@@ -337,6 +349,7 @@ Dans `src/routes/chat/[persona]/+page.svelte`, 3 zones à modifier (les variable
   import BrainDrawer from '$lib/components/BrainDrawer.svelte';
   import { brainDrawer } from '$lib/stores/brainDrawer';
   import { emitBrainEvent } from '$lib/api/brainEvents';
+  import { track } from '$lib/analytics';  // existant depuis PR #76 — telemetry client
   import { page } from '$app/stores';
 
   // Sync URL → store au mount + à chaque nav.
@@ -346,7 +359,8 @@ Dans `src/routes/chat/[persona]/+page.svelte`, 3 zones à modifier (les variable
     const urlTab = $page.url.searchParams.get('brain');
     brainDrawer.syncFromUrl(urlTab);
     if (urlTab && urlTab !== lastEmittedTabForUrl) {
-      emitBrainEvent('brain_drawer_opened', { source: 'url_redirect', tab: urlTab });
+      emitBrainEvent('brain_drawer_opened');  // DB — compte l'event
+      track('brain_drawer_opened', { source: 'url_redirect', tab: urlTab });  // analytics — garde la dimension
       lastEmittedTabForUrl = urlTab;
     } else if (!urlTab) {
       lastEmittedTabForUrl = null;  // reset pour pouvoir ré-émettre si re-ouvert via URL
@@ -361,7 +375,8 @@ Dans `src/routes/chat/[persona]/+page.svelte`, 3 zones à modifier (les variable
     const wasClosed = !$brainDrawer.open;
     brainDrawer.toggle();
     if (wasClosed) {
-      emitBrainEvent('brain_drawer_opened', { source: 'top_button', tab: $brainDrawer.tab });
+      emitBrainEvent('brain_drawer_opened');
+      track('brain_drawer_opened', { source: 'top_button', tab: $brainDrawer.tab });
     }
   }
 
@@ -369,7 +384,8 @@ Dans `src/routes/chat/[persona]/+page.svelte`, 3 zones à modifier (les variable
     regenPulseActive = true;
     setTimeout(() => { regenPulseActive = false; }, 1500);
     showToast("Règle apprise — ↻ regénère pour l'appliquer");
-    emitBrainEvent('brain_edit_during_draft', { tab: $brainDrawer.tab, has_draft: true });
+    emitBrainEvent('brain_edit_during_draft');
+    track('brain_edit_during_draft', { tab: $brainDrawer.tab, has_draft: true });
   }
 
   let regenPulseActive = $state(false);
@@ -427,7 +443,8 @@ Dans `src/routes/chat/[persona]/+page.svelte`, 3 zones à modifier (les variable
 - { id: "open-brain", label: "Cerveau du clone", hint: "persona", action: () => goto(`/brain/${personaId}`) },
 + { id: "open-brain", label: "Cerveau du clone", hint: "persona", action: () => {
 +     brainDrawer.openAt();  // openAt() sans arg → utilise lastTab ou DEFAULT
-+     emitBrainEvent('brain_drawer_opened', { source: 'cmd_k', tab: $brainDrawer.tab });
++     emitBrainEvent('brain_drawer_opened');
++     track('brain_drawer_opened', { source: 'cmd_k', tab: $brainDrawer.tab });
 + } },
 ```
 
@@ -569,17 +586,19 @@ Ce qui **ne** fait **pas** partie de ce chantier :
 
 ## Ordre de déploiement
 
+**⚠️ Garde critique :** la modification de `api/feedback-events.js` `VALID_TYPES` (étape 4) et l'application de la migration 041 sur prod (étape 13) **doivent être couplées** : si le code prod accepte `brain_drawer_opened` avant que la prod DB ait la CHECK étendue, chaque émission frappera un CHECK violation 500. Donc **ne jamais merge master avant l'étape 13**.
+
 1. Créer branche `feat/brain-drawer` (already done during brainstorm).
 2. Écrire migration 041 + `test/migrations/041-brain-events.test.js`.
-3. Appliquer migration 041 sur DB Supabase dev (pas prod avant UI validée).
-4. Ajouter `copy_paste_out` + `regen_rejection` + `brain_drawer_opened` + `brain_edit_during_draft` dans `VALID_TYPES` de `api/feedback-events.js` (ligne 3). Corrige le drift API↔DB hérité de 040.
+3. Appliquer migration 041 sur DB Supabase **dev uniquement** (pas prod).
+4. Ajouter `copy_paste_out` + `regen_rejection` + `brain_drawer_opened` + `brain_edit_during_draft` dans `VALID_TYPES` de `api/feedback-events.js` (ligne 3). Corrige le drift API↔DB hérité de 040. Cette modif reste **sur la branche**, ne touche pas prod tant que master n'est pas mergé.
 5. Implémenter `src/lib/stores/brainDrawer.js` + tests store (TDD).
 6. Implémenter `src/lib/api/brainEvents.js` + tests signals (TDD).
 7. Implémenter `src/lib/components/BrainDrawer.svelte` + tests (TDD si tests rendering possibles, sinon tests manuels dans preview).
 8. Modifier `ProtocolPanel.svelte` : ajout prop `onRuleAdded` + `test/protocol-panel-callback.test.js`.
-9. Modifier `/chat/[persona]/+page.svelte` : top-bar button, mount drawer, wire ⌘K (avec `source: 'cmd_k'`), celebration handler.
+9. Modifier `/chat/[persona]/+page.svelte` : top-bar button, mount drawer, wire ⌘K (avec `source: 'cmd_k'`), celebration handler, imports `emitBrainEvent` + `track`.
 10. Remplacer `/brain/[persona]/+page.svelte` + `+page.js` par `+page.server.js` redirect + `test/brain-redirect.test.js`.
 11. Tous tests unit verts (`npm test`).
 12. Push Preview Vercel → smoke manuel des 12 acceptance criteria.
-13. Apply migration 041 sur prod Supabase via SQL editor (pattern chantier #1).
-14. Merge master **seulement si** preview smoke validé (convention `feedback_prod_without_ui_test.md`).
+13. **Apply migration 041 sur prod Supabase via SQL editor** (pattern chantier #1). Vérifier query retour : `ALTER TABLE` success + `COMMENT` appliqué.
+14. **Merge master seulement si (a) preview smoke validé ET (b) migration 041 appliquée sur prod** (garde critique ci-dessus + convention `feedback_prod_without_ui_test.md`).
