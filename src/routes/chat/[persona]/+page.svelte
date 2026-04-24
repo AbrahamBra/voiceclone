@@ -25,7 +25,6 @@
   import { legacyKeyFor, isScenarioId } from "$lib/scenarios.js";
   import ChatMessage from "$lib/components/ChatMessage.svelte";
   import ChatComposer from "$lib/components/ChatComposer.svelte";
-  import ProspectDossierHeader from "$lib/components/ProspectDossierHeader.svelte";
   import FeedbackRail from "$lib/components/FeedbackRail.svelte";
   import ConversationSidebar from "$lib/components/ConversationSidebar.svelte";
   import ChatTopBar from "$lib/components/ChatTopBar.svelte";
@@ -158,7 +157,6 @@
   // New 2-zone state
   let currentConversation = $state(null);  // { id, prospect_name, stage, note, last_message_at, ... }
   let feedbackRailRef = $state(null);
-  let feedbackCount = $state(0);
 
   // Règles actives du clone = voice.writingRules (direct instructions + promoted
   // consolidations). Pas de compteur "fired par conversation" pour l'instant —
@@ -169,7 +167,6 @@
       ? $personaConfig.voice.writingRules.map((r, i) => ({ id: `wr-${i}`, name: r, count: 0 }))
       : []
   );
-  let heatSignal = $state(null);  // { state: 'cold'|'warm'|'hot', delta }
 
   // Bot message sequence number generator (per conversation)
   let botSeq = $state(0);
@@ -659,12 +656,6 @@
           // Tokens/rewrites/drift metrics remain available via SSE telemetry
           // and /api/fidelity for the /brain#intelligence view.
         },
-        onHeat(evt) {
-          // Heat signal feeds the inline indicator in ProspectDossierHeader.
-          if (evt && typeof evt.state === "string") {
-            heatSignal = { state: evt.state, delta: evt.delta ?? null };
-          }
-        },
         onConversation(id) {
           if (id && !$currentConversationId) {
             currentConversationId.set(id);
@@ -967,7 +958,6 @@
           created_at: ev.created_at,
           rules_fired: [],
         });
-        feedbackCount++;
       }
       messages.update(msgs => msgs.map(m =>
         m.id === message.id ? { ...m, turn_kind: "toi" } : m
@@ -1015,7 +1005,6 @@
           created_at: ev.created_at,
           rules_fired: [],
         });
-        feedbackCount++;
       }
       messages.update(msgs => msgs.map(m =>
         m.id === message.id ? { ...m, turn_kind: "toi" } : m
@@ -1087,7 +1076,6 @@
           created_at: ev.created_at,
           rules_fired: [],
         });
-        feedbackCount++;
       }
       messages.update(msgs => msgs.map(m =>
         m.id === message.id ? { ...m, turn_kind: "toi" } : m
@@ -1253,18 +1241,6 @@
 
       <div class="chat-body" class:rail-open={railOpen}>
         <div class="chat-messages-col">
-          <!-- Le dossier prospect n'a de sens qu'en DM (pipeline lead). En mode
-               post, stage/note/heat/dernier contact ne veulent rien dire. -->
-          {#if $currentScenario === "dm"}
-            <ProspectDossierHeader
-              conversation={currentConversation}
-              {feedbackCount}
-              heat={heatSignal}
-              onUpdate={handleConversationUpdate}
-              onToggleRail={() => railOpen = !railOpen}
-            />
-          {/if}
-
           <div class="chat-messages" bind:this={messagesEl}>
             {#each $messages as message (message.id)}
               <ChatMessage
