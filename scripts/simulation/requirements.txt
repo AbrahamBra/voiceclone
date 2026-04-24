@@ -1,0 +1,7 @@
+supabase>=2.4.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+voyageai>=0.2.3
+rich>=13.7.0
+# Note: pas besoin d'`anthropic` — le script tape /api/chat, c'est le serveur
+# qui appelle Anthropic côté Node.
