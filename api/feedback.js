@@ -4,6 +4,7 @@ import { clearIntelligenceCache, loadPersonaData, getIntelligenceId } from "../l
 import { extractGraphKnowledge } from "../lib/graph-extraction.js";
 import { sanitizeUserText } from "../lib/sanitize.js";
 import { withTimeout } from "../lib/with-timeout.js";
+import { logLearningEvent } from "../lib/learning-events.js";
 import {
   regenerateSystem,
   EXTRACT_RULE_SYSTEM,
@@ -181,9 +182,11 @@ export default async function handler(req, res) {
       .select("id, name, confidence")
       .eq("persona_id", intellId);
 
+    let matchedCount = 0;
     if (entities?.length > 0) {
       const msgLower = botMessage.toLowerCase();
       const matched = entities.filter(e => msgLower.includes(e.name.toLowerCase()));
+      matchedCount = matched.length;
       for (const e of matched) {
         const newConf = Math.min(1.0, (e.confidence || 0.8) + 0.05);
         await supabase.from("knowledge_entities")
@@ -191,6 +194,10 @@ export default async function handler(req, res) {
           .eq("id", e.id);
       }
     }
+
+    await logLearningEvent(intellId, "entity_boost", {
+      intensity: "low", boost: 0.05, matched_entities: matchedCount, source: "validate",
+    });
 
     clearIntelligenceCache(intellId);
     res.json({ ok: true, message: "Validated" });
@@ -216,9 +223,11 @@ export default async function handler(req, res) {
       .select("id, name, confidence")
       .eq("persona_id", intellId);
 
+    let matchedCount = 0;
     if (entities?.length > 0) {
       const msgLower = botMessage.toLowerCase();
       const matched = entities.filter(e => msgLower.includes(e.name.toLowerCase()));
+      matchedCount = matched.length;
       for (const e of matched) {
         // +0.12 vs +0.05 on passive 'validate' — explicit client approval weighs more.
         const newConf = Math.min(1.0, (e.confidence || 0.8) + 0.12);
@@ -227,6 +236,10 @@ export default async function handler(req, res) {
           .eq("id", e.id);
       }
     }
+
+    await logLearningEvent(intellId, "entity_boost", {
+      intensity: "client", boost: 0.12, matched_entities: matchedCount, source: "client_validate",
+    });
 
     clearIntelligenceCache(intellId);
     res.json({ ok: true, signal: "client_validated" });
@@ -251,9 +264,11 @@ export default async function handler(req, res) {
       .select("id, name, confidence")
       .eq("persona_id", intellId);
 
+    let matchedCount = 0;
     if (entities?.length > 0) {
       const msgLower = botMessage.toLowerCase();
       const matched = entities.filter(e => msgLower.includes(e.name.toLowerCase()));
+      matchedCount = matched.length;
       for (const e of matched) {
         const newConf = Math.min(1.0, (e.confidence || 0.8) + 0.15);
         await supabase.from("knowledge_entities")
@@ -261,6 +276,10 @@ export default async function handler(req, res) {
           .eq("id", e.id);
       }
     }
+
+    await logLearningEvent(intellId, "entity_boost", {
+      intensity: "high", boost: 0.15, matched_entities: matchedCount, source: "excellent",
+    });
 
     clearIntelligenceCache(intellId);
     res.json({ ok: true, signal: "excellent" });
