@@ -47,6 +47,10 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
   if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
 
+  // Outer guard: surface the real error instead of Vercel's opaque
+  // FUNCTION_INVOCATION_FAILED when any pre-pipeline await throws
+  // (getPersonaFromDb, loadScenarioFromDb, classifyMessage, etc.).
+  try {
   // Rate limiting — rateLimit() became async in migration 017 (Supabase RPC
   // source of truth). Missing `await` here meant `rl` was a Promise and
   // `rl.allowed === undefined`, so the guard always tripped → every POST
@@ -611,6 +615,18 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
       res.end();
     } else {
       res.status(500).json({ error: "Erreur serveur : " + err.message });
+    }
+  }
+  } catch (err) {
+    console.log(JSON.stringify({
+      event: "chat_handler_crash", ts: new Date().toISOString(),
+      error: err?.message || "Unknown",
+      stack: err?.stack?.slice(0, 1500),
+    }));
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Erreur serveur (pre-pipeline): " + (err?.message || "Unknown") });
+    } else {
+      try { res.end(); } catch {}
     }
   }
 }
