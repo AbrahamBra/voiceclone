@@ -13,8 +13,6 @@
 
   // TODO swap par ton lien Typeform / Tally / form waitlist quand tu l'as.
   const DEMO_CTA_HREF = "mailto:a.brakha@challengerslab.com?subject=Waitlist%20VoiceClone%20(20%20premiers%20clients)";
-  // TODO remplacer par le chiffre réel d'un client pilote une fois mesuré.
-  const PILOT_RULES_COUNT = 147;
 
   // ───────── Access form ─────────
   let codeInput = $state("");
@@ -313,20 +311,18 @@
   <section class="moat" aria-labelledby="moat-title">
     <div class="section-kicker mono">◇ le moat</div>
     <h2 class="section-title" id="moat-title">
-      Le cerveau tient. Même quand ton équipe change.
+      Le process tient. Même quand ton équipe change.
     </h2>
 
     <div class="moat-body">
       <p class="moat-para">
-        Trois mois d'utilisation sur un client pilote.
-        <strong class="big-num">{PILOT_RULES_COUNT}</strong>
-        règles apprises à partir de tes corrections.
-        Quand un setter rejoint l'équipe, il écrit dans
-        la bonne voix dès son premier draft. Plus de semaine
-        à relire les archives du client.
+        Setter senior qui part, junior qui arrive : même draft, même voix, même cadence.
+        Le process du client ne vit pas dans la tête d'un humain. Il est écrit,
+        et chaque correction le précise. Quand un nouveau rejoint l'équipe, il écrit
+        dans la bonne ligne dès son premier draft. Plus de semaine à relire les archives.
       </p>
       <p class="moat-punch">
-        Tes setters changent. Le clone reste. Les règles apprises aussi.
+        Tes setters changent. Le process reste. Les corrections aussi.
       </p>
     </div>
 
@@ -683,61 +679,113 @@
     letter-spacing: 0.08em;
     align-self: flex-end;
   }
-  .rule-row {
+  /* Capture 01 — setup onboarding */
+  .setup-stub { gap: 8px; }
+  .setup-block {
     display: grid;
-    grid-template-columns: auto auto 1fr;
-    gap: 8px;
-    align-items: baseline;
-    padding: 6px 0;
-    border-bottom: 1px dashed var(--rule);
-  }
-  .rule-dot { color: var(--vermillon); font-size: 10px; }
-  .rule-label { font-size: 11px; color: var(--ink-70); }
-  .rule-detail {
-    font-family: var(--font-mono);
-    font-size: 12.5px;
-    color: var(--ink);
+    grid-template-columns: 1fr;
+    gap: 2px;
+    padding: 8px 10px;
+    border: 1px solid var(--rule);
     background: var(--paper-subtle, #f6f5f1);
-    padding: 1px 6px;
   }
-  .rule-action {
-    display: flex; align-items: center; gap: 10px;
-    margin-top: 6px;
-  }
-  .rule-btn {
-    padding: 4px 10px;
-    background: var(--ink);
-    color: var(--paper);
-    border: 1px solid var(--ink);
+  .setup-label {
     font-size: 10.5px;
-    letter-spacing: 0.02em;
-    cursor: not-allowed;
-  }
-  .rule-hint {
-    font-size: 11px;
     color: var(--ink-40);
-    font-style: italic;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
-  .fb-list {
-    list-style: none; padding: 0; margin: 0;
-    display: flex; flex-direction: column; gap: 6px;
+  .setup-detail {
     font-size: 13px;
-    color: var(--ink-70);
+    color: var(--ink);
+    line-height: 1.4;
   }
-  .fb-list li {
-    padding: 4px 0;
-    border-bottom: 1px dashed var(--rule);
+
+  /* Capture 02 — dialogue méta */
+  .dialogue-row {
     display: grid;
-    grid-template-columns: 42px 1fr;
+    grid-template-columns: 48px 1fr;
     gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--rule);
+    align-items: baseline;
   }
-  .fb-list li:last-child { border-bottom: none; }
-  .fb-date {
+  .dialogue-clone {
+    background: var(--paper);
+    border-left: 2px solid var(--vermillon);
+  }
+  .dialogue-setter {
+    background: var(--paper-subtle, #f6f5f1);
+    margin-left: 16px;
+  }
+  .dialogue-who {
     font-size: 10.5px;
     color: var(--ink-40);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     padding-top: 2px;
+  }
+  .dialogue-clone .dialogue-who { color: var(--vermillon); }
+  .dialogue-body {
+    font-size: 13px;
+    color: var(--ink);
+    line-height: 1.5;
+  }
+
+  /* Capture 03 — tabs Post|DM */
+  .tabs-stub { gap: 10px; }
+  .tabs-row {
+    display: inline-flex;
+    gap: 18px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .tab {
+    font-size: 11.5px;
+    color: var(--ink-40);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding-bottom: 4px;
+    position: relative;
+  }
+  .tab-active { color: var(--ink); }
+  .tab-active::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: -7px;
+    height: 1px;
+    background: var(--vermillon);
+  }
+  .tabs-panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .tab-panel {
+    padding: 8px 10px;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .tab-panel-muted { opacity: 0.55; }
+  .mini-draft {
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--ink);
+    margin: 0;
+  }
+  .brain-badge {
+    align-self: center;
+    font-size: 10.5px;
+    color: var(--vermillon);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 3px 8px;
+    border: 1px dashed var(--vermillon);
+    margin-top: 2px;
   }
 
   .capture figcaption {
@@ -778,14 +826,6 @@
     line-height: 1.5;
     color: var(--ink);
     margin: 0 0 24px;
-  }
-  .big-num {
-    font-family: var(--font-mono);
-    font-weight: 500;
-    font-size: 1.3em;
-    color: var(--vermillon);
-    font-variant-numeric: tabular-nums;
-    margin: 0 2px;
   }
   .moat-punch {
     font-family: var(--font);
