@@ -9,6 +9,8 @@
   let loading = $state(true);
   let error = $state(null);
   let busy = $state(null); // protocolId currently toggling
+  let testing = $state(null); // protocolId currently running dry-run
+  let testResults = $state({}); // { [protocolId]: { total_messages, counts, samples, scenarios_seen, expanded } }
 
   let pollTimer = null;
 
@@ -57,6 +59,27 @@
     } finally {
       busy = null;
     }
+  }
+
+  async function testOnHistory(p) {
+    testing = p.id;
+    try {
+      const data = await api(`/api/protocol-test?id=${p.id}&persona=${personaId}`, {
+        method: "POST",
+        body: JSON.stringify({ limit: 50 }),
+      });
+      testResults = { ...testResults, [p.id]: { ...data, expanded: false } };
+    } catch (e) {
+      showToast(e.message || "Erreur test");
+    } finally {
+      testing = null;
+    }
+  }
+
+  function toggleTestDetails(protocolId) {
+    const current = testResults[protocolId];
+    if (!current) return;
+    testResults = { ...testResults, [protocolId]: { ...current, expanded: !current.expanded } };
   }
 
   async function remove(p) {
@@ -115,10 +138,14 @@
           </span>
           <span class="pp-meta">
             {p.rules.length} règles · {getRelativeTime(p.created_at)}
-            {#if p.parser_confidence}· conf {Math.round(p.parser_confidence * 100)}%{/if}
           </span>
         </div>
         <div class="pp-actions">
+          {#if p.status === "parsed" && !p.is_active && p.rules.length > 0}
+            <button class="pp-btn" disabled={testing === p.id || busy === p.id} onclick={() => testOnHistory(p)}>
+              {testing === p.id ? "Test..." : "Tester sur historique"}
+            </button>
+          {/if}
           {#if p.status === "parsed"}
             <button class="pp-btn" disabled={busy === p.id} onclick={() => toggle(p)}>
               {p.is_active ? "Désactiver" : "Activer"}
@@ -130,6 +157,49 @@
 
       {#if p.parse_error}
         <div class="pp-err" title={p.parse_error}>Erreur parsing : {p.parse_error}</div>
+      {/if}
+
+      {#if testResults[p.id]}
+        {@const tr = testResults[p.id]}
+        <div class="pp-test">
+          {#if tr.total_messages === 0}
+            <div class="pp-test-empty">Pas encore de messages sortants sur ce clone — rien à tester.</div>
+          {:else}
+            <div class="pp-test-summary">
+              <span class="pp-test-tot">Sur {tr.total_messages} derniers messages sortants :</span>
+              <span class="pp-test-c pp-test-c-hard">{tr.counts.hard} rewrite</span>
+              <span class="pp-test-c pp-test-c-strong">{tr.counts.strong} strong</span>
+              <span class="pp-test-c pp-test-c-light">{tr.counts.light} light</span>
+              <span class="pp-test-c pp-test-c-clean">{tr.counts.clean} clean</span>
+              {#if tr.samples.length > 0}
+                <button class="pp-test-toggle" onclick={() => toggleTestDetails(p.id)}>
+                  {tr.expanded ? "masquer" : `voir ${tr.samples.length} échantillon${tr.samples.length > 1 ? "s" : ""}`}
+                </button>
+              {/if}
+            </div>
+            {#if tr.expanded && tr.samples.length > 0}
+              <ul class="pp-test-samples">
+                {#each tr.samples as s (s.message_id)}
+                  <li class="pp-test-sample">
+                    <div class="pp-test-sample-head">
+                      <span class="pp-test-sample-sev pp-test-c-{s.violations[0]?.severity || 'light'}">
+                        {s.violations[0]?.severity === "hard" ? "●" : s.violations[0]?.severity === "strong" ? "◐" : "○"}
+                      </span>
+                      <span class="pp-test-sample-when">{getRelativeTime(s.created_at)}</span>
+                      {#if s.scenario}<span class="pp-test-sample-scn">{s.scenario}</span>{/if}
+                    </div>
+                    <div class="pp-test-sample-text">« {s.excerpt} »</div>
+                    <ul class="pp-test-sample-violations">
+                      {#each s.violations as v}
+                        <li>{v.detail}</li>
+                      {/each}
+                    </ul>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          {/if}
+        </div>
       {/if}
 
       {#if p.rules.length > 0}
@@ -245,4 +315,48 @@
     padding-left: 14px;
     margin-top: 2px;
   }
+
+  .pp-test {
+    margin: 8px 0;
+    padding: 8px 10px;
+    border: 1px dashed var(--rule-strong);
+    background: var(--paper);
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+  }
+  .pp-test-empty { color: var(--ink-40); font-style: italic; }
+  .pp-test-summary { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .pp-test-tot { color: var(--ink-70); }
+  .pp-test-c { font-variant-numeric: tabular-nums; }
+  .pp-test-c-hard { color: var(--vermillon); font-weight: var(--fw-semi); }
+  .pp-test-c-strong { color: var(--ink-70); }
+  .pp-test-c-light { color: var(--ink-40); }
+  .pp-test-c-clean { color: var(--ink-40); margin-left: auto; }
+  .pp-test-toggle {
+    background: transparent; border: 1px solid var(--rule-strong); color: var(--ink-70);
+    padding: 2px 8px; font-family: var(--font-mono); font-size: var(--fs-nano); cursor: pointer;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .pp-test-toggle:hover { color: var(--ink); border-color: var(--ink-40); }
+
+  .pp-test-samples { list-style: none; margin: 8px 0 0; padding: 0; }
+  .pp-test-sample {
+    padding: 6px 0;
+    border-top: 1px solid var(--rule-strong);
+  }
+  .pp-test-sample:first-child { border-top: none; }
+  .pp-test-sample-head { display: flex; gap: 8px; align-items: center; color: var(--ink-40); }
+  .pp-test-sample-sev { flex-shrink: 0; }
+  .pp-test-sample-when { font-variant-numeric: tabular-nums; }
+  .pp-test-sample-scn {
+    text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 1px 5px; border: 1px solid var(--rule-strong);
+  }
+  .pp-test-sample-text {
+    font-family: var(--font); font-size: var(--fs-tiny); color: var(--ink-70);
+    margin: 3px 0 4px; font-style: italic;
+  }
+  .pp-test-sample-violations { list-style: none; margin: 0; padding: 0; color: var(--ink); }
+  .pp-test-sample-violations li { padding: 1px 0; }
+  .pp-test-sample-violations li::before { content: "· "; color: var(--ink-40); }
 </style>
