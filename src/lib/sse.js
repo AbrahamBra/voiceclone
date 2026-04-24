@@ -5,7 +5,7 @@ const MAX_BACKOFF = 15000;
 
 export async function streamChat(params, callbacks, retryCount = 0) {
   const { message, scenario, scenarioType, personaId, conversationId } = params;
-  const { onDelta, onThinking, onRewriting, onClear, onDone, onConversation, onError, onHeat, onIds } = callbacks;
+  const { onDelta, onThinking, onRewriting, onClear, onDone, onConversation, onError, onIds } = callbacks;
 
   let resp;
   try {
@@ -74,7 +74,6 @@ export async function streamChat(params, callbacks, retryCount = 0) {
             case "done": onDone?.(evt); break;
             case "conversation": onConversation?.(evt.id); break;
             case "ids": onIds?.(evt); break;
-            case "heat": onHeat?.(evt); break;
             case "error": onError?.("server", evt.message); break;
           }
         } catch {
