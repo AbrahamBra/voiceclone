@@ -567,6 +567,25 @@
           if (id && !$currentConversationId) {
             currentConversationId.set(id);
             localStorage.setItem("conv_" + personaId, id);
+            // Optimistic: surface the new conv in the sidebar immediately.
+            // refreshConversations() below can lag (network + RPC read after
+            // insert) and the list endpoint filters message_count=0 — if the
+            // count RPC reads stale, the new conv is hidden until hard refresh.
+            conversations.update((list) => {
+              if (list.some((c) => c.id === id)) return list;
+              return [
+                {
+                  id,
+                  persona_id: personaId,
+                  scenario: $currentScenario,
+                  title: null,
+                  prospect_name: pendingProspectName || null,
+                  last_message_at: new Date().toISOString(),
+                  message_count: 1,
+                },
+                ...list,
+              ];
+            });
             // Refresh conversations
             refreshConversations();
           }

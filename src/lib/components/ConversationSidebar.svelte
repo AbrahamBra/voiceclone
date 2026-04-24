@@ -198,7 +198,7 @@
               {:else}
                 <div class="conv-item-row">
                   <div class="conv-item-title">
-                    {conv.title || "Sans titre"}
+                    {conv.prospect_name || conv.title || "Sans titre"}
                   </div>
                   <div class="conv-item-actions">
                     <button class="conv-action-btn" title="Renommer" onclick={(e) => startEdit(conv, e)}>&#9998;</button>
