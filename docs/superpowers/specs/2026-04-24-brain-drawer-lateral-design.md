@@ -20,14 +20,14 @@
 - deleted `src/routes/brain/[persona]/+page.svelte` (163 lignes) — remplacé par `+page.server.js`
 - deleted `src/routes/brain/[persona]/+page.js` — remplacé par `+page.server.js` (la logique côté client disparaît avec le redirect)
 - new `src/routes/brain/[persona]/+page.server.js` — redirect 307 `/brain/[persona]` → `/chat/[persona]?brain=<tab>` (préserve hash legacy `#<tab>` et query legacy `?tab=<tab>`)
-- new migration `supabase/041_feedback_brain_drawer.sql` — étend CHECK `feedback_events.event_type` avec `'brain_drawer_opened'` et `'brain_edit_during_draft'`. Numéro 041 car 038/039/040 sont déjà pris (038/039 = protocole-v2 core/hooks, 040 = training signal capture).
+- new migration `supabase/046_feedback_brain_drawer.sql` — étend CHECK `feedback_events.event_type` avec `'brain_drawer_opened'` et `'brain_edit_during_draft'`. Numéro 046 car 038/039/040 pris (protocole-v2 core/hooks + training signal capture), 041-043 réservés paper-space pour les follow-ups Chunk 2.5 protocole-vivant (rule_proposals, n4_paused_until, promoted_to_rule_index), 044-045 appliqués (dernier = 045 `match_propositions vector(1024)`).
 - new tests :
   - `test/brain-drawer-store.test.js` — open/close/toggle/setTab, openAt fallback sur lastTab, syncFromUrl bidirectionnel, précédence URL > localStorage > DEFAULT, persistence `brainDrawer:lastTab`.
   - `test/brain-drawer-url.test.js` — helpers URL : parse `?brain=<tab>`, fallback tab invalide → `connaissance`, build URL avec `replaceState:false`, serialisation avec et sans param.
   - `test/brain-redirect.test.js` — `+page.server.js` retourne 307, préserve `#protocole` legacy → `?brain=protocole`, préserve `?tab=X` legacy, fallback tab invalide → `connaissance`, params.persona invalide → propage 404 SvelteKit standard.
   - `test/brain-signals.test.js` — `emitBrainEvent` : POST sur `/api/feedback-events` avec body `{conversation_id, message_id: <dernier message narratif>, event_type}` (pas de dimensions — rationale dans §"Décision de conception"), skip silencieux si aucun message narratif dans la conv (pas de POST émis), best-effort (warn console sans bloquer UX) si le POST échoue. Pour `brain_edit_during_draft` : test de la garde `hasActiveDraft` dans le chemin `celebrateRuleAdded` côté chat page (pas dans le helper lui-même, qui est agnostique).
   - `test/protocol-panel-callback.test.js` — ajout d'une règle dans `ProtocolPanel` déclenche `onRuleAdded` une seule fois si le save backend réussit (assert via mock), n'est **pas** appelé en cas d'erreur save (pas de célébration sur échec).
-  - `test/migrations/041-brain-events.test.js` — CHECK accepte les 11 event_types valides (9 existants + 2 nouveaux), rejette un event inventé.
+  - `test/migration-046-brain-events.test.js` — CHECK accepte les 11 event_types valides (9 existants + 2 nouveaux), rejette un event inventé. Flat path car `npm test` glob = `test/*.test.js` non-récursif.
 
 **Fichiers inchangés (réutilisation directe) :** `KnowledgePanel.svelte`, `IntelligencePanel.svelte`, `SettingsPanel.svelte`. Chaque Panel reçoit déjà `{personaId}` en prop et gère son fetch/save de manière autonome. Le drawer ne fait que les monter dans un nouveau container. `SettingsPanel` supporte déjà `embedded={true}` + `onClose` — comportement préservé (vérifié depuis `/brain/[persona]/+page.svelte` actuel, lignes 104-105).
 
@@ -479,12 +479,12 @@ export function load({ params, url }) {
 
 Cascade : le layout parent `/chat/[persona]` se monte, lit `?brain=<tab>`, ouvre le drawer via `brainDrawer.syncFromUrl(tab)`, émet `brain_drawer_opened` avec `source: 'url_redirect'`.
 
-### Migration 041 — nouveaux event_types
+### Migration 046 — nouveaux event_types
 
-Fichier `supabase/041_feedback_brain_drawer.sql` — même pattern que 040 (dernier dans la séquence, n'a pas réutilisé 037/038/039 déjà pris) :
+Fichier `supabase/046_feedback_brain_drawer.sql` — numéro 046 car 038-040 déjà appliqués, 041-043 réservés paper-space pour les follow-ups Chunk 2.5 protocole-vivant (rule_proposals, n4_paused_until, promoted_to_rule_index), 044-045 déjà appliqués (dernier = 045 `match_propositions vector(1024)`) :
 
 ```sql
--- 041_feedback_brain_drawer.sql
+-- 046_feedback_brain_drawer.sql
 --
 -- Chantier #2 (drawer cerveau latéral) — ajoute deux event_types au pipeline
 -- feedback :
@@ -501,6 +501,9 @@ Fichier `supabase/041_feedback_brain_drawer.sql` — même pattern que 040 (dern
 --
 -- Spec source : docs/superpowers/specs/2026-04-24-brain-drawer-lateral-design.md.
 -- Numéros 038/039 = protocole-v2 core/hooks (PR #79). 040 = training signal capture.
+-- 041-043 réservés paper-space pour les follow-ups Chunk 2.5 protocole-vivant
+-- (rule_proposals, n4_paused_until, promoted_to_rule_index). 044-045 déjà
+-- appliqués (dernier = 045 match_propositions vector(1024)). D'où 046.
 -- Additif uniquement — aucun DROP destructif.
 
 ALTER TABLE feedback_events
@@ -523,7 +526,7 @@ ALTER TABLE feedback_events
   ));
 
 COMMENT ON COLUMN feedback_events.event_type IS
-  'Feedback taxonomy. 11 event types: validated, validated_edited, corrected, saved_rule, excellent, client_validated, paste_zone_dismissed, copy_paste_out, regen_rejection, brain_drawer_opened, brain_edit_during_draft. See 041_feedback_brain_drawer.sql.';
+  'Feedback taxonomy. 11 event types: validated, validated_edited, corrected, saved_rule, excellent, client_validated, paste_zone_dismissed, copy_paste_out, regen_rejection, brain_drawer_opened, brain_edit_during_draft. See 046_feedback_brain_drawer.sql.';
 ```
 
 **Invariants DB inchangés :** `conversation_id`, `message_id NOT NULL`, RLS par clone_id. Aucune relaxation DB.
@@ -586,11 +589,13 @@ Ce qui **ne** fait **pas** partie de ce chantier :
 
 ## Ordre de déploiement
 
-**⚠️ Garde critique :** la modification de `api/feedback-events.js` `VALID_TYPES` (étape 4) et l'application de la migration 041 sur prod (étape 13) **doivent être couplées** : si le code prod accepte `brain_drawer_opened` avant que la prod DB ait la CHECK étendue, chaque émission frappera un CHECK violation 500. Donc **ne jamais merge master avant l'étape 13**.
+**⚠️ Garde critique :** la modification de `api/feedback-events.js` `VALID_TYPES` (étape 4) et l'application de la migration 046 sur prod (étape 13) **doivent être couplées** : si le code prod accepte `brain_drawer_opened` avant que la prod DB ait la CHECK étendue, chaque émission frappera un CHECK violation 500. Donc **ne jamais merge master avant l'étape 13**.
+
+**⚠️ Coordination parallèle :** session protocole-vivant Chunk 2 Wave 2b utilisera `api/feedback-events.js` ensuite. Cette session relira le diff final de `VALID_TYPES` avant de coder Task 2.7. Pas bloquant, juste awareness.
 
 1. Créer branche `feat/brain-drawer` (already done during brainstorm).
-2. Écrire migration 041 + `test/migrations/041-brain-events.test.js`.
-3. Appliquer migration 041 sur DB Supabase **dev uniquement** (pas prod).
+2. Écrire migration 046 + `test/migration-046-brain-events.test.js`.
+3. Appliquer migration 046 sur DB Supabase **dev uniquement** (pas prod).
 4. Ajouter `copy_paste_out` + `regen_rejection` + `brain_drawer_opened` + `brain_edit_during_draft` dans `VALID_TYPES` de `api/feedback-events.js` (ligne 3). Corrige le drift API↔DB hérité de 040. Cette modif reste **sur la branche**, ne touche pas prod tant que master n'est pas mergé.
 5. Implémenter `src/lib/stores/brainDrawer.js` + tests store (TDD).
 6. Implémenter `src/lib/api/brainEvents.js` + tests signals (TDD).
@@ -600,5 +605,5 @@ Ce qui **ne** fait **pas** partie de ce chantier :
 10. Remplacer `/brain/[persona]/+page.svelte` + `+page.js` par `+page.server.js` redirect + `test/brain-redirect.test.js`.
 11. Tous tests unit verts (`npm test`).
 12. Push Preview Vercel → smoke manuel des 12 acceptance criteria.
-13. **Apply migration 041 sur prod Supabase via SQL editor** (pattern chantier #1). Vérifier query retour : `ALTER TABLE` success + `COMMENT` appliqué.
-14. **Merge master seulement si (a) preview smoke validé ET (b) migration 041 appliquée sur prod** (garde critique ci-dessus + convention `feedback_prod_without_ui_test.md`).
+13. **Apply migration 046 sur prod Supabase via SQL editor** (pattern chantier #1). Vérifier query retour : `ALTER TABLE` success + `COMMENT` appliqué.
+14. **Merge master seulement si (a) preview smoke validé ET (b) migration 046 appliquée sur prod** (garde critique ci-dessus + convention `feedback_prod_without_ui_test.md`).
