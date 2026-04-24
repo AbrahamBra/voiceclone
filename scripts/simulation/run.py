@@ -8,6 +8,7 @@ Usage:
   python run.py feedback         # Post coherent corrections
   python run.py feedback --bad   # Post contradictory corrections (should trigger auto-revert)
   python run.py stress           # Submit drifted drafts, verify critic flags them
+  python run.py signals          # Fire implicit signals (copy_paste_out, regen_rejection)
   python run.py consolidate      # Trigger /api/cron-consolidate manually
   python run.py fidelity         # Force fidelity calc on sim persona
   python run.py verdict          # Read all 4 tables, print markdown report
@@ -364,6 +365,64 @@ def cmd_validate(args):
         console.print(f"  [{i}/{len(types)}] {t:>17s} {status} — {msg['content'][:50]}")
 
 
+def cmd_signals(args):
+    """Fire implicit training signals on recent assistant messages.
+
+    Covers migration 040 (training signal capture, PR #80) — copy_paste_out
+    (user copied the draft out, weight 0.6) and regen_rejection (user hit ↻
+    regen, weight 0.5). These go through /api/feedback with type=copy_paste_out
+    or type=regen_rejection, NOT /api/feedback-events (which does not accept
+    these types — the implicit path writes corrections + learning_events
+    directly, bypassing feedback_events).
+
+    Verifies the new signal capture path end-to-end. After running, expect:
+      corrections  : +4 rows with source_channel in (copy_paste_out, regen_rejection)
+                     and is_implicit=true
+      learning_events: +4 rows (2 entity_boost from copy, 2 entity_demote from regen)
+    """
+    client = db()
+    persona = get_sim_persona(client)
+    if not persona:
+        console.print("[red]No sim persona. Run `python run.py seed` first.[/red]")
+        sys.exit(1)
+    assert_sim_persona(persona)
+
+    # Same lookup pattern as cmd_validate — order by activity to skip empty shells
+    convs = client.table("conversations").select("id").eq("persona_id", persona["id"]).order("last_message_at", desc=True).limit(20).execute().data
+    if not convs:
+        console.print("[yellow]No conversations yet. Run `python run.py chat` first.[/yellow]")
+        return
+    conv_ids = [c["id"] for c in convs]
+
+    msgs = client.table("messages").select("id, content, conversation_id").in_("conversation_id", conv_ids).eq("role", "assistant").order("created_at", desc=True).limit(4).execute().data
+    if not msgs:
+        console.print("[yellow]No assistant messages to signal on.[/yellow]")
+        return
+
+    # 2 positive implicit (copy), 2 negative implicit (regen) — matches
+    # the split in the 040 migration's intent (both canals should fire).
+    types = ["copy_paste_out", "copy_paste_out", "regen_rejection", "regen_rejection"]
+    headers = {
+        "Content-Type": "application/json",
+        "x-access-code": SIM_CLIENT_ACCESS_CODE,
+    }
+    for i, (msg, t) in enumerate(zip(msgs, types), 1):
+        payload = {
+            "type": t,
+            "persona": persona["id"],
+            "botMessage": msg["content"],
+            "userMessage": "[simulated implicit signal]",
+        }
+        try:
+            r = requests.post(api_url("/api/feedback"), json=payload, headers=headers, timeout=30)
+            status = "[green]ok[/green]" if r.status_code == 200 else f"[red]{r.status_code}: {r.text[:80]}[/red]"
+        except Exception as e:
+            status = f"[red]{type(e).__name__}: {str(e)[:80]}[/red]"
+        console.print(f"  [{i}/{len(types)}] {t:>16s} {status} — {msg['content'][:50]}")
+
+    console.print("[green]Implicit signals sent. Expect corrections(is_implicit=true) + learning_events(entity_boost|entity_demote).[/green]")
+
+
 def cmd_stress(args):
     """Insert drifted drafts directly and observe what the rhythm_shadow table records."""
     client = db()
@@ -586,6 +645,7 @@ def main():
     p_fb.add_argument("--bad", action="store_true", help="Use contradictory set")
 
     sub.add_parser("validate", help="Post validate/client_validate/excellent on recent messages")
+    sub.add_parser("signals", help="Fire implicit signals (copy_paste_out, regen_rejection)")
     sub.add_parser("stress", help="Send drifted drafts")
     sub.add_parser("consolidate", help="Trigger cron-consolidate")
     sub.add_parser("fidelity", help="Force fidelity calc")
@@ -602,6 +662,7 @@ def main():
         "chat": cmd_chat,
         "feedback": cmd_feedback,
         "validate": cmd_validate,
+        "signals": cmd_signals,
         "stress": cmd_stress,
         "consolidate": cmd_consolidate,
         "fidelity": cmd_fidelity,
