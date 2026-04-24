@@ -131,8 +131,8 @@
 </script>
 
 <svelte:head>
-  <title>VoiceClone — Setter IA pour DM prospects + posts LinkedIn (agences ghostwriting)</title>
-  <meta name="description" content="Le setter drafte les DM prospects en secondes dans la voix de ton client. Pour les agences ghostwriting : le même cerveau drafte aussi les posts LinkedIn de tes clients, avec la même base de connaissance." />
+  <title>VoiceClone — Le process de ton client, exécuté par ton setter (agences ghostwriting)</title>
+  <meta name="description" content="Les règles de ton client, écrites dès l'onboarding. Tes setters draftent dedans. Quand ils corrigent, le clone apprend. DM + posts LinkedIn, un seul cerveau." />
 </svelte:head>
 
 <a href="#hero" class="skip-link">Aller au contenu</a>
@@ -155,45 +155,43 @@
     </div>
 
     <h1 class="headline">
-      <span>10 clients. 10 voix. Un setter.</span>
+      <span>10 clients. 10 façons de DM. Un setter qui tient la ligne.</span>
       <span>Ton setter colle le DM d'un prospect.</span>
-      <span class="accent">Le draft sort dans la voix de ton <em>client</em>.</span>
+      <span class="accent">Le draft sort comme <em>ton client</em> l'écrirait.</span>
     </h1>
 
     <p class="sub">
-      Un client = son cerveau à lui. Son style, ses tics, ses dossiers prospects.
-      Ton setter écrit avec lui, pas à sa place.
+      Un client = sa façon de faire. Ses règles, ses ouvertures, sa cadence de relance,
+      écrites noir sur blanc dès l'onboarding. Ton setter tape dedans, pas à côté.
+      Quand il corrige, le clone demande pourquoi. La règle rentre avec son contexte.
       <br /><br />
-      Tu tiens une agence ghostwriting ? Le même clone drafte aussi les
-      <em>posts LinkedIn</em> de tes clients. DM et posts, une seule voix.
+      Tu tiens une agence ghostwriting ? Le même cerveau drafte aussi les
+      <em>posts LinkedIn</em> de tes clients. DM et posts, une seule ligne.
     </p>
 
     <ul class="triptyque" aria-label="Ce que VoiceClone fait concrètement">
       <li class="beat">
-        <h3 class="beat-title">son cerveau à lui</h3>
+        <h3 class="beat-title">ses règles, écrites dès l'onboarding</h3>
         <p class="beat-body">
-          Les posts qu'il a écrits. Les mots qu'il évite.
-          Les prospects qu'il suit. VoiceClone garde tout
-          en tête. Ton setter zappe entre 5 clients
-          sans perdre la voix.
+          Sa façon de DM, ses ouvertures interdites, sa cadence de relance,
+          sa signature. Noir sur blanc dès la création du clone.
+          Ton setter tape dedans, pas à côté.
         </p>
       </li>
       <li class="beat">
-        <h3 class="beat-title">DM au cœur. Posts inclus.</h3>
+        <h3 class="beat-title">corrige une fois, explique au clone</h3>
         <p class="beat-body">
-          Conçu pour les DM : 1er message, relance, reply, closing.
-          Ton setter passe de
-          <strong>30 minutes à 30 secondes par draft</strong>.
-          Les agences ghostwriting activent aussi les posts
-          LinkedIn. Un seul clone pour les deux canaux.
+          Tu vires un mot, le clone demande <em class="quoted">« pourquoi »</em>.
+          La règle rentre avec son contexte. Le setter junior
+          qui arrive dans 3 mois n'y retape pas deux fois.
         </p>
       </li>
       <li class="beat">
-        <h3 class="beat-title">corrige une fois. Jamais deux.</h3>
+        <h3 class="beat-title">DM et posts, un seul cerveau</h3>
         <p class="beat-body">
-          Le <em class="quoted">« n'hésitez pas »</em> qui traîne dans un draft ?
-          Tu le vires une fois, la règle s'ajoute. Le setter
-          junior qui arrive dans 3 mois ne le tapera même plus.
+          Même base pour les DM prospects et les posts LinkedIn.
+          Ton setter passe d'un canal à l'autre sans reconfigurer.
+          La ligne tient partout.
         </p>
       </li>
     </ul>
