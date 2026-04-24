@@ -6,11 +6,12 @@
 
 import { supabase } from "../lib/supabase.js";
 
-const WINDOW_MS = 60_000; // 1 minute
-const MAX_REQUESTS = 20;
+const DEFAULT_WINDOW_MS = 60_000; // 1 minute
+const DEFAULT_MAX_REQUESTS = 20;
 
 // In-memory short-circuit cache: if we JUST saw this IP and it was blocked,
 // reject immediately without a DB roundtrip. TTL = 2 seconds.
+// Keyed by `${ip}|${bucket}` so per-endpoint buckets don't alias each other.
 const recentBlocks = new Map();
 
 function extractIp(rawIp) {
@@ -42,12 +43,24 @@ export function getClientIp(req) {
   return extractIp(candidate);
 }
 
-export async function rateLimit(rawIp) {
+/**
+ * @param {string} rawIp
+ * @param {{ windowMs?: number, max?: number, bucket?: string }} opts
+ *   - windowMs: rolling window in ms (default 60_000)
+ *   - max:      max requests allowed per window (default 20)
+ *   - bucket:   logical bucket name, used to scope per-endpoint quotas
+ *               (default "default" — keeps back-compat for /api/chat)
+ */
+export async function rateLimit(rawIp, opts = {}) {
   const ip = extractIp(rawIp);
   const now = Date.now();
+  const windowMs = Number.isFinite(opts.windowMs) ? opts.windowMs : DEFAULT_WINDOW_MS;
+  const max = Number.isFinite(opts.max) ? opts.max : DEFAULT_MAX_REQUESTS;
+  const bucket = typeof opts.bucket === "string" && opts.bucket ? opts.bucket : "default";
+  const cacheKey = `${ip}|${bucket}`;
 
-  // Fast path: if we blocked this IP in the last 2s, reject without DB call
-  const recent = recentBlocks.get(ip);
+  // Fast path: if we blocked this IP+bucket in the last 2s, reject without DB call
+  const recent = recentBlocks.get(cacheKey);
   if (recent && now < recent.until) {
     return { allowed: false, retryAfter: Math.ceil((recent.until - now) / 1000) };
   }
@@ -58,10 +71,13 @@ export async function rateLimit(rawIp) {
   }
 
   try {
+    // Bucket is prepended to the IP so the existing `rate_limit_check` RPC
+    // (which keys by p_ip) treats each endpoint's quota as an independent row.
+    // No migration required.
     const { data, error } = await supabase.rpc("rate_limit_check", {
-      p_ip: ip,
-      p_window_ms: WINDOW_MS,
-      p_max: MAX_REQUESTS,
+      p_ip: `${bucket}:${ip}`,
+      p_window_ms: windowMs,
+      p_max: max,
     });
 
     if (error) {
@@ -70,8 +86,7 @@ export async function rateLimit(rawIp) {
     }
 
     if (data && data.allowed === false) {
-      // Cache the block briefly to protect the DB from hot-loop abuse
-      recentBlocks.set(ip, { until: now + 2000 });
+      recentBlocks.set(cacheKey, { until: now + 2000 });
       return { allowed: false, retryAfter: data.retry_after || 60 };
     }
 
