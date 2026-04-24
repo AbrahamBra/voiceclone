@@ -4,6 +4,7 @@
   import { getRelativeTime } from "$lib/utils.js";
   import LearningFeed from "./LearningFeed.svelte";
   import FidelityCard from "./FidelityCard.svelte";
+  import FeedbackRoiCard from "./FeedbackRoiCard.svelte";
   import PostsIngestModal from "./PostsIngestModal.svelte";
 
   let { personaId, extracting = false } = $props();
@@ -161,6 +162,8 @@
   reloadToken={fidelityReloadToken}
   onAskAddPosts={() => showPostsModal = true}
 />
+
+<FeedbackRoiCard {personaId} />
 
 <div class="learning-section">
   <LearningFeed {personaId} />
