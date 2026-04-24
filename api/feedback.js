@@ -65,23 +65,16 @@ export default async function handler(req, res) {
       ? Math.round((confidences.reduce((a, b) => a + b, 0) / confidences.length) * 100) / 100
       : 0;
 
-    // Bug #2 — Intelligence panel should show deduced rules, not raw user
-    // comments or meta markers. Filter out:
-    //   - [VALIDATED]/[CLIENT_VALIDATED]/[EXCELLENT] prefixes (entity-boost
-    //     markers, not rules)
-    //   - Default-flow raw user text (no distillation applied)
-    // Keep:
-    //   - save_rule rows (Haiku-distilled, bot_message='[saved-by-user]')
-    //   - implicit-diff rows (Sonnet-described, user_message='[diff implicite]')
-    //   - consolidated rows (status='graduated')
-    const META_MARKERS = ["[VALIDATED]", "[CLIENT_VALIDATED]", "[EXCELLENT]"];
+    // Intelligence panel shows deduced rules. Only reject rows whose
+    // `correction` text starts with a validation marker — those are
+    // entity-boost signals, not rules. Every other write path into
+    // `corrections` produces a legitimate rule (explicit feedback, accept,
+    // coaching, metacognitive, saved-by-user, diff implicite, graduated,
+    // ingested-from-post, etc.) and should surface here.
+    const EXCLUDED_CORRECTION_PREFIXES = ["[VALIDATED]", "[CLIENT_VALIDATED]", "[EXCELLENT]"];
     const isDeducedRule = (c) => {
       const text = c.correction || "";
-      if (META_MARKERS.some((m) => text.startsWith(m))) return false;
-      if (c.bot_message === "[saved-by-user]") return true;
-      if (c.user_message === "[diff implicite]") return true;
-      if (c.status === "graduated") return true;
-      return false;
+      return !EXCLUDED_CORRECTION_PREFIXES.some((m) => text.startsWith(m));
     };
     const deducedRules = data.corrections.filter(isDeducedRule);
     const corrections = [...deducedRules]
