@@ -3,6 +3,7 @@
   import { page } from "$app/stores";
   import { accessCode, sessionToken } from "$lib/stores/auth.js";
   import { personaConfig } from "$lib/stores/persona.js";
+  import { authHeaders } from "$lib/api.js";
   import KnowledgePanel from "$lib/components/KnowledgePanel.svelte";
   import IntelligencePanel from "$lib/components/IntelligencePanel.svelte";
   import ProtocolPanel from "$lib/components/ProtocolPanel.svelte";
@@ -54,6 +55,19 @@
   $effect(() => {
     if (typeof window === "undefined") return;
     if (!$accessCode && !$sessionToken) goto("/");
+  });
+
+  // Load persona config when user lands here directly (bookmark/refresh) —
+  // the chat page normally populates this store, but brain can be reached
+  // without visiting chat first. Without this, header shows "? / Clone".
+  $effect(() => {
+    if (typeof window === "undefined") return;
+    if (!personaId) return;
+    if ($personaConfig && $personaConfig.id === personaId) return;
+    fetch(`/api/config?persona=${personaId}`, { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then(cfg => { if (cfg) personaConfig.set(cfg); })
+      .catch(() => {});
   });
 </script>
 

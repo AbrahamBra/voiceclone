@@ -58,12 +58,21 @@
         const t = (r || "").replace(/^[\s*_]+/, "");
         return t.startsWith("[VALIDATED]") || t.startsWith("[CLIENT_VALIDATED]") || t.startsWith("[EXCELLENT]");
       };
-      const cleanRules = (p.rules || []).filter(r => !isValidationMarker(r));
+      // Strip markdown bold/italic so synthesized rules like
+      // "**Règle synthétisée :** ..." render as clean plain text.
+      const stripMarkdown = (r) => (r || "")
+        .replace(/\*\*([^*]+)\*\*/g, "$1")
+        .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "$1")
+        .replace(/__([^_]+)__/g, "$1")
+        .trim();
+      const cleanRules = (p.rules || [])
+        .filter(r => !isValidationMarker(r))
+        .map(stripMarkdown);
       const n = p.promoted || cleanRules.length || 1;
       const rules = cleanRules.slice(0, 2).join(" · ");
       // Fallback for direct-instruction consolidations: source_message
       // is stored when no rules payload is present.
-      const detail = rules || p.source_message || null;
+      const detail = rules || (p.source_message ? stripMarkdown(p.source_message) : null);
       return { icon: "🧠", title: n === 1 ? "Règle consolidée" : `${n} règles consolidées`, detail };
     }
     return { icon: "•", title: ev.event_type, detail: null };
