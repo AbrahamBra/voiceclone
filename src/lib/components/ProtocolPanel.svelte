@@ -2,6 +2,7 @@
   import { api } from "$lib/api.js";
   import { showToast } from "$lib/stores/ui.js";
   import { getRelativeTime } from "$lib/utils.js";
+  import { track } from "$lib/tracking.js";
 
   let { personaId } = $props();
 
@@ -52,6 +53,7 @@
     busy = p.id;
     try {
       await api(`/api/protocol?id=${p.id}&action=${action}`, { method: "POST" });
+      track("protocol_rule_toggled", { active: !p.is_active });
       showToast(p.is_active ? "Protocole désactivé" : "Protocole activé");
       await load();
     } catch (e) {
@@ -69,6 +71,7 @@
         body: JSON.stringify({ limit: 50 }),
       });
       testResults = { ...testResults, [p.id]: { ...data, expanded: false } };
+      track("protocol_tested", {});
     } catch (e) {
       showToast(e.message || "Erreur test");
     } finally {
