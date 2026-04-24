@@ -4,8 +4,8 @@
   // client + entraînement par feedback. Trois écrans : hero / preuve / moat.
   //
   // Auth flow inchangé : si déjà authentifié, redirect direct vers
-  // /chat/<persona>. Sinon, la landing s'affiche ; le code d'accès sous
-  // footer permet aux clients existants de rentrer.
+  // /chat/<persona>. Sinon, la landing s'affiche ; le code d'accès en
+  // topbar permet aux clients existants de rentrer sans scroll.
 
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
@@ -137,13 +137,31 @@
 
 <main class="landing">
 
-  <!-- ═══════ Top bar minimal ═══════ -->
+  <!-- ═══════ Top bar — brand + code d'accès + demo ═══════ -->
   <header class="topbar">
     <div class="brand">
       <span class="brand-mark">◎</span>
       <span class="brand-name">VoiceClone</span>
     </div>
-    <a class="top-cta" href="/demo">essaie en 5 min →</a>
+    <div class="topbar-right">
+      <form class="access access-top" onsubmit={submitCode} aria-label="Accès client">
+        <span class="access-k mono">déjà dans l'outil ?</span>
+        <input
+          type="password"
+          autocomplete="off"
+          placeholder="ton code"
+          bind:value={codeInput}
+          class:shake={authShake}
+          disabled={authLoading}
+          aria-label="Code d'accès"
+        />
+        <button type="submit" disabled={authLoading}>
+          {authLoading ? "…" : "→"}
+        </button>
+        {#if authError}<span class="access-err mono">{authError}</span>{/if}
+      </form>
+      <a class="top-cta" href="/demo">essaie en 5 min →</a>
+    </div>
   </header>
 
   <!-- ═══════ Écran 1 — Hero ═══════ -->
@@ -159,12 +177,9 @@
     </h1>
 
     <p class="sub">
-      Un client = sa façon de faire. Ses règles, ses ouvertures, sa cadence de relance,
-      écrites noir sur blanc dès l'onboarding. Ton setter tape dedans, pas à côté.
-      Quand il corrige, le clone demande pourquoi. La règle rentre avec son contexte.
-      <br /><br />
-      Tu tiens une agence ghostwriting ? Le même cerveau drafte aussi les
-      <em>posts LinkedIn</em> de tes clients. DM et posts, une seule ligne.
+      Un client = sa façon de faire : règles, ouvertures, cadence, signature.
+      Écrites dès l'onboarding. Ton setter tape dedans. Le même cerveau drafte
+      aussi les <em>posts LinkedIn</em> — DM et posts, une seule ligne.
     </p>
 
     <ul class="triptyque" aria-label="Ce que VoiceClone fait concrètement">
@@ -195,15 +210,12 @@
     </ul>
 
     <div class="hero-cta" id="cta">
-      <a class="btn-primary" href="/demo">
-        → Essaie ton clone en 5 min.
-      </a>
-      <p class="cta-sub mono">colle 3 posts, un brief prospect, le DM sort dans ta voix. pas de compte, pas de stockage.</p>
+      <a class="btn-primary" href="/demo">→ Essaie ton clone en 5 min.</a>
       <div class="sub-ctas">
         <button type="button" class="demo-link mono" onclick={openDemo} disabled={demoLoading}>
-          {demoLoading ? "chargement…" : "fouiller une démo pré-entraînée →"}
+          {demoLoading ? "chargement…" : "ou fouille une démo pré-entraînée →"}
         </button>
-        <a class="demo-link mono" href={DEMO_CTA_HREF}>rejoindre la waitlist →</a>
+        <a class="demo-link mono" href={DEMO_CTA_HREF}>waitlist →</a>
       </div>
     </div>
   </section>
@@ -327,40 +339,18 @@
     </div>
 
     <div class="moat-cta">
-      <a class="btn-primary" href="/demo">
-        → Essaie le clone en 5 min.
-      </a>
-      <p class="cta-sub mono">stateless. pas de compte. tu colles, tu vois.</p>
+      <a class="btn-primary" href="/demo">→ Essaie le clone en 5 min.</a>
       <a class="demo-link mono" href={DEMO_CTA_HREF}>ou rejoins la waitlist →</a>
     </div>
   </section>
 
-  <!-- ═══════ Footer ═══════ -->
+  <!-- ═══════ Footer minimal ═══════ -->
   <footer class="foot">
-    <div class="foot-left">
-      <span class="foot-brand mono">
-        <span class="brand-mark">◎</span>
-        VoiceClone
-      </span>
-      <a class="foot-link" href="/guide">guide</a>
-    </div>
-
-    <form class="access" onsubmit={submitCode} aria-label="Accès client">
-      <span class="access-k mono">déjà dans l'outil ?</span>
-      <input
-        type="password"
-        autocomplete="off"
-        placeholder="ton code"
-        bind:value={codeInput}
-        class:shake={authShake}
-        disabled={authLoading}
-        aria-label="Code d'accès"
-      />
-      <button type="submit" disabled={authLoading}>
-        {authLoading ? "…" : "→"}
-      </button>
-      {#if authError}<span class="access-err mono">{authError}</span>{/if}
-    </form>
+    <span class="foot-brand mono">
+      <span class="brand-mark">◎</span>
+      VoiceClone
+    </span>
+    <a class="foot-link" href="/guide">guide</a>
   </footer>
 </main>
 
@@ -392,7 +382,8 @@
      ──────────────────────────────────────────────────────────── */
   .topbar {
     display: flex; justify-content: space-between; align-items: center;
-    padding: 14px 28px;
+    gap: 20px;
+    padding: 10px 28px;
     border-bottom: 1px solid var(--rule-strong);
     font-family: var(--font-mono);
     font-size: 12px;
@@ -400,6 +391,14 @@
   .brand { display: inline-flex; align-items: baseline; gap: 8px; }
   .brand-mark { color: var(--vermillon); font-size: 14px; }
   .brand-name { font-weight: 600; color: var(--ink); letter-spacing: 0.01em; }
+
+  .topbar-right {
+    display: inline-flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
 
   .top-cta {
     color: var(--ink);
@@ -410,6 +409,15 @@
     transition: color var(--dur-fast, 120ms) var(--ease, ease);
   }
   .top-cta:hover { color: var(--vermillon); }
+
+  /* Compact variant of .access dans la topbar */
+  .access-top { gap: 6px; }
+  .access-top input { width: 90px; padding: 5px 8px; font-size: 11.5px; }
+  .access-top button { padding: 5px 8px; font-size: 11.5px; }
+  .access-top .access-k { display: none; }
+  @media (min-width: 760px) {
+    .access-top .access-k { display: inline; }
+  }
 
   /* ────────────────────────────────────────────────────────────
      Shared section primitives
@@ -424,11 +432,11 @@
   .section-title {
     font-family: var(--font);
     font-weight: 400;
-    font-size: clamp(28px, 3.8vw, 44px);
-    line-height: 1.1;
+    font-size: clamp(24px, 3.2vw, 36px);
+    line-height: 1.12;
     letter-spacing: -0.018em;
     color: var(--ink);
-    margin: 0 0 40px;
+    margin: 0 0 24px;
     max-width: 22ch;
   }
 
@@ -454,7 +462,7 @@
      Écran 1 — Hero
      ──────────────────────────────────────────────────────────── */
   .hero {
-    padding: 80px 28px 72px;
+    padding: 48px 28px 40px;
     max-width: var(--max-width, 1200px);
     margin: 0 auto;
     width: 100%;
@@ -464,16 +472,16 @@
     color: var(--ink-40);
     text-transform: uppercase;
     letter-spacing: 0.14em;
-    margin-bottom: 24px;
+    margin-bottom: 16px;
   }
   .headline {
     font-family: var(--font);
     font-weight: 400;
-    font-size: clamp(36px, 6vw, 72px);
-    line-height: 1.04;
+    font-size: clamp(32px, 5.2vw, 60px);
+    line-height: 1.05;
     letter-spacing: -0.022em;
     color: var(--ink);
-    margin: 0 0 32px;
+    margin: 0 0 20px;
     max-width: 20ch;
   }
   .headline span { display: block; }
@@ -496,11 +504,11 @@
   }
 
   .sub {
-    font-size: 17px;
+    font-size: 16px;
     color: var(--ink-70);
     line-height: 1.55;
-    max-width: 58ch;
-    margin: 0 0 56px;
+    max-width: 62ch;
+    margin: 0 0 28px;
   }
   .sub em {
     color: var(--ink);
@@ -511,7 +519,7 @@
   .triptyque {
     list-style: none;
     padding: 0;
-    margin: 0 0 56px;
+    margin: 0 0 28px;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0;
@@ -519,7 +527,7 @@
     border-bottom: 1px solid var(--rule-strong);
   }
   .beat {
-    padding: 28px 24px;
+    padding: 18px 18px;
     border-right: 1px solid var(--rule);
   }
   .beat:last-child { border-right: none; }
@@ -528,15 +536,15 @@
     font-family: var(--font);
     font-weight: 500;
     font-style: italic;
-    font-size: 20px;
+    font-size: 17px;
     color: var(--vermillon);
     line-height: 1.2;
-    margin: 0 0 14px;
+    margin: 0 0 10px;
     letter-spacing: -0.005em;
   }
   .beat-body {
-    font-size: 14.5px;
-    line-height: 1.6;
+    font-size: 14px;
+    line-height: 1.55;
     color: var(--ink-70);
     margin: 0;
   }
@@ -557,22 +565,15 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 10px;
-  }
-  .cta-sub {
-    font-size: 11.5px;
-    color: var(--ink-40);
-    margin: 0;
-    letter-spacing: 0.02em;
+    gap: 8px;
   }
   .demo-link {
-    margin-top: 4px;
-    padding: 4px 0;
+    padding: 3px 0;
     background: none;
     border: none;
     border-bottom: 1px dashed var(--ink-40);
     color: var(--ink-70);
-    font-size: 12px;
+    font-size: 11.5px;
     letter-spacing: 0.02em;
     cursor: pointer;
     align-self: flex-start;
@@ -584,8 +585,8 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 16px 20px;
-    margin-top: 2px;
+    gap: 8px 18px;
+    margin-top: 0;
   }
   .demo-link:hover:not(:disabled) {
     color: var(--vermillon);
@@ -603,7 +604,7 @@
      Écran 2 — Preuve
      ──────────────────────────────────────────────────────────── */
   .proof {
-    padding: 80px 28px;
+    padding: 48px 28px;
     max-width: var(--max-width, 1200px);
     margin: 0 auto;
     width: 100%;
@@ -613,7 +614,7 @@
   .captures {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 32px;
+    gap: 20px;
   }
   .capture { margin: 0; }
   .capture-frame {
@@ -621,8 +622,8 @@
     border: 1px solid var(--rule-strong);
     box-shadow: 0 6px 24px rgba(0,0,0,0.04);
     overflow: hidden;
-    margin-bottom: 18px;
-    min-height: 240px;
+    margin-bottom: 12px;
+    min-height: 180px;
     display: flex;
     flex-direction: column;
   }
@@ -807,7 +808,7 @@
      Écran 3 — Moat
      ──────────────────────────────────────────────────────────── */
   .moat {
-    padding: 96px 28px 80px;
+    padding: 48px 28px 40px;
     max-width: var(--max-width, 1200px);
     margin: 0 auto;
     width: 100%;
@@ -818,19 +819,19 @@
   }
   .moat-body {
     max-width: 56ch;
-    margin-bottom: 40px;
+    margin-bottom: 24px;
   }
   .moat-para {
     font-family: var(--font);
-    font-size: 22px;
+    font-size: 18px;
     line-height: 1.5;
     color: var(--ink);
-    margin: 0 0 24px;
+    margin: 0 0 16px;
   }
   .moat-punch {
     font-family: var(--font);
     font-style: italic;
-    font-size: 18px;
+    font-size: 16px;
     color: var(--ink-70);
     line-height: 1.5;
     margin: 0;
@@ -844,18 +845,12 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 20px;
-    padding: 18px 28px;
+    gap: 16px;
+    padding: 14px 28px;
     border-top: 1px solid var(--rule-strong);
     font-family: var(--font-mono);
     font-size: 11px;
-    flex-wrap: wrap;
     margin-top: auto;
-  }
-  .foot-left {
-    display: inline-flex;
-    gap: 20px;
-    align-items: center;
     color: var(--ink-40);
   }
   .foot-brand {
@@ -931,14 +926,15 @@
   }
 
   @media (max-width: 600px) {
-    .hero { padding: 56px 20px 48px; }
-    .proof { padding: 56px 20px; }
-    .moat { padding: 64px 20px 48px; }
-    .topbar { padding: 12px 20px; }
-    .foot { padding: 14px 20px; gap: 12px; }
+    .hero { padding: 36px 20px 32px; }
+    .proof { padding: 36px 20px; }
+    .moat { padding: 36px 20px 32px; }
+    .topbar { padding: 10px 20px; gap: 12px; flex-wrap: wrap; }
+    .topbar-right { gap: 12px; }
+    .foot { padding: 12px 20px; gap: 12px; }
 
-    .headline { font-size: clamp(32px, 9vw, 44px); }
-    .section-title { font-size: clamp(24px, 6.5vw, 32px); }
-    .moat-para { font-size: 18px; }
+    .headline { font-size: clamp(28px, 8vw, 40px); }
+    .section-title { font-size: clamp(22px, 6vw, 28px); }
+    .moat-para { font-size: 16px; }
   }
 </style>
