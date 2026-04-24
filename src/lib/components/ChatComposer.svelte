@@ -266,6 +266,33 @@
   }
 </script>
 
+{#if showPasteZone}
+  <div class="paste-zone" role="region" aria-label="Réponse du prospect">
+    <header class="paste-header">
+      <span class="paste-label">📥 Il a répondu ?</span>
+      <button class="paste-dismiss" type="button" onclick={dismissPaste} aria-label="Ignorer">×</button>
+    </header>
+    <textarea
+      class="paste-textarea"
+      bind:value={pasteText}
+      onkeydown={handlePasteKeydown}
+      placeholder="Colle sa réponse ici…"
+      rows="2"
+    ></textarea>
+    <footer class="paste-footer">
+      <button
+        class="paste-submit"
+        type="button"
+        onclick={submitPaste}
+        disabled={pasteText.trim().length < PROSPECT_MIN}
+      >
+        ajouter au fil
+      </button>
+      <span class="paste-hint">Cmd+Enter · Esc pour annuler</span>
+    </footer>
+  </div>
+{/if}
+
 <div class="composer" class:composer-locked={scenarioMissing}>
   {#if scenarioMissing}
     <div class="scenario-gate mono" role="status">
