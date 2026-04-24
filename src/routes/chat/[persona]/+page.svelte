@@ -930,6 +930,27 @@
     }
   }
 
+  // Signal silencieux — pas de toast, pas de re-fetch. Respecte "chaque action = data".
+  async function handlePasteDismiss() {
+    // Defensive : la zone paste ne devrait pas être visible sans 'toi', mais on vérifie.
+    const lastToi = [...$messages].reverse().find(m => m.turn_kind === 'toi');
+    if (!lastToi) return;
+
+    try {
+      await fetch("/api/feedback-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          conversation_id: $currentConversationId,
+          message_id: lastToi.id,
+          event_type: 'paste_zone_dismissed',
+        }),
+      });
+    } catch (err) {
+      console.warn("paste_zone_dismissed signal failed:", err);
+    }
+  }
+
   // ★ excellent : même flow que validate mais event_type='excellent' —
   // split du signal pour distinguer "passable" vs "pattern à multiplier".
   // Voir migration 031_feedback_excellent.sql.
