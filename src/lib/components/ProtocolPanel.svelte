@@ -128,6 +128,15 @@
     en choisissant le type <strong>Protocole opérationnel</strong>.
   </div>
 {:else}
+  {#if protocols.some(p => p.status === "pending")}
+    <div class="pp-pending-banner">
+      <span class="pp-pending-dot"></span>
+      <div class="pp-pending-text">
+        <strong>Parsing du protocole en cours</strong>
+        <span>Extraction automatique des règles par Claude — ≈10 min. Vous pourrez valider chaque règle avant activation. La page se rafraîchit toute seule.</span>
+      </div>
+    </div>
+  {/if}
   {#each protocols as p (p.id)}
     <div class="pp-proto" class:active={p.is_active}>
       <div class="pp-head">
@@ -240,6 +249,32 @@
     letter-spacing: 0.08em;
   }
   .pp-empty { text-transform: none; letter-spacing: normal; text-align: left; line-height: 1.5; padding: 12px; }
+  .pp-pending-banner {
+    display: flex; gap: 10px; align-items: flex-start;
+    margin: 6px 2px 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--vermillon);
+    border-left-width: 3px;
+    background: var(--paper-subtle);
+  }
+  .pp-pending-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--vermillon);
+    margin-top: 6px; flex-shrink: 0;
+    animation: pp-pulse 1.4s ease-in-out infinite;
+  }
+  .pp-pending-text { display: flex; flex-direction: column; gap: 3px; }
+  .pp-pending-text strong {
+    font-family: var(--font-mono); font-size: var(--fs-tiny);
+    text-transform: uppercase; letter-spacing: 0.08em; color: var(--vermillon);
+  }
+  .pp-pending-text span {
+    font-size: var(--fs-small); color: var(--ink-70); line-height: 1.45;
+  }
+  @keyframes pp-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.35; transform: scale(0.7); }
+  }
   .pp-retry {
     display: block; margin: 8px auto 0;
     background: transparent; border: 1px solid var(--rule-strong); color: var(--ink-70);

@@ -272,6 +272,9 @@
 
     generatingPhase = "";
     generateStatus = `Clone "${persona.name}" créé !`;
+    if (protocolFile) {
+      showToast("Protocole en cours de parsing — dispo dans Cerveau → Protocole d'ici ≈10 min", 6000);
+    }
     setTimeout(() => { goto(`/calibrate/${persona.id}`); }, 800);
   }
 
@@ -476,11 +479,11 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
           <div class="create-step">
             <div class="step-header">
               <strong>Protocole opérationnel</strong>
-              <span>Les règles absolues du clone — optionnel</span>
+              <span>Le doc de cadrage prospection co-créé avec le client — optionnel</span>
             </div>
 
             <p class="step-desc">
-              Si votre méthode suit un playbook précis (<em>jamais 2 questions</em>, <em>max 8 lignes</em>, <em>pas de mention d'offre</em>…), uploadez-le ici. Le clone <strong>appliquera ces règles en dur</strong> à chaque message : il réécrira automatiquement tout draft qui les viole. Sans protocole, le clone reste stylistiquement fidèle mais ne bloque rien.
+              Le <strong>protocole</strong>, c'est le document de cadrage que vous construisez avec votre client sur sa façon de prospecter : son playbook opérationnel. Qui cibler, comment ouvrir, combien de questions par message, ce qu'il ne dit <em>jamais</em>, quand pitcher, quand reculer. Uploadez-le ici et le clone <strong>appliquera ces règles en dur</strong> à chaque message — il réécrira automatiquement tout draft qui les viole. Sans protocole, le clone reste stylistiquement fidèle mais ne bloque rien.
             </p>
 
             <div class="protocol-zone">
