@@ -349,7 +349,7 @@ Dans `src/routes/chat/[persona]/+page.svelte`, 3 zones à modifier (les variable
   import BrainDrawer from '$lib/components/BrainDrawer.svelte';
   import { brainDrawer } from '$lib/stores/brainDrawer';
   import { emitBrainEvent } from '$lib/api/brainEvents';
-  import { track } from '$lib/analytics';  // existant depuis PR #76 — telemetry client
+  import { track } from '$lib/tracking';  // wrapper Plausible existant (src/lib/tracking.js) — SSR/adblock-safe
   import { page } from '$app/stores';
 
   // Sync URL → store au mount + à chaque nav.
