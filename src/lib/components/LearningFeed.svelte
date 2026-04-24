@@ -16,7 +16,20 @@
       // Flux d'apprentissage = règles consolidées uniquement. Toute règle ajoutée
       // (direct instruction) est émise comme consolidation_run côté back — donc
       // ce filtre suffit pour couvrir les deux chemins (direct + cron cluster).
-      events = (res.events || []).filter(e => e.event_type === "consolidation_run");
+      // Defensive: also drop events whose entire rules payload is validation
+      // markers (historical leak from the consolidation cron).
+      const isValidationMarker = (r) => {
+        const t = (r || "").trim();
+        return t.startsWith("[VALIDATED]") || t.startsWith("[CLIENT_VALIDATED]") || t.startsWith("[EXCELLENT]");
+      };
+      const hasRealRule = (e) => {
+        const rules = e?.payload?.rules;
+        if (!Array.isArray(rules) || rules.length === 0) return true; // keep (source_message fallback)
+        return rules.some(r => !isValidationMarker(r));
+      };
+      events = (res.events || [])
+        .filter(e => e.event_type === "consolidation_run")
+        .filter(hasRealRule);
       error = null;
     } catch (e) {
       error = e?.message || "Erreur de chargement";
@@ -36,8 +49,16 @@
   function eventLabel(ev) {
     const p = ev.payload || {};
     if (ev.event_type === "consolidation_run") {
-      const n = p.promoted || (Array.isArray(p.rules) ? p.rules.length : 0) || 1;
-      const rules = (p.rules || []).slice(0, 2).join(" · ");
+      // Defensive filter: historical events may contain validation markers
+      // ([VALIDATED] / [CLIENT_VALIDATED] / [EXCELLENT]) that leaked through
+      // the consolidation cron. Strip them from the displayed detail.
+      const isValidationMarker = (r) => {
+        const t = (r || "").trim();
+        return t.startsWith("[VALIDATED]") || t.startsWith("[CLIENT_VALIDATED]") || t.startsWith("[EXCELLENT]");
+      };
+      const cleanRules = (p.rules || []).filter(r => !isValidationMarker(r));
+      const n = p.promoted || cleanRules.length || 1;
+      const rules = cleanRules.slice(0, 2).join(" · ");
       // Fallback for direct-instruction consolidations: source_message
       // is stored when no rules payload is present.
       const detail = rules || p.source_message || null;
