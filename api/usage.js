@@ -1,5 +1,4 @@
 import { authenticateRequest, supabase, setCors } from "../lib/supabase.js";
-import { respondServerError } from "../lib/api-errors.js";
 
 export default async function handler(req, res) {
   setCors(res);
@@ -68,7 +67,7 @@ export default async function handler(req, res) {
         },
       });
     } catch (err) {
-      respondServerError(res, "usage_metrics_error", err, "Erreur lors du chargement des metriques");
+      res.status(500).json({ error: err.message });
     }
     return;
   }
@@ -135,7 +134,7 @@ export default async function handler(req, res) {
 
       res.json({ clients: result });
     } catch (err) {
-      respondServerError(res, "usage_clients_error", err, "Erreur lors du chargement des clients");
+      res.status(500).json({ error: err.message });
     }
     return;
   }
@@ -201,7 +200,7 @@ export default async function handler(req, res) {
 
       res.json({ personas: result });
     } catch (err) {
-      respondServerError(res, "usage_personas_error", err, "Erreur lors du chargement des personas");
+      res.status(500).json({ error: err.message });
     }
     return;
   }
@@ -245,7 +244,7 @@ export default async function handler(req, res) {
 
       res.json({ activity });
     } catch (err) {
-      respondServerError(res, "usage_activity_error", err, "Erreur lors du chargement de l'activite");
+      res.status(500).json({ error: err.message });
     }
     return;
   }

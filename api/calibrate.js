@@ -2,7 +2,6 @@ import Anthropic from "@anthropic-ai/sdk";
 import { authenticateRequest, supabase, getApiKey, setCors } from "../lib/supabase.js";
 import { getPersonaFromDb, getCorrectionsFromDb, clearCache } from "../lib/knowledge-db.js";
 import { buildSystemPrompt } from "../lib/prompt.js";
-import { respondServerError } from "../lib/api-errors.js";
 
 const DEFAULT_MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514";
 
@@ -90,7 +89,8 @@ IMPORTANT : Chaque reponse doit etre dans TON style exact (longueur, ton, expres
       const messages = JSON.parse(jsonMatch[0]);
       res.json({ ok: true, messages: messages.slice(0, 5) });
     } catch (err) {
-      respondServerError(res, "calibrate_error", err, "Erreur de calibration");
+      console.log(JSON.stringify({ event: "calibrate_error", error: err.message }));
+      res.status(500).json({ error: "Erreur de calibration: " + err.message });
     }
     return;
   }
@@ -127,6 +127,7 @@ IMPORTANT : Chaque reponse doit etre dans TON style exact (longueur, ton, expres
         : "Calibration validee, aucun ajustement necessaire.",
     });
   } catch (err) {
-    respondServerError(res, "calibrate_feedback_error", err, "Erreur lors de l'enregistrement du feedback");
+    console.log(JSON.stringify({ event: "calibrate_feedback_error", error: err.message }));
+    res.status(500).json({ error: "Erreur: " + err.message });
   }
 }

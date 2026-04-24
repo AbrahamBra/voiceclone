@@ -1,5 +1,4 @@
 import { authenticateRequest, setCors } from "../lib/supabase.js";
-import { rateLimit, getClientIp } from "./_rateLimit.js";
 
 const LINKDAPI_KEY = process.env.LINKDAPI_KEY;
 const LINKDAPI_BASE = "https://linkdapi.com/api/v1";
@@ -33,14 +32,6 @@ export default async function handler(req, res) {
     await authenticateRequest(req);
   } catch (err) {
     res.status(err.status || 403).json({ error: err.error || "Auth failed" });
-    return;
-  }
-
-  // Protect LinkdAPI quota: 10 scrapes / 5 min per IP
-  const rl = await rateLimit(getClientIp(req), { bucket: "scrape", windowMs: 300_000, max: 10 });
-  if (!rl.allowed) {
-    res.setHeader("Retry-After", String(rl.retryAfter || 300));
-    res.status(429).json({ error: "Trop de scrapes — reessayez plus tard.", retryAfter: rl.retryAfter });
     return;
   }
 

@@ -13,7 +13,6 @@ export const maxDuration = 300;
 import { supabase } from "../lib/supabase.js";
 import { consolidateCorrections } from "../lib/correction-consolidation.js";
 import { extractGraphFromFile } from "../lib/graph-extraction-file.js";
-import { respondServerError } from "../lib/api-errors.js";
 import { clearIntelligenceCache } from "../lib/knowledge-db.js";
 import { parseOperatingProtocol } from "../lib/protocol-parser.js";
 
@@ -126,7 +125,8 @@ export default async function handler(req, res) {
     console.log(JSON.stringify({ event: "cron_consolidate_summary", ...summary }));
     res.status(200).json(summary);
   } catch (err) {
-    respondServerError(res, "cron_consolidate_fatal", err, "Cron consolidate failed", { durationMs: Date.now() - startedAt });
+    console.error(JSON.stringify({ event: "cron_consolidate_fatal", error: err.message }));
+    res.status(500).json({ error: err.message, durationMs: Date.now() - startedAt });
   }
 }
 

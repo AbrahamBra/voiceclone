@@ -6,7 +6,6 @@ import { isEmbeddingAvailable, chunkText, embedAndStore, embed } from "../lib/em
 import { kmeansSelectRepresentatives } from "../lib/fidelity.js";
 import { extractEntitiesFromContent } from "../lib/graph-extraction.js";
 import { rateLimit, getClientIp } from "./_rateLimit.js";
-import { respondServerError } from "../lib/api-errors.js";
 import { withTimeout } from "../lib/with-timeout.js";
 import { CLONE_SYSTEM_PROMPT, STYLE_ANALYSIS_PROMPT, DM_ANALYSIS_PROMPT, ONTOLOGY_PROMPT } from "../lib/prompts/clone.js";
 
@@ -406,6 +405,7 @@ ${neverDoes}
     });
 
   } catch (err) {
-    respondServerError(res, "clone_error", err, "Erreur lors de la creation du clone");
+    console.log(JSON.stringify({ event: "clone_error", ts: new Date().toISOString(), error: err.message }));
+    res.status(500).json({ error: "Erreur lors de la creation du clone: " + err.message });
   }
 }

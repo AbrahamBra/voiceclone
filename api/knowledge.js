@@ -6,7 +6,6 @@ import { chunkText, embedAndStore } from "../lib/embeddings.js";
 import { clearIntelligenceCache, getIntelligenceId } from "../lib/knowledge-db.js";
 import { withTimeout } from "../lib/with-timeout.js";
 import { KEYWORD_PROMPT } from "../lib/prompts/knowledge.js";
-import { rateLimit, getClientIp } from "./_rateLimit.js";
 
 export default async function handler(req, res) {
   setCors(res, "GET, POST, DELETE, OPTIONS");
@@ -104,15 +103,6 @@ export default async function handler(req, res) {
 
     clearIntelligenceCache(delIntellId);
     res.json({ ok: true });
-    return;
-  }
-
-  // POST-only rate limit: 20 uploads / 10 min per IP
-  // Caps abuse of file upload + linkedin_post ingestion without throttling GET/DELETE.
-  const rl = await rateLimit(getClientIp(req), { bucket: "knowledge_post", windowMs: 600_000, max: 20 });
-  if (!rl.allowed) {
-    res.setHeader("Retry-After", String(rl.retryAfter || 600));
-    res.status(429).json({ error: "Trop d'uploads — reessayez plus tard.", retryAfter: rl.retryAfter });
     return;
   }
 
