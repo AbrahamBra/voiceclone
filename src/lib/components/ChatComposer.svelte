@@ -3,6 +3,7 @@
   // déclenchement du draft clone (textarea = consigne optionnelle).
   // Remplace ChatInput + l'ex-composer-toolbar.
   import { CANONICAL_SCENARIOS } from "$lib/scenarios.js";
+  import { inferPrimary, shouldShowPasteZone } from "$lib/composer-state.js";
 
   let {
     disabled = false,
@@ -13,6 +14,8 @@
     onSwitchScenario,     // (scenarioId) => Promise<void> — flip scenario_type before drafting (DM sub-mode)
     onIngestPost,         // (post: string) => void — called when user submits a hand-written post to ingest as rules
     onAddProspectReply,   // (content: string) => Promise<void> — DM only, logs prospect message with turn_kind='prospect'
+    lastTurnKind = null,              // NEW : 'toi'|'prospect'|'clone_draft'|'draft_rejected'|null
+    onPasteDismiss,                   // NEW : () => void — appelé au dismiss de la zone paste
   } = $props();
 
   // DM sub-modes exposed as CTAs in the composer. Clicking one switches
@@ -29,10 +32,35 @@
   // Ingest mode : user wants to paste a hand-written post to teach the clone.
   // Flip les CTA + placeholder. Reset à chaque changement de scénario.
   let ingestMode = $state(false);
-  // Prospect-reply mode : user a reçu une réponse DM qu'il veut logger
-  // (turn_kind='prospect'). Pas d'appel LLM — juste un INSERT message.
-  let prospectMode = $state(false);
-  $effect(() => { scenarioType; ingestMode = false; prospectMode = false; });
+  $effect(() => { scenarioType; ingestMode = false; });
+
+  // --- Zone paste (réponse prospect) — NEW ---
+  let pasteDismissed = $state(false);
+  let pasteText = $state("");
+  let showPasteZone = $derived(
+    shouldShowPasteZone({ isDmMode, lastTurnKind, pasteDismissed })
+  );
+  // Reset dismiss quand lastTurnKind change (nouvel envoi → re-propose la zone).
+  // On ne wipe PAS pasteText ici : submitPaste/dismissPaste s'en chargent déjà,
+  // et préserver le texte évite de perdre la saisie si un message arrive
+  // pendant que l'opérateur tape.
+  $effect(() => { lastTurnKind; pasteDismissed = false; });
+
+  // --- CTA primaire inféré — NEW ---
+  let inferredPrimary = $derived(
+    inferPrimary({ isDmMode, isEmptyConversation, lastTurnKind })
+  );
+
+  let actionMenuEl = $state(undefined);
+  $effect(() => {
+    function onDocClick(e) {
+      if (actionMenuEl && !actionMenuEl.contains(e.target)) {
+        actionMenuEl.open = false;
+      }
+    }
+    document.addEventListener("click", onDocClick);
+    return () => document.removeEventListener("click", onDocClick);
+  });
 
   const LINKEDIN_URL_RE = /https?:\/\/(?:www\.)?linkedin\.com\/in\/[^\s/?#]+/i;
 
@@ -63,9 +91,7 @@
   let chars = $derived(text.length);
   const PROSPECT_MIN = 3;
   let countState = $derived(
-    prospectMode
-      ? (chars === 0 ? "idle" : chars < PROSPECT_MIN ? "under" : "ok")
-      : ingestMode
+    ingestMode
       ? (chars === 0 ? "idle" : chars < INGEST_MIN ? "under" : "ok")
       : !target || chars === 0 ? "idle"
       : chars < target.min ? "under"
@@ -85,13 +111,11 @@
   let placeholderText = $derived(
     scenarioMissing
       ? "Sélectionne un scénario pour débloquer le composer"
-      : prospectMode
-        ? "Colle la réponse de ton prospect — elle sera ajoutée au fil (pas de draft auto)"
-        : ingestMode
-          ? "Colle ton post ici — on en extraira des règles à valider (min 50 caractères)"
-          : scenarioType?.startsWith("post")
-            ? "Décris le sujet du post ou colle une inspiration (Cmd+Enter = générer)"
-            : "Tape une consigne pour draft la suite (Cmd+Enter). Réponse reçue → bouton 📥"
+      : ingestMode
+        ? "Colle ton post ici — on en extraira des règles à valider (min 50 caractères)"
+        : scenarioType?.startsWith("post")
+          ? "Décris le sujet du post ou colle une inspiration (Cmd+Enter = générer)"
+          : "Tape une consigne pour draft la suite (Cmd+Enter)"
   );
 
   // Paste-detected LinkedIn URL → inline "Analyser" banner. Dismissable.
@@ -160,12 +184,34 @@
     });
   }
 
+  function dismissPaste() {
+    pasteDismissed = true;
+    pasteText = "";
+    onPasteDismiss?.();
+  }
+
+  async function submitPaste() {
+    const content = pasteText.trim();
+    if (content.length < PROSPECT_MIN) return;
+    pasteText = "";
+    await onAddProspectReply?.(content);
+  }
+
+  function handlePasteKeydown(e) {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      submitPaste();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      dismissPaste();
+    }
+  }
+
   function handleKeydown(e) {
     // Cmd/Ctrl+Enter = action primaire du mode courant
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      if (prospectMode) addProspectReply();
-      else if (ingestMode) ingestPost();
+      if (ingestMode) ingestPost();
       else draftNext();
     }
     // Shift+Enter = newline (default)
@@ -198,46 +244,39 @@
     onIngestPost?.(post);
   }
 
-  function startProspect() {
-    if (effectiveDisabled) return;
-    prospectMode = true;
-    text = "";
-    requestAnimationFrame(() => {
-      if (!textareaEl) return;
-      textareaEl.focus();
-      autoResize();
-    });
-  }
-
-  function cancelProspect() {
-    prospectMode = false;
-    text = "";
-    if (textareaEl) textareaEl.style.height = "auto";
-  }
-
-  async function addProspectReply() {
-    if (effectiveDisabled) return;
-    const content = text.trim();
-    if (content.length < PROSPECT_MIN) return;
-    text = "";
-    prospectMode = false;
-    if (textareaEl) textareaEl.style.height = "auto";
-    await onAddProspectReply?.(content);
-  }
 </script>
+
+{#if showPasteZone}
+  <div class="paste-zone" role="region" aria-label="Réponse du prospect">
+    <header class="paste-header">
+      <span class="paste-label">📥 Il a répondu ?</span>
+      <button class="paste-dismiss" type="button" onclick={dismissPaste} aria-label="Ignorer"><span aria-hidden="true">×</span></button>
+    </header>
+    <textarea
+      class="paste-textarea"
+      bind:value={pasteText}
+      onkeydown={handlePasteKeydown}
+      placeholder="Colle sa réponse ici…"
+      rows="2"
+    ></textarea>
+    <footer class="paste-footer">
+      <button
+        class="paste-submit"
+        type="button"
+        onclick={submitPaste}
+        disabled={pasteText.trim().length < PROSPECT_MIN}
+      >
+        ajouter au fil
+      </button>
+      <span class="paste-hint">Cmd+Enter · Esc pour annuler</span>
+    </footer>
+  </div>
+{/if}
 
 <div class="composer" class:composer-locked={scenarioMissing}>
   {#if scenarioMissing}
     <div class="scenario-gate mono" role="status">
       → Choisis un scénario (haut de la page) avant d'écrire — le draft en dépend.
-    </div>
-  {:else if prospectMode}
-    <div class="char-counter mono" data-state={countState} aria-live="polite">
-      <span class="count">{chars}</span>
-      <span class="sep"> · </span>
-      <span class="target">
-        {chars < PROSPECT_MIN ? "colle la réponse reçue" : "prêt à ajouter"}
-      </span>
     </div>
   {:else if ingestMode}
     <div class="char-counter mono" data-state={countState} aria-live="polite">
@@ -302,20 +341,7 @@
   ></textarea>
 
   <div class="actions">
-    {#if prospectMode}
-      <button
-        class="btn-primary btn-prospect"
-        type="button"
-        onclick={addProspectReply}
-        disabled={effectiveDisabled || text.trim().length < PROSPECT_MIN}
-        title="Ajoute la réponse du prospect au fil (turn_kind=prospect). Cmd+Enter"
-      >
-        📥 ajouter la réponse
-      </button>
-      <button class="btn-cancel-ingest" type="button" onclick={cancelProspect}>
-        annuler
-      </button>
-    {:else if ingestMode}
+    {#if ingestMode}
       <button
         class="btn-primary btn-ingest"
         type="button"
@@ -329,33 +355,59 @@
         annuler
       </button>
     {:else if isDmMode}
-      <!-- 4 sub-mode CTAs replace the single adaptive button. Each click
-           switches scenario_type (same kind = no conv reset) then drafts.
-           The currently active sub-mode is visually marked. Cmd+Enter still
-           drafts in the active sub-mode. -->
-      {#each DM_SUBMODES as sub (sub.id)}
+      {#if inferredPrimary}
+        {@const primary = DM_SUBMODES.find(s => s.id === inferredPrimary)}
         <button
-          class="btn-dm"
-          class:btn-dm-active={sub.id === scenarioType}
+          class="btn-primary btn-dm-primary"
           type="button"
-          onclick={() => draftDmSubmode(sub.id)}
+          onclick={() => draftDmSubmode(primary.id)}
           disabled={effectiveDisabled}
-          aria-pressed={sub.id === scenarioType}
-          title="{sub.label} — bascule en mode {sub.id}"
+          title="{primary.label} — Cmd+Enter sur le textarea draft en mode actif"
         >
-          {sub.label}
+          {primary.label}
         </button>
-      {/each}
-      {#if onAddProspectReply}
-        <button
-          class="btn-prospect-toggle"
-          type="button"
-          onclick={startProspect}
-          disabled={effectiveDisabled}
-          title="Ton prospect vient de répondre ? Colle sa réponse pour la logger dans le fil."
-        >
-          📥 j'ai reçu
-        </button>
+        <details class="action-menu" bind:this={actionMenuEl}>
+          <summary>autre action ▾</summary>
+          <ul>
+            {#each DM_SUBMODES.filter(s => s.id !== inferredPrimary) as sub (sub.id)}
+              <li>
+                <button
+                  type="button"
+                  onclick={() => {
+                    draftDmSubmode(sub.id);
+                    if (actionMenuEl) actionMenuEl.open = false;
+                  }}
+                  disabled={effectiveDisabled}
+                >
+                  {sub.label}
+                </button>
+              </li>
+            {/each}
+            <li>
+              <button
+                type="button"
+                disabled
+                title="bientôt — entraîne ton clone en conversation directe"
+              >
+                💬 parler au clone
+              </button>
+            </li>
+          </ul>
+        </details>
+      {:else}
+        {#each DM_SUBMODES as sub (sub.id)}
+          <button
+            class="btn-dm"
+            class:btn-dm-active={sub.id === scenarioType}
+            type="button"
+            onclick={() => draftDmSubmode(sub.id)}
+            disabled={effectiveDisabled}
+            aria-pressed={sub.id === scenarioType}
+            title="{sub.label} — bascule en mode {sub.id}"
+          >
+            {sub.label}
+          </button>
+        {/each}
       {/if}
     {:else}
       <button class="btn-primary" type="button" onclick={draftNext} disabled={effectiveDisabled} title="Génère un clone_draft (textarea = consigne optionnelle). Cmd+Enter">
@@ -521,27 +573,6 @@
   }
   .btn-cancel-ingest:hover { color: var(--ink); }
 
-  /* Mode "j'ai reçu" : toggle dashed en mode DM, puis bouton plein en mode prospect. */
-  .btn-prospect-toggle {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    padding: 6px 10px;
-    cursor: pointer;
-    border: 1px dashed var(--rule-strong);
-    background: var(--paper);
-    color: var(--ink-70);
-  }
-  .btn-prospect-toggle:hover:not(:disabled) { border-color: var(--ink); color: var(--ink); }
-  .btn-prospect-toggle:disabled { opacity: 0.5; cursor: not-allowed; }
-
-  .btn-prospect { background: var(--ink); border-color: var(--ink); }
-  .btn-prospect:disabled {
-    background: var(--paper);
-    color: var(--ink-40);
-    border: 1px dashed var(--rule-strong);
-    opacity: 1;
-  }
-
   /* DM sub-mode CTAs. Row of 4 compact buttons. Active sub-mode is filled
      vermillon to signal "this is what will fire on Cmd+Enter", inactive ones
      are outlined but still clickable (one click = switch + draft). */
@@ -583,5 +614,123 @@
       gap: 6px;
     }
     .btn-dm { width: 100%; }
+  }
+
+  .btn-dm-primary {
+    font-size: 13px;
+    padding: 10px 20px;
+    min-width: 180px;
+    font-weight: 500;
+  }
+
+  .action-menu {
+    position: relative;
+    font-family: var(--font-mono);
+  }
+  .action-menu summary {
+    font-size: 11px;
+    padding: 8px 12px;
+    cursor: pointer;
+    list-style: none;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    color: var(--ink-70);
+    user-select: none;
+  }
+  .action-menu summary::-webkit-details-marker { display: none; }
+  .action-menu summary:hover { border-color: var(--ink); color: var(--ink); }
+  .action-menu[open] summary { background: var(--paper-subtle, #f6f5f1); }
+  .action-menu ul {
+    position: absolute;
+    right: 0;
+    bottom: 100%;
+    margin: 0 0 4px 0;
+    padding: 4px 0;
+    min-width: 200px;
+    list-style: none;
+    background: var(--paper);
+    border: 1px solid var(--rule-strong);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    z-index: 10;
+  }
+  .action-menu li { margin: 0; padding: 0; }
+  .action-menu li button {
+    width: 100%;
+    text-align: left;
+    padding: 8px 14px;
+    background: transparent;
+    border: none;
+    font-family: inherit;
+    font-size: 11px;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .action-menu li button:hover:not(:disabled) { background: var(--paper-subtle, #f6f5f1); }
+  .action-menu li button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Zone paste "réponse prospect" — apparaît quand on attend une réponse */
+  .paste-zone {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0 16px;
+    padding: 10px 12px;
+    border: 1px dashed var(--rule-strong);
+    border-bottom: none;
+    background: var(--paper-subtle, #f6f5f1);
+  }
+  .paste-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .paste-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-70);
+  }
+  .paste-dismiss {
+    background: transparent;
+    border: none;
+    color: var(--ink-40);
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 6px;
+    cursor: pointer;
+  }
+  .paste-dismiss:hover { color: var(--ink); }
+  .paste-textarea {
+    width: 100%;
+    min-height: 42px;
+    max-height: 120px;
+    resize: vertical;
+    padding: 6px 8px;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .paste-textarea:focus { outline: 1px solid var(--ink); outline-offset: -1px; }
+  .paste-footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .paste-submit {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 6px 14px;
+    background: var(--ink);
+    color: var(--paper);
+    border: 1px solid var(--ink);
+    cursor: pointer;
+  }
+  .paste-submit:hover:not(:disabled) { background: var(--vermillon); border-color: var(--vermillon); }
+  .paste-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+  .paste-hint {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--ink-40);
   }
 </style>

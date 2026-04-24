@@ -35,6 +35,13 @@
   let scenario = $derived($page.data.scenario);
   let scenarioTypeFromUrl = $derived($page.data.scenarioType);
 
+  let lastTurnKind = $derived.by(() => {
+    const narrative = $messages.filter(m =>
+      ['toi', 'prospect', 'clone_draft', 'draft_rejected'].includes(m.turn_kind)
+    );
+    return narrative.at(-1)?.turn_kind ?? null;
+  });
+
   let loading = $state(true);
   let sidebarOpen = $state(false);
   let railOpen = $state(false);  // mobile-only: toggles feedback rail drawer below 900px
@@ -923,6 +930,27 @@
     }
   }
 
+  // Signal silencieux — pas de toast, pas de re-fetch. Respecte "chaque action = data".
+  async function handlePasteDismiss() {
+    // Defensive : la zone paste ne devrait pas être visible sans 'toi', mais on vérifie.
+    const lastToi = [...$messages].reverse().find(m => m.turn_kind === 'toi');
+    if (!lastToi) return;
+
+    try {
+      await fetch("/api/feedback-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          conversation_id: $currentConversationId,
+          message_id: lastToi.id,
+          event_type: 'paste_zone_dismissed',
+        }),
+      });
+    } catch (err) {
+      console.warn("paste_zone_dismissed signal failed:", err);
+    }
+  }
+
   // ★ excellent : même flow que validate mais event_type='excellent' —
   // split du signal pour distinguer "passable" vs "pattern à multiplier".
   // Voir migration 031_feedback_excellent.sql.
@@ -1173,6 +1201,8 @@
             onAnalyzeProspect={(url) => { leadInitialUrl = url; leadOpen = true; }}
             onIngestPost={handleIngestPost}
             onAddProspectReply={handleAddProspectReply}
+            {lastTurnKind}
+            onPasteDismiss={handlePasteDismiss}
           />
         </div>
 
