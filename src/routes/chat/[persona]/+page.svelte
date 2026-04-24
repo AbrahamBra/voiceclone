@@ -1195,7 +1195,7 @@
           <ChatComposer
             disabled={$sending}
             scenarioType={$currentScenarioType}
-            isEmptyConversation={$messages.length === 0}
+            isEmptyConversation={lastTurnKind === null}
             onDraftNext={handleDraftNext}
             onSwitchScenario={handleScenarioChange}
             onAnalyzeProspect={(url) => { leadInitialUrl = url; leadOpen = true; }}
