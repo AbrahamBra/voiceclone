@@ -11,7 +11,8 @@
     "api/feedback.js": { "maxDuration": 60 },
     "api/cron-consolidate.js": { "maxDuration": 300 },
     "api/cron-protocol-v2-drain.js": { "maxDuration": 60 },
-    "api/cron-auto-critique.js": { "maxDuration": 300 }
+    "api/cron-auto-critique.js": { "maxDuration": 300 },
+    "api/cron-fidelity.js": { "maxDuration": 300 }
   },
   "crons": [
     {
@@ -25,6 +26,10 @@
     {
       "path": "/api/cron-auto-critique",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron-fidelity",
+      "schedule": "0 3 * * *"
     }
   ]
 }
