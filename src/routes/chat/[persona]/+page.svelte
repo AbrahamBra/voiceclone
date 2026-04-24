@@ -1335,8 +1335,13 @@
             created_at: ev.created_at,
             rules_fired: [],
           });
+          showToast("Correction enregistrée ✓");
+        } else {
+          showToast("Correction non enregistrée — réessaie");
         }
-      } catch { /* best-effort */ }
+      } catch {
+        showToast("Correction non enregistrée — réessaie");
+      }
     }}
   />
 
