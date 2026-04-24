@@ -651,4 +651,70 @@
     }
     .btn-dm { width: 100%; }
   }
+
+  /* Zone paste "réponse prospect" — apparaît quand on attend une réponse */
+  .paste-zone {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0 16px;
+    padding: 10px 12px;
+    border: 1px dashed var(--rule-strong);
+    border-bottom: none;
+    background: var(--paper-subtle, #f6f5f1);
+  }
+  .paste-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .paste-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-70);
+  }
+  .paste-dismiss {
+    background: transparent;
+    border: none;
+    color: var(--ink-40);
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 6px;
+    cursor: pointer;
+  }
+  .paste-dismiss:hover { color: var(--ink); }
+  .paste-textarea {
+    width: 100%;
+    min-height: 42px;
+    max-height: 120px;
+    resize: vertical;
+    padding: 6px 8px;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .paste-textarea:focus { outline: 1px solid var(--ink); outline-offset: -1px; }
+  .paste-footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .paste-submit {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 6px 14px;
+    background: var(--ink);
+    color: var(--paper);
+    border: 1px solid var(--ink);
+    cursor: pointer;
+  }
+  .paste-submit:hover:not(:disabled) { background: var(--vermillon); border-color: var(--vermillon); }
+  .paste-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+  .paste-hint {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--ink-40);
+  }
 </style>
