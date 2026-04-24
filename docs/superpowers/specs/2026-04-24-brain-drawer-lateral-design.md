@@ -10,18 +10,26 @@
 - `2026-04-24-protocole-vivant-design.md` — la future vue Doctrine (Sprint 3 du roadmap protocole-v2) intégrera un **SSE activity feed** à l'intérieur du `ProtocolPanel`. Ce chantier **n'anticipe pas** cette intégration : il se contente de monter le `ProtocolPanel` actuel dans le drawer. Quand la v2 landera, le remplacement sera transparent.
 - Chantier #4 (pas encore spec'd) — "Signal visuel transverse" : les pulses cross-UI arriveront via ce chantier ultérieur. Ce drawer reste une pure chrome sans bande activité propre (cf. section "Hors scope").
 
-**Files (à créer/modifier) :**
+**Files (à créer / modifier / supprimer) :**
 - new `src/lib/components/BrainDrawer.svelte` — shell drawer : tabs bar, slide animation, media query desktop/mobile, handlers ESC/✕, monte les 4 `Panel` existants
 - new `src/lib/stores/brainDrawer.js` — store partagé `{ open, tab }` + API `open/close/toggle/setTab/openAt`, sync bidirectionnel avec `$page.url.searchParams`
-- modified `src/routes/chat/[persona]/+page.svelte` — ajout bouton 🧠 top-bar, mount `<BrainDrawer />`, remplacement du `goto('/brain/...')` dans ⌘K par `brainDrawer.openAt(tab)`, wrapper CSS pour side-by-side 60/40
-- modified `src/routes/brain/[persona]/+page.svelte` — SUPPRIMÉ, remplacé par `+page.server.js` redirect 307
-- new `src/routes/brain/[persona]/+page.server.js` — redirect `/brain/[persona]` → `/chat/[persona]?brain=<tab>` (préserve hash legacy)
-- new migration `supabase/038_feedback_brain_drawer.sql` — étend CHECK `feedback_events.event_type` avec `'brain_drawer_opened'` et `'brain_edit_during_draft'`
-- new tests : `test/brain-drawer-store.test.js`, `test/brain-drawer-url.test.js`, `test/brain-redirect.test.js`, `test/brain-signals.test.js`, `test/migrations/038-brain-events.test.js`
+- new `src/lib/api/brainEvents.js` — helper `emitBrainEvent(type, payload)` qui POST sur `/api/feedback-events` avec le dernier message narratif de la conv courante (ou skip silencieusement si aucun narratif — préserve l'invariant DB `message_id NOT NULL`)
+- modified `src/lib/components/ProtocolPanel.svelte` — ajout d'un **prop callback optionnel** `onRuleAdded?: () => void` invoqué après un ajout de règle réussi. Prop optionnel → tests existants et usages legacy restent compatibles.
+- modified `src/routes/chat/[persona]/+page.svelte` — ajout bouton 🧠 top-bar, mount `<BrainDrawer />`, remplacement du `goto('/brain/...')` dans ⌘K par `brainDrawer.openAt(tab)`, wrapper CSS pour side-by-side 60/40, `$effect` de sync URL→store, handler `celebrateRuleAdded` qui appelle `emitBrainEvent('brain_edit_during_draft', ...)` puis déclenche pulse + toast
+- modified `api/feedback-events.js` — élargit la `VALID_TYPES` (ligne 3) en ajoutant `copy_paste_out`, `regen_rejection` (manquants depuis 040 — drift API vs DB), `brain_drawer_opened`, `brain_edit_during_draft`. Pas de changement de schéma, pas de relaxation du `message_id NOT NULL` (cf. "Hors scope" § 7 — le client skip l'émission si aucun message narratif existe).
+- deleted `src/routes/brain/[persona]/+page.svelte` (163 lignes) — remplacé par `+page.server.js`
+- deleted `src/routes/brain/[persona]/+page.js` — remplacé par `+page.server.js` (la logique côté client disparaît avec le redirect)
+- new `src/routes/brain/[persona]/+page.server.js` — redirect 307 `/brain/[persona]` → `/chat/[persona]?brain=<tab>` (préserve hash legacy `#<tab>` et query legacy `?tab=<tab>`)
+- new migration `supabase/041_feedback_brain_drawer.sql` — étend CHECK `feedback_events.event_type` avec `'brain_drawer_opened'` et `'brain_edit_during_draft'`. Numéro 041 car 038/039/040 sont déjà pris (038/039 = protocole-v2 core/hooks, 040 = training signal capture).
+- new tests :
+  - `test/brain-drawer-store.test.js` — open/close/toggle/setTab, openAt fallback sur lastTab, syncFromUrl bidirectionnel, précédence URL > localStorage > DEFAULT, persistence `brainDrawer:lastTab`.
+  - `test/brain-drawer-url.test.js` — helpers URL : parse `?brain=<tab>`, fallback tab invalide → `connaissance`, build URL avec `replaceState:false`, serialisation avec et sans param.
+  - `test/brain-redirect.test.js` — `+page.server.js` retourne 307, préserve `#protocole` legacy → `?brain=protocole`, préserve `?tab=X` legacy, fallback tab invalide → `connaissance`, params.persona invalide → propage 404 SvelteKit standard.
+  - `test/brain-signals.test.js` — `emitBrainEvent` : source `top_button`/`cmd_k`/`url_redirect` passé correctement, skip silencieux si aucun message narratif dans la conv, `brain_edit_during_draft` seulement si `hasDraft === true`, best-effort (warn console sans bloquer UX) si le POST échoue.
+  - `test/protocol-panel-callback.test.js` — ajout d'une règle dans `ProtocolPanel` déclenche `onRuleAdded` une seule fois si le save backend réussit (assert via mock), n'est **pas** appelé en cas d'erreur save (pas de célébration sur échec).
+  - `test/migrations/041-brain-events.test.js` — CHECK accepte les 11 event_types valides (9 existants + 2 nouveaux), rejette un event inventé.
 
-**Fichiers inchangés (réutilisation directe) :** `KnowledgePanel.svelte`, `ProtocolPanel.svelte`, `IntelligencePanel.svelte`, `SettingsPanel.svelte`. Chaque Panel reçoit déjà `{personaId}` en prop et gère son fetch/save de manière autonome. Le drawer ne fait que les monter dans un nouveau container.
-
-**Une modification minimale à `ProtocolPanel.svelte` :** ajout d'un prop callback optionnel `onRuleAdded?: () => void` invoqué après un ajout de règle réussi. Utilisé par le drawer pour déclencher la célébration côté chat. Le prop est optionnel → `/brain/[persona]` legacy (avant redirect) et tests existants restent compatibles.
+**Fichiers inchangés (réutilisation directe) :** `KnowledgePanel.svelte`, `IntelligencePanel.svelte`, `SettingsPanel.svelte`. Chaque Panel reçoit déjà `{personaId}` en prop et gère son fetch/save de manière autonome. Le drawer ne fait que les monter dans un nouveau container. `SettingsPanel` supporte déjà `embedded={true}` + `onClose` — comportement préservé (vérifié depuis `/brain/[persona]/+page.svelte` actuel, lignes 104-105).
 
 ## Convictions produit → décisions design
 
@@ -40,6 +48,13 @@
 ## Spec détaillée
 
 ### Store `brainDrawer`
+
+**Précédence de résolution du tab** (important pour la cohérence) :
+1. **URL `?brain=<tab>`** — gagne toujours si présent et valide. Représente l'intention explicite user (lien partagé, deep-link, nav).
+2. **`localStorage.brainDrawer:lastTab`** — si pas d'URL param, on réouvre sur le dernier onglet que le user a activement choisi.
+3. **`DEFAULT_TAB = 'connaissance'`** — si ni URL ni localStorage.
+
+**`toggle()` re-ouvre sur le dernier onglet** (pas sur `DEFAULT_TAB`). C'est l'intention : fermer+re-ouvrir = geste de dismiss, pas de reset.
 
 ```js
 // src/lib/stores/brainDrawer.js
@@ -68,6 +83,7 @@ function createBrainDrawerStore() {
 
   return {
     subscribe,
+    // open(undefined) → lastTab. open('protocole') → 'protocole'. Invalid → lastTab.
     open(tab) {
       const t = VALID_TABS.includes(tab) ? tab : lastTab();
       rememberTab(t);
@@ -81,9 +97,18 @@ function createBrainDrawerStore() {
       syncUrl(null);
       update(s => ({ ...s, open: false }));
     },
+    // toggle() → re-ouvre sur l'onglet *courant* (pas lastTab ni DEFAULT).
+    // Si user avait navigué via URL `?brain=intelligence`, toggle off puis on garde 'intelligence'.
     toggle() {
       const s = get({ subscribe });
-      return s.open ? this.close() : this.open();
+      if (s.open) {
+        this.close();
+      } else {
+        const t = VALID_TABS.includes(s.tab) ? s.tab : lastTab();
+        rememberTab(t);
+        syncUrl(t);
+        set({ open: true, tab: t });
+      }
     },
     setTab(tab) {
       if (!VALID_TABS.includes(tab)) return;
@@ -91,9 +116,13 @@ function createBrainDrawerStore() {
       syncUrl(tab);
       update(s => ({ ...s, tab }));
     },
-    // Appelé depuis le layout chat pour réconcilier URL → store au mount
+    // Appelé depuis le layout chat (via $effect) pour réconcilier URL → store
+    // au mount ET à chaque changement de $page.url.searchParams.
+    // URL est la source de vérité ; localStorage n'intervient qu'à l'ouverture
+    // explicite sans param.
     syncFromUrl(urlTab) {
       if (urlTab && VALID_TABS.includes(urlTab)) {
+        rememberTab(urlTab);
         set({ open: true, tab: urlTab });
       } else {
         update(s => ({ ...s, open: false }));
@@ -152,7 +181,7 @@ export const VALID_BRAIN_TABS = VALID_TABS;
   }
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} />
 
 {#if $brainDrawer.open}
   <aside class="brain-drawer" role="complementary" aria-label="Cerveau du clone">
@@ -248,30 +277,98 @@ export const VALID_BRAIN_TABS = VALID_TABS;
 </style>
 ```
 
+### Helper `emitBrainEvent`
+
+`src/lib/api/brainEvents.js` — helper fire-and-forget qui encapsule la résolution `message_id` + le POST. Référencé par les 3 call sites décrits plus bas.
+
+```js
+// src/lib/api/brainEvents.js
+import { get } from 'svelte/store';
+import { messages, currentConversationId } from '$lib/stores/chat';  // stores existants
+import { authHeaders } from '$lib/auth';  // helper existant utilisé par les autres appels feedback
+
+const NARRATIVE_KINDS = ['toi', 'prospect', 'clone_draft', 'draft_rejected'];
+
+/**
+ * Émet un event brain sur /api/feedback-events, fire-and-forget.
+ * Skip silencieusement si la conv n'a aucun message narratif (invariant message_id NOT NULL).
+ *
+ * @param {'brain_drawer_opened'|'brain_edit_during_draft'} type
+ * @param {{source?: 'top_button'|'cmd_k'|'url_redirect', tab?: string, has_draft?: boolean}} payload
+ */
+export async function emitBrainEvent(type, payload = {}) {
+  const convId = get(currentConversationId);
+  if (!convId) return;  // pas de conv active → skip
+
+  const narrative = get(messages).filter(m => NARRATIVE_KINDS.includes(m.turn_kind));
+  const lastNarrative = narrative.at(-1);
+  if (!lastNarrative) return;  // conv vierge → skip silencieux, UX préservée
+
+  try {
+    const res = await fetch('/api/feedback-events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({
+        conversation_id: convId,
+        message_id: lastNarrative.id,
+        event_type: type,
+        // payload stocké dans un champ JSON existant sur feedback_events si présent,
+        // sinon loggé côté console. Vérifier schema actuel lors de l'impl.
+        meta: payload,
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      console.warn(`${type} HTTP`, res.status, text);
+    }
+  } catch (err) {
+    console.warn(`${type} network error:`, err);
+  }
+}
+```
+
 ### Bouton top-bar + layout chat
 
-Dans `src/routes/chat/[persona]/+page.svelte`, 3 zones à modifier :
+Dans `src/routes/chat/[persona]/+page.svelte`, 3 zones à modifier (les variables `composerText`, `showToast`, `personaId`, `personaName`, `$messages`, `$currentConversationId` existent déjà dans le fichier, cf. chantier #1) :
 
-**1. Import + bouton top-bar (remplace l'absence actuelle, post-#70) :**
+**1. Import + bouton top-bar + handler célébration + emission `top_button` :**
 ```svelte
 <script>
   import BrainDrawer from '$lib/components/BrainDrawer.svelte';
   import { brainDrawer } from '$lib/stores/brainDrawer';
+  import { emitBrainEvent } from '$lib/api/brainEvents';
   import { page } from '$app/stores';
 
-  // Sync URL → store au mount + à chaque nav
+  // Sync URL → store au mount + à chaque nav.
+  // Si ?brain arrive via URL (redirect legacy ou lien partagé), émet aussi le signal url_redirect.
+  let lastEmittedTabForUrl = null;
   $effect(() => {
     const urlTab = $page.url.searchParams.get('brain');
     brainDrawer.syncFromUrl(urlTab);
+    if (urlTab && urlTab !== lastEmittedTabForUrl) {
+      emitBrainEvent('brain_drawer_opened', { source: 'url_redirect', tab: urlTab });
+      lastEmittedTabForUrl = urlTab;
+    } else if (!urlTab) {
+      lastEmittedTabForUrl = null;  // reset pour pouvoir ré-émettre si re-ouvert via URL
+    }
   });
 
+  // Draft actif = textarea contient du texte non vide.
   let hasActiveDraft = $derived(composerText.trim().length > 0);
+
+  // Source 1 : bouton 🧠 top-bar → toggle + émet 'top_button' à l'ouverture uniquement.
+  function handleBrainToggle() {
+    const wasClosed = !$brainDrawer.open;
+    brainDrawer.toggle();
+    if (wasClosed) {
+      emitBrainEvent('brain_drawer_opened', { source: 'top_button', tab: $brainDrawer.tab });
+    }
+  }
 
   function celebrateRuleAdded() {
     regenPulseActive = true;
     setTimeout(() => { regenPulseActive = false; }, 1500);
     showToast("Règle apprise — ↻ regénère pour l'appliquer");
-    // Emit signal
     emitBrainEvent('brain_edit_during_draft', { tab: $brainDrawer.tab, has_draft: true });
   }
 
@@ -285,7 +382,7 @@ Dans `src/routes/chat/[persona]/+page.svelte`, 3 zones à modifier :
     class="brain-toggle"
     aria-label="Ouvrir le cerveau du clone"
     aria-pressed={$brainDrawer.open}
-    onclick={() => brainDrawer.toggle()}
+    onclick={handleBrainToggle}
   >
     🧠
   </button>
@@ -325,16 +422,21 @@ Dans `src/routes/chat/[persona]/+page.svelte`, 3 zones à modifier :
 </style>
 ```
 
-**3. Palette ⌘K (ligne 1397 actuelle) :**
+**3. Palette ⌘K (ligne 1397 actuelle) — source 2 : `cmd_k` :**
 ```diff
 - { id: "open-brain", label: "Cerveau du clone", hint: "persona", action: () => goto(`/brain/${personaId}`) },
 + { id: "open-brain", label: "Cerveau du clone", hint: "persona", action: () => {
-+     brainDrawer.openAt();
++     brainDrawer.openAt();  // openAt() sans arg → utilise lastTab ou DEFAULT
 +     emitBrainEvent('brain_drawer_opened', { source: 'cmd_k', tab: $brainDrawer.tab });
 + } },
 ```
 
-Les 2 autres triggers (top-bar button, URL redirect) émettent avec `source: 'top_button'` / `source: 'url_redirect'` respectivement.
+**Récapitulatif des 3 sources d'émission `brain_drawer_opened`** :
+| Source | Call site | Condition d'émission |
+|---|---|---|
+| `top_button` | `handleBrainToggle()` dans `+page.svelte` (zone 1) | à l'ouverture uniquement (pas à la fermeture) |
+| `cmd_k` | palette `open-brain` dans `+page.svelte` (zone 3) | toujours (la palette ne sert qu'à ouvrir) |
+| `url_redirect` | `$effect` sync URL dans `+page.svelte` (zone 1) | à la première détection d'un `?brain=<tab>` dans l'URL (garde `lastEmittedTabForUrl` pour éviter les émissions répétées au même tab) |
 
 ### Redirect `/brain/[persona]` → `/chat/[persona]?brain=<tab>`
 
@@ -360,37 +462,61 @@ export function load({ params, url }) {
 
 Cascade : le layout parent `/chat/[persona]` se monte, lit `?brain=<tab>`, ouvre le drawer via `brainDrawer.syncFromUrl(tab)`, émet `brain_drawer_opened` avec `source: 'url_redirect'`.
 
-### Migration 038 — nouveaux event_types
+### Migration 041 — nouveaux event_types
 
-Fichier `supabase/038_feedback_brain_drawer.sql` — même pattern que 037 :
+Fichier `supabase/041_feedback_brain_drawer.sql` — même pattern que 040 (dernier dans la séquence, n'a pas réutilisé 037/038/039 déjà pris) :
 
 ```sql
--- 038_feedback_brain_drawer.sql
--- Ajoute 'brain_drawer_opened' et 'brain_edit_during_draft' aux event_types autorisés.
--- Émis respectivement : (a) quand l'opérateur ouvre le drawer cerveau latéral depuis
--- le chat (chantier #2), (b) quand il ajoute/corrige une règle dans le drawer
--- pendant qu'un draft est actif dans le composer — signal du moment data-move.
+-- 041_feedback_brain_drawer.sql
 --
--- Suit la séquence 029 / 031 / 032 / 037 qui ont déjà étendu ce CHECK.
+-- Chantier #2 (drawer cerveau latéral) — ajoute deux event_types au pipeline
+-- feedback :
+--   • brain_drawer_opened       — user ouvre le drawer cerveau depuis le chat
+--                                  (source: top_button | cmd_k | url_redirect)
+--   • brain_edit_during_draft   — user ajoute/corrige une règle dans le drawer
+--                                  pendant qu'un draft est actif dans le composer
+--                                  (signal du moment data-move, cible prioritaire)
+--
+-- Attaché au dernier message narratif (`toi`/`prospect`/`clone_draft`/`draft_rejected`)
+-- de la conv courante pour préserver l'invariant `message_id NOT NULL`. Si la conv
+-- n'a aucun message narratif, le client skip l'émission silencieusement (cf.
+-- §"Cas limites" du spec). Pas de relaxation DB.
+--
+-- Spec source : docs/superpowers/specs/2026-04-24-brain-drawer-lateral-design.md.
+-- Numéros 038/039 = protocole-v2 core/hooks (PR #79). 040 = training signal capture.
+-- Additif uniquement — aucun DROP destructif.
 
-ALTER TABLE feedback_events DROP CONSTRAINT IF EXISTS feedback_events_event_type_check;
+ALTER TABLE feedback_events
+  DROP CONSTRAINT IF EXISTS feedback_events_event_type_check;
 
-ALTER TABLE feedback_events ADD CONSTRAINT feedback_events_event_type_check
+ALTER TABLE feedback_events
+  ADD CONSTRAINT feedback_events_event_type_check
   CHECK (event_type IN (
     'validated',
+    'validated_edited',
     'corrected',
-    'client_validated',
-    'excellent',
     'saved_rule',
+    'excellent',
+    'client_validated',
+    'paste_zone_dismissed',
     'copy_paste_out',
     'regen_rejection',
-    'paste_zone_dismissed',
     'brain_drawer_opened',
     'brain_edit_during_draft'
   ));
+
+COMMENT ON COLUMN feedback_events.event_type IS
+  'Feedback taxonomy. 11 event types: validated, validated_edited, corrected, saved_rule, excellent, client_validated, paste_zone_dismissed, copy_paste_out, regen_rejection, brain_drawer_opened, brain_edit_during_draft. See 041_feedback_brain_drawer.sql.';
 ```
 
-**Invariants DB inchangés :** `conversation_id`, `message_id NOT NULL`, RLS par clone_id. Pour `brain_drawer_opened`, `message_id` peut être soit le dernier message narratif (`toi`/`prospect`/`clone_draft`), soit un UUID sentinel si aucun message n'existe encore — à déterminer côté API (`/api/feedback-events`) avec une petite query `ORDER BY created_at DESC LIMIT 1`.
+**Invariants DB inchangés :** `conversation_id`, `message_id NOT NULL`, RLS par clone_id. Aucune relaxation DB.
+
+**Policy `message_id` pour les deux nouveaux signaux (résolue côté client, pas DB) :**
+Les deux events sont attachés au **dernier message narratif** (`turn_kind ∈ {'toi','prospect','clone_draft','draft_rejected'}`) de la conv courante, même logique que `paste_zone_dismissed` (chantier #1). Si aucun message narratif n'existe encore dans la conv (conv vierge) :
+- `brain_drawer_opened` → **skip silencieux** (pas d'émission, pas d'erreur utilisateur). La télémétrie perd ces ouvertures-là ; c'est acceptable car le signal premier est `brain_edit_during_draft`, pas l'ouverture.
+- `brain_edit_during_draft` → par définition exige `hasActiveDraft === true`, ce qui implique que le composer contient du texte. Mais un draft n'a pas encore de `turn_kind` tant qu'il n'est pas envoyé (pas de row `messages` pour le texte en cours). Donc : skip silencieux aussi si la conv n'a aucun message narratif déjà posé. Dans ce cas le pulse visuel + toast s'affichent quand même (UX intact) — seul le signal DB est skip.
+
+Le skip est implémenté dans `src/lib/api/brainEvents.js` via une query `select("id").eq("conversation_id", convId).in("turn_kind", [...narrativeKinds]).order("created_at", { ascending: false }).limit(1)`. Pas de fetch si aucun retour → log `console.warn` + return.
 
 ### Cas limites
 
@@ -400,9 +526,9 @@ ALTER TABLE feedback_events ADD CONSTRAINT feedback_events_event_type_check
 | URL `?brain=invalid` | Fallback silencieux sur `'connaissance'`, drawer ouvert. Pas de log d'erreur. |
 | User presse ESC en tapant dans le composer | Drawer ne se ferme pas (focus = textarea). ESC hors input → ferme. |
 | User clique le bouton ↻ pendant le pulse celebration | Pulse s'interrompt naturellement (la regen déclenche son propre state). Pas de collision. |
-| Aucun message dans la conv + `brain_drawer_opened` émis | API `feedback-events` utilise le sentinel `null` pour `message_id` et skip le check FK (option 1) OU refuse silencieusement l'event (option 2). À décider lors de l'implémentation selon la contrainte DB actuelle. Cas réel : user ouvre conv vierge → clique 🧠. |
+| Aucun message narratif dans la conv + tentative d'émettre `brain_drawer_opened` ou `brain_edit_during_draft` | **Skip silencieux côté client** (cf. §"Policy message_id"). UX préservée (pulse/toast s'affichent quand même), signal DB non inséré. Pas de relaxation de l'invariant `message_id NOT NULL`. |
 | Switch persona pendant que le drawer Settings est en cours d'édition | `SettingsPanel` perd son state éphémère (form en cours). Acceptable : les Settings sont sauvés au blur/submit, pas en auto-save. Documenté comme "known minor loss" — pas de garde pour ce cas edge. |
-| Back browser après avoir navigué sur `/brain/X` (ancien lien) | Redirect 307 a réécrit l'URL en `/chat/X?brain=<tab>` dans l'historique, donc back du chat ferme le drawer, pas de re-redirect loop. |
+| Back browser après redirect `/brain/X` → `/chat/X?brain=<tab>` | Le redirect 307 côté serveur **ne crée pas** d'entrée historique pour `/brain/X` (le navigateur remplace par l'URL finale dans l'historique). Back retourne donc à la page précédant `/brain/X` (pas à `/chat/X` propre). Pour la navigation in-app (toggle drawer via `goto` avec `replaceState:false`), back ferme bien le drawer. Cas couvert par l'acceptance criterion #11 qui teste uniquement le toggle in-app. |
 | Deep-link `/brain/X#intelligence` bookmarké | Redirect 307 → `/chat/X?brain=intelligence`, drawer ouvert directement sur onglet intelligence. 1 seul hop. |
 
 ## Out of scope
@@ -429,7 +555,7 @@ Ce qui **ne** fait **pas** partie de ce chantier :
 8. **Célébration active** — tape un draft, ouvre drawer, ajoute une règle dans Protocole → bouton ↻ pulse 1.5s + toast "Règle apprise" → un row `feedback_events` avec `event_type='brain_edit_during_draft'` apparaît en DB.
 9. **Pas de célébration sans draft** — drawer ouvert sans rien taper, ajoute règle → pas de pulse, pas de toast, pas d'event `brain_edit_during_draft` (mais `saved_rule` normal).
 10. **ESC ferme le drawer sauf si focus composer** — ESC quand focus hors textarea ferme ; ESC pendant qu'on tape ne ferme pas.
-11. **Back browser** depuis `/chat/X?brain=protocole` retourne à `/chat/X` (drawer fermé, pas de re-redirect loop).
+11. **Back browser in-app** — depuis `/chat/X` (drawer fermé), ouvrir via bouton 🧠 → URL passe à `/chat/X?brain=<tab>`. Presser Back → retour à `/chat/X` drawer fermé (pas de re-redirect loop). N'inclut **pas** le back depuis une entrée initialement issue d'un redirect 307 `/brain/X` (cf. §"Cas limites") — ce cas est une limite connue du redirect serveur.
 12. **Mobile < 900px** : drawer full-screen, body scroll locké, `✕` ferme, scroll dans Panel fonctionne.
 
 ## Non-régression (checklist dev, pas tests auto)
@@ -444,13 +570,16 @@ Ce qui **ne** fait **pas** partie de ce chantier :
 ## Ordre de déploiement
 
 1. Créer branche `feat/brain-drawer` (already done during brainstorm).
-2. Écrire migration 038 + test migration séparé.
-3. Appliquer migration 038 sur DB Supabase dev (pas prod avant UI validée).
-4. Implémenter store + drawer component + tests store/url (TDD).
-5. Modifier `/chat/[persona]/+page.svelte` : top-bar button, mount drawer, wire ⌘K, celebration handler.
-6. Remplacer `/brain/[persona]/+page.svelte` par `+page.server.js` redirect + test redirect.
-7. Modifier `ProtocolPanel.svelte` : ajout prop `onRuleAdded` (1 ligne émission après save réussi).
-8. Tous tests unit verts.
-9. Push Preview Vercel → smoke manuel des 12 acceptance criteria.
-10. Apply migration 038 sur prod Supabase.
-11. Merge master **seulement si** preview smoke validé (convention `feedback_prod_without_ui_test.md`).
+2. Écrire migration 041 + `test/migrations/041-brain-events.test.js`.
+3. Appliquer migration 041 sur DB Supabase dev (pas prod avant UI validée).
+4. Ajouter `copy_paste_out` + `regen_rejection` + `brain_drawer_opened` + `brain_edit_during_draft` dans `VALID_TYPES` de `api/feedback-events.js` (ligne 3). Corrige le drift API↔DB hérité de 040.
+5. Implémenter `src/lib/stores/brainDrawer.js` + tests store (TDD).
+6. Implémenter `src/lib/api/brainEvents.js` + tests signals (TDD).
+7. Implémenter `src/lib/components/BrainDrawer.svelte` + tests (TDD si tests rendering possibles, sinon tests manuels dans preview).
+8. Modifier `ProtocolPanel.svelte` : ajout prop `onRuleAdded` + `test/protocol-panel-callback.test.js`.
+9. Modifier `/chat/[persona]/+page.svelte` : top-bar button, mount drawer, wire ⌘K (avec `source: 'cmd_k'`), celebration handler.
+10. Remplacer `/brain/[persona]/+page.svelte` + `+page.js` par `+page.server.js` redirect + `test/brain-redirect.test.js`.
+11. Tous tests unit verts (`npm test`).
+12. Push Preview Vercel → smoke manuel des 12 acceptance criteria.
+13. Apply migration 041 sur prod Supabase via SQL editor (pattern chantier #1).
+14. Merge master **seulement si** preview smoke validé (convention `feedback_prod_without_ui_test.md`).
