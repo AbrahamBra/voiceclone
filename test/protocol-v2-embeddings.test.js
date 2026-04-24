@@ -9,8 +9,8 @@ import {
 } from "../lib/protocol-v2-embeddings.js";
 
 describe("protocol-v2-embeddings constants", () => {
-  test("EMBEDDING_DIM matches proposition.embedding vector(1536)", () => {
-    assert.equal(EMBEDDING_DIM, 1536);
+  test("EMBEDDING_DIM matches proposition.embedding vector(1024) after migration 045", () => {
+    assert.equal(EMBEDDING_DIM, 1024);
   });
 
   test("SEMANTIC_DEDUP_THRESHOLD matches spec (0.85)", () => {
