@@ -1093,6 +1093,22 @@
     }
   }
 
+  // 📋 copy : user copied a bot draft out (LinkedIn, notes…). Implicit
+  // positive signal, weight 0.6. Fires for both full-message and per-block
+  // copies. Non-blocking.
+  function handleCopyOut(message, copiedText) {
+    if (!message || message.role !== "bot" || !copiedText) return;
+    api("/api/feedback", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "copy_paste_out",
+        botMessage: copiedText,
+        persona: get(currentPersonaId),
+      }),
+    }).catch(() => { /* secondary signal; non-blocking */ });
+    track("copy_paste_out", { len: copiedText.length });
+  }
+
   // ↻ regen : mark current draft as rejected, relaunch last send.
   async function handleRegen(message) {
     try {
@@ -1101,6 +1117,16 @@
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ turn_kind: "draft_rejected" }),
       });
+      // Implicit negative signal — the rejected draft becomes training data
+      // with weight 0.5, orthogonal to the turn_kind flip above.
+      api("/api/feedback", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "regen_rejection",
+          botMessage: message.content,
+          persona: get(currentPersonaId),
+        }),
+      }).catch(() => { /* secondary signal; non-blocking */ });
       messages.update(msgs => msgs.filter(m => m.id !== message.id));
       track("draft_regenerated", {});
       // Inject the rejected draft into the prompt so the LLM has concrete
@@ -1269,6 +1295,7 @@
                 onRegen={handleRegen}
                 onSaveRule={handleSaveRule}
                 onCopyBlock={() => {}}
+                onCopyOut={(text) => handleCopyOut(message, text)}
               />
             {/each}
             {#if ingesting}
