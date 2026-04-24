@@ -40,8 +40,11 @@
   let showPasteZone = $derived(
     shouldShowPasteZone({ isDmMode, lastTurnKind, pasteDismissed })
   );
-  // Reset dismiss + text quand lastTurnKind change (nouvel envoi → re-propose la zone)
-  $effect(() => { lastTurnKind; pasteDismissed = false; pasteText = ""; });
+  // Reset dismiss quand lastTurnKind change (nouvel envoi → re-propose la zone).
+  // On ne wipe PAS pasteText ici : submitPaste/dismissPaste s'en chargent déjà,
+  // et préserver le texte évite de perdre la saisie si un message arrive
+  // pendant que l'opérateur tape.
+  $effect(() => { lastTurnKind; pasteDismissed = false; });
 
   // --- CTA primaire inféré — NEW ---
   let inferredPrimary = $derived(
@@ -247,7 +250,7 @@
   <div class="paste-zone" role="region" aria-label="Réponse du prospect">
     <header class="paste-header">
       <span class="paste-label">📥 Il a répondu ?</span>
-      <button class="paste-dismiss" type="button" onclick={dismissPaste} aria-label="Ignorer">×</button>
+      <button class="paste-dismiss" type="button" onclick={dismissPaste} aria-label="Ignorer"><span aria-hidden="true">×</span></button>
     </header>
     <textarea
       class="paste-textarea"
@@ -370,7 +373,10 @@
               <li>
                 <button
                   type="button"
-                  onclick={() => draftDmSubmode(sub.id)}
+                  onclick={() => {
+                    draftDmSubmode(sub.id);
+                    if (actionMenuEl) actionMenuEl.open = false;
+                  }}
                   disabled={effectiveDisabled}
                 >
                   {sub.label}
