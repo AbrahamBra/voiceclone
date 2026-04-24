@@ -1094,7 +1094,14 @@
         body: JSON.stringify({ turn_kind: "draft_rejected" }),
       });
       messages.update(msgs => msgs.filter(m => m.id !== message.id));
-      handleSend("Regenère la réponse.");
+      // Inject the rejected draft into the prompt so the LLM has concrete
+      // context (the prior draft is marked draft_rejected in DB and may be
+      // filtered from the conversation it rebuilds — without this, "Regenère
+      // la réponse." is too vague and the clone answers "rien à régénérer").
+      const prev = String(message.content || "").trim().slice(0, 400);
+      handleSend(prev
+        ? `Génère une nouvelle réponse au dernier message du prospect, différente de ta tentative précédente : « ${prev} »`
+        : "Génère une nouvelle réponse au dernier message du prospect.");
     } catch {
       showToast?.("Regen échoué");
     }
