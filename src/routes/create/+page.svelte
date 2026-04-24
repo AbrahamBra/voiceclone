@@ -463,11 +463,10 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
 
             <div class="create-actions">
               <button class="btn-secondary" onclick={prevStep}>← Retour</button>
-              {#if cloneType === 'both'}
-                <button class="btn-secondary" onclick={nextStep} disabled={dmIssues.length > 0}>Passer</button>
-              {/if}
-              <button onclick={nextStep} disabled={(cloneType === 'dm' && !dmsText.trim()) || dmIssues.length > 0}>
-                {dmIssues.length > 0 ? "Corrige les conversations ci-dessus" : "Suivant →"}
+              <button onclick={nextStep} disabled={dmIssues.length > 0}>
+                {#if dmIssues.length > 0}Corrige les conversations ci-dessus
+                {:else if !dmsText.trim()}Passer →
+                {:else}Suivant →{/if}
               </button>
             </div>
           </div>
