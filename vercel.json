@@ -9,12 +9,17 @@
     "api/knowledge.js": { "maxDuration": 60 },
     "api/calibrate.js": { "maxDuration": 60 },
     "api/feedback.js": { "maxDuration": 60 },
-    "api/cron-consolidate.js": { "maxDuration": 300 }
+    "api/cron-consolidate.js": { "maxDuration": 300 },
+    "api/cron-fidelity.js": { "maxDuration": 300 }
   },
   "crons": [
     {
       "path": "/api/cron-consolidate",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron-fidelity",
+      "schedule": "0 3 * * *"
     }
   ]
 }
