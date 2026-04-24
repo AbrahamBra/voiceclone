@@ -17,7 +17,19 @@ import { isScenarioId, CANONICAL_SCENARIOS } from "../src/lib/scenarios.js";
 function extractConvTitle(message, scenario) {
   // LinkedIn scrape: [Contexte lead — NOM PRENOM]
   const leadMatch = message.match(/\[Contexte lead\s*[—–-]\s*([^\]]+)\]/i);
-  if (leadMatch) return leadMatch[1].trim();
+  if (leadMatch) {
+    const name = leadMatch[1].trim();
+    if (name) return name.slice(0, 50);
+  }
+
+  // Raw LinkedIn URL as first message (user bypassed the Analyser prospect
+  // banner and hit Cmd+Enter directly) → extract the slug so the sidebar
+  // shows "John Doe" instead of the full URL.
+  const urlMatch = message.trim().match(/^https?:\/\/(?:www\.)?linkedin\.com\/in\/([^/?#\s]+)/i);
+  if (urlMatch) {
+    const slug = urlMatch[1].replace(/[-_]+/g, " ").trim();
+    if (slug) return slug.replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 50);
+  }
 
   // Qualification scenario with pasted profile: first line often has the name
   if (scenario === "qualification") {
