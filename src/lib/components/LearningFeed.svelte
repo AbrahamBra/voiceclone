@@ -19,7 +19,8 @@
       // Defensive: also drop events whose entire rules payload is validation
       // markers (historical leak from the consolidation cron).
       const isValidationMarker = (r) => {
-        const t = (r || "").trim();
+        // Strip leading markdown bold/italic wrappers (e.g. "**[CLIENT_VALIDATED] ...**")
+        const t = (r || "").replace(/^[\s*_]+/, "");
         return t.startsWith("[VALIDATED]") || t.startsWith("[CLIENT_VALIDATED]") || t.startsWith("[EXCELLENT]");
       };
       const hasRealRule = (e) => {
@@ -53,7 +54,8 @@
       // ([VALIDATED] / [CLIENT_VALIDATED] / [EXCELLENT]) that leaked through
       // the consolidation cron. Strip them from the displayed detail.
       const isValidationMarker = (r) => {
-        const t = (r || "").trim();
+        // Strip leading markdown bold/italic wrappers (e.g. "**[CLIENT_VALIDATED] ...**")
+        const t = (r || "").replace(/^[\s*_]+/, "");
         return t.startsWith("[VALIDATED]") || t.startsWith("[CLIENT_VALIDATED]") || t.startsWith("[EXCELLENT]");
       };
       const cleanRules = (p.rules || []).filter(r => !isValidationMarker(r));
