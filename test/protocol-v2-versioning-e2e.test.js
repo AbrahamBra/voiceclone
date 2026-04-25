@@ -31,10 +31,12 @@ function makeSupabase(initial) {
     return {
       _filter: {},
       _pendingUpdate: null,
+      _pendingInsert: null,
       select() { return this; },
       eq(col, val) { this._filter[col] = val; return this; },
       in(col, vals) { this._filter[col] = { __in: vals }; return this; },
       update(patch) { this._pendingUpdate = patch; return this; },
+      insert(row) { this._pendingInsert = row; return this; },
       _matches(row) {
         return Object.entries(this._filter).every(([k, v]) => {
           if (v && typeof v === "object" && Array.isArray(v.__in)) return v.__in.includes(row[k]);
@@ -47,7 +49,18 @@ function makeSupabase(initial) {
         writes.push({ table, filter: { ...this._filter }, patch: this._pendingUpdate });
         return matched[0] || null;
       },
+      _applyInsert() {
+        const newRow = { id: `inserted-${writes.length}`, ...this._pendingInsert };
+        if (!rows[table]) rows[table] = [];
+        rows[table].push(newRow);
+        writes.push({ table, insert: this._pendingInsert });
+        return newRow;
+      },
       async single() {
+        if (this._pendingInsert) {
+          const inserted = this._applyInsert();
+          return { data: inserted, error: null };
+        }
         if (this._pendingUpdate) {
           const updated = this._applyWrite();
           return { data: updated, error: null };
@@ -57,11 +70,16 @@ function makeSupabase(initial) {
         return { data: m || null, error: m ? null : { code: "PGRST116" } };
       },
       async maybeSingle() {
-        if (this._pendingUpdate) return this.single();
+        if (this._pendingInsert || this._pendingUpdate) return this.single();
         const matched = (rows[table] || []).filter((r) => this._matches(r));
         return { data: matched[0] || null, error: null };
       },
       then(resolve) {
+        if (this._pendingInsert) {
+          this._applyInsert();
+          resolve({ data: null, error: null });
+          return;
+        }
         if (this._pendingUpdate) {
           this._applyWrite();
           resolve({ data: null, error: null });

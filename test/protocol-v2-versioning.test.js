@@ -123,10 +123,12 @@ function makeSupabase(config) {
         _table: table,
         _filter: {},
         _pendingUpdate: null,
+        _pendingInsert: null,
         select() { return this; },
         eq(col, val) { this._filter[col] = val; return this; },
         in(col, vals) { this._filter[col] = { __in: vals }; return this; },
         update(patch) { this._pendingUpdate = patch; return this; },
+        insert(row) { this._pendingInsert = row; return this; },
         _matchesFilter(row) {
           return Object.entries(this._filter).every(([k, v]) => {
             if (v && typeof v === "object" && Array.isArray(v.__in)) return v.__in.includes(row[k]);
@@ -134,6 +136,13 @@ function makeSupabase(config) {
           });
         },
         async single() {
+          if (this._pendingInsert) {
+            writes.push({ table, insert: this._pendingInsert });
+            const inserted = tableConfig.onInsert
+              ? tableConfig.onInsert(this._pendingInsert)
+              : null;
+            return { data: inserted, error: tableConfig.insertError || null };
+          }
           if (this._pendingUpdate) {
             writes.push({ table, filter: { ...this._filter }, patch: this._pendingUpdate });
             const updated = tableConfig.onUpdate
@@ -146,11 +155,19 @@ function makeSupabase(config) {
           return { data: match || null, error: match ? null : { code: "PGRST116" } };
         },
         async maybeSingle() {
-          if (this._pendingUpdate) return this.single();
+          if (this._pendingInsert || this._pendingUpdate) return this.single();
           const rows = (tableConfig.rows || []).filter((r) => this._matchesFilter(r));
           return { data: rows[0] || null, error: null };
         },
         then(resolve) {
+          if (this._pendingInsert) {
+            writes.push({ table, insert: this._pendingInsert });
+            const inserted = tableConfig.onInsert
+              ? tableConfig.onInsert(this._pendingInsert)
+              : null;
+            resolve({ data: inserted, error: tableConfig.insertError || null });
+            return;
+          }
           if (this._pendingUpdate) {
             writes.push({ table, filter: { ...this._filter }, patch: this._pendingUpdate });
             const updated = tableConfig.onUpdate
@@ -263,5 +280,137 @@ describe("publishDraft", () => {
     const out = await publishDraft(sb, { documentId: DRAFT_ID });
     assert.ok(out.error);
     assert.equal(sb._writes.length, 0);
+  });
+});
+
+// ─── publishDraft + publish_event (Reco B narrative changelog) ────────────
+
+describe("publishDraft → protocol_publish_event", () => {
+  function fixtureWithPropositions() {
+    return {
+      ...baseFixture(),
+      proposition: {
+        rows: [
+          { id: "prop-acc-1", document_id: DRAFT_ID, status: "accepted",
+            intent: "add_rule", target_kind: "hard_rules",
+            proposed_text: "Toujours vouvoyer si le prospect vouvoie." },
+          { id: "prop-acc-2", document_id: DRAFT_ID, status: "accepted",
+            intent: "add_paragraph", target_kind: "process",
+            proposed_text: "Étape qualification — prérequis: lead a exprimé un intérêt." },
+          { id: "prop-rej-1", document_id: DRAFT_ID, status: "rejected",
+            intent: "remove_rule", target_kind: "hard_rules",
+            proposed_text: "Ne jamais utiliser d'emojis." },
+          { id: "prop-rev-1", document_id: DRAFT_ID, status: "revised",
+            intent: "amend_paragraph", target_kind: "errors",
+            proposed_text: "visio → visioconférence",
+            user_note: "garder visio dans les rendez-vous techniques" },
+          // Distractor: a pending proposition that should NOT be captured.
+          { id: "prop-pending", document_id: DRAFT_ID, status: "pending",
+            intent: "add_rule", target_kind: "hard_rules",
+            proposed_text: "Maybe later." },
+        ],
+      },
+      protocol_publish_event: {
+        onInsert: (row) => ({ id: "evt-1", ...row }),
+      },
+    };
+  }
+
+  it("inserts a publish_event row capturing resolved propositions", async () => {
+    const sb = makeSupabase(fixtureWithPropositions());
+    const out = await publishDraft(sb, { documentId: DRAFT_ID, publishedBy: "client-42" });
+
+    assert.equal(out.error, undefined);
+    assert.equal(out.publish_event_id, "evt-1");
+
+    const insertWrite = sb._writes.find((w) => w.table === "protocol_publish_event");
+    assert.ok(insertWrite, "expected an insert write into protocol_publish_event");
+    const row = insertWrite.insert;
+
+    assert.equal(row.document_id, DRAFT_ID);
+    assert.equal(row.archived_document_id, ACTIVE_ID);
+    assert.equal(row.version, 2);
+    assert.equal(row.published_by, "client-42");
+    assert.equal(row.stats_migrated, 1);
+
+    // Resolved proposition splits.
+    assert.deepEqual(row.accepted_proposition_ids.sort(), ["prop-acc-1", "prop-acc-2"]);
+    assert.deepEqual(row.rejected_proposition_ids, ["prop-rej-1"]);
+    assert.deepEqual(row.revised_proposition_ids, ["prop-rev-1"]);
+
+    // Pending proposition NOT captured.
+    assert.ok(
+      !row.accepted_proposition_ids.includes("prop-pending") &&
+        !row.rejected_proposition_ids.includes("prop-pending") &&
+        !row.revised_proposition_ids.includes("prop-pending"),
+    );
+
+    // Narrative null when no generator passed.
+    assert.equal(row.summary_narrative, null);
+    assert.equal(row.summary_brief, null);
+  });
+
+  it("calls generateNarrative and persists narrative + brief on the row", async () => {
+    let calledWith = null;
+    const generateNarrative = async (args) => {
+      calledWith = args;
+      return {
+        narrative: "Cette semaine on a appris qu'il faut vouvoyer si le prospect vouvoie...",
+        brief: "Vouvoiement aligné sur le prospect.",
+      };
+    };
+
+    const sb = makeSupabase(fixtureWithPropositions());
+    const out = await publishDraft(sb, {
+      documentId: DRAFT_ID,
+      publishedBy: "client-42",
+      generateNarrative,
+    });
+
+    assert.equal(out.error, undefined);
+    assert.ok(calledWith, "narrator should have been called");
+    assert.equal(calledWith.accepted.length, 2);
+    assert.equal(calledWith.rejected.length, 1);
+    assert.equal(calledWith.revised.length, 1);
+    assert.equal(calledWith.version, 2);
+
+    const insertWrite = sb._writes.find((w) => w.table === "protocol_publish_event");
+    assert.match(insertWrite.insert.summary_narrative, /vouvoyer/);
+    assert.equal(insertWrite.insert.summary_brief, "Vouvoiement aligné sur le prospect.");
+  });
+
+  it("swallows narrator errors and still inserts the publish_event row", async () => {
+    const generateNarrative = async () => {
+      throw new Error("narrator_blew_up");
+    };
+
+    const sb = makeSupabase(fixtureWithPropositions());
+    const out = await publishDraft(sb, {
+      documentId: DRAFT_ID,
+      generateNarrative,
+    });
+
+    // The publish itself succeeds.
+    assert.equal(out.error, undefined);
+    assert.equal(out.document.status, "active");
+
+    // The event is still recorded, with null narrative.
+    const insertWrite = sb._writes.find((w) => w.table === "protocol_publish_event");
+    assert.ok(insertWrite);
+    assert.equal(insertWrite.insert.summary_narrative, null);
+    assert.equal(insertWrite.insert.summary_brief, null);
+  });
+
+  it("recordPublishEvent=false skips the insert entirely", async () => {
+    const sb = makeSupabase(fixtureWithPropositions());
+    const out = await publishDraft(sb, {
+      documentId: DRAFT_ID,
+      recordPublishEvent: false,
+    });
+
+    assert.equal(out.error, undefined);
+    assert.equal(out.publish_event_id, null);
+    const inserts = sb._writes.filter((w) => w.table === "protocol_publish_event");
+    assert.equal(inserts.length, 0);
   });
 });
