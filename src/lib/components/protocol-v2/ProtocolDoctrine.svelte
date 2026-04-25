@@ -2,14 +2,15 @@
   // Doctrine view — la source de vérité narrative du protocole d'une persona.
   //
   // Layout 3 zones :
-  //   TOC gauche (avec indicateur santé par §) | prose centrale | slot droit (Activity feed Task 3.6)
+  //   TOC gauche (avec indicateur santé par §) | prose centrale | activity feed live
   //
   // Live pulse 2s sur le paragraphe d'une section quand un artifact tire en prod.
-  // L'appelant (page chat ou Task 3.7 shim) déclenche le pulse via la fonction
-  // `triggerPulse(sectionId)` exposée. Task 3.6 wirera l'SSE à cet entrypoint.
+  // L'activity feed (ProtocolActivityFeed) consomme l'SSE et appelle triggerPulse
+  // via le callback onArtifactFired.
 
   import { api } from "$lib/api.js";
   import ProtocolArtifactAccordion from "./ProtocolArtifactAccordion.svelte";
+  import ProtocolActivityFeed from "./ProtocolActivityFeed.svelte";
 
   /** @type {{ personaId: string }} */
   let { personaId } = $props();
@@ -140,10 +141,12 @@
     </main>
 
     <aside class="pd-side" aria-label="Activity feed">
-      <div class="pd-side-head">Activité</div>
-      <div class="pd-side-placeholder">
-        feed live arrive Task 3.6
-      </div>
+      {#if document?.id}
+        <ProtocolActivityFeed
+          documentId={document.id}
+          onArtifactFired={triggerPulse}
+        />
+      {/if}
     </aside>
   {/if}
 </div>
@@ -282,26 +285,14 @@
     padding: 6px 0;
   }
 
-  /* Activity feed slot (Task 3.6 will fill this) */
+  /* Activity feed (ProtocolActivityFeed inside) */
   .pd-side {
     border-left: 1px solid var(--rule-strong);
     padding: 14px 12px;
-    overflow-y: auto;
-  }
-  .pd-side-head {
-    font-family: var(--font-mono);
-    font-size: var(--fs-nano);
-    color: var(--ink-40);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin-bottom: 10px;
-  }
-  .pd-side-placeholder {
-    font-family: var(--font-mono);
-    font-size: var(--fs-nano);
-    color: var(--ink-40);
-    opacity: 0.6;
-    padding: 8px 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
   }
 
   /* Responsive : mobile = TOC en drawer (caché en lecture seule, pas d'édit mobile) */
