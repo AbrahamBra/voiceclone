@@ -14,7 +14,7 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@anthropic-ai/sdk": "^0.91.1",
     "@supabase/supabase-js": "^2.103.0",
     "dotenv": "^17.4.2",
     "mammoth": "^1.12.0",
