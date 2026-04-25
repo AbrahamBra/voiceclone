@@ -1238,8 +1238,6 @@ git commit -m "feat(brain-drawer): ProtocolPanel — optional onRuleAdded callba
 
 - [ ] **Step 1: Locate anchors in the file**
 
-```bash
-```
 Run: `grep -n "personaName\|composerText\|currentConversationId\|id: \"open-brain\"\|goto(\`/brain" src/routes/chat/[persona]/+page.svelte`
 Expected: find (a) where `composerText` and `personaName` are declared, (b) where the top-bar header is rendered, (c) the ⌘K palette entry with `id: "open-brain"` (currently does `goto('/brain/...')`).
 
