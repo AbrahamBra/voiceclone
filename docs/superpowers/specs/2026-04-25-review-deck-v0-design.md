@@ -148,6 +148,9 @@ Le builder détecte le flavor selon la présence de documents :
 | `amend_paragraph` | ↻ | Modifié |
 | `refine_pattern` | ↻ | Modifié |
 | `remove_rule` | − | Retiré |
+| **(intent inconnu / futur)** | • | Modifié |
+
+**Fallback robustness :** l'enum `proposition.intent` peut s'étendre (analyse 3-docs 2026-04-25 sur Nicolas/Mohamed/Adrien anticipe `add_disqualifier`, `add_voice_signature`, etc.). Le builder doit traiter tout intent non listé ci-dessus avec le mapping fallback (`•` / "Modifié") ET émettre un log warning `review_deck_unknown_intent` avec `{persona_id, proposition_id, intent}` pour qu'on détecte les nouveaux intents et les mappe explicitement plus tard. Le deck ne casse jamais.
 
 ## Edge cases
 
