@@ -3,7 +3,6 @@
 
   let {
     files = [],
-    onStartDelete,
     onConfirmDelete,
   } = $props();
 

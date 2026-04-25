@@ -52,7 +52,7 @@
 <div class="kp-doc-type">
   <div class="kp-doc-type-label">Type de document</div>
   <div class="kp-doc-type-toggle">
-    {#each DOC_TYPES as dt}
+    {#each DOC_TYPES as dt (dt.id)}
       <button
         class="kp-doc-type-btn"
         class:active={docType === dt.id}
@@ -102,7 +102,7 @@
         {#if uploadTotal > 1}
           <span class="kp-step-counter">Doc {uploadCurrent}/{uploadTotal}</span>
         {/if}
-        {#each STEPS as step, i}
+        {#each STEPS as step, i (i)}
           <div class="kp-step" class:active={currentStep === i} class:done={currentStep > i || uploadDone}>
             <span class="kp-step-dot" class:pulse={currentStep === i}>{currentStep > i || uploadDone ? "✓" : step.icon}</span>
             <span class="kp-step-label">{step.label}</span>
