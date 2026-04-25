@@ -115,7 +115,7 @@ export default async function handler(req, res) {
       session = await createSession(client.id);
     }
 
-    res.json({ personas, isAdmin, canCreateClone, session });
+    res.json({ personas, isAdmin, canCreateClone, session, clientName: client?.name || null });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.error || "Server error" });
   }

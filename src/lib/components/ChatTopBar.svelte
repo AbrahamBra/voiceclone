@@ -9,6 +9,7 @@
   import { goto } from "$app/navigation";
   import ClonesDropdown from "./ClonesDropdown.svelte";
   import ScenarioSwitcher from "./ScenarioSwitcher.svelte";
+  import TenantBadge from "./TenantBadge.svelte";
   import UserMenu from "./UserMenu.svelte";
   import {
     CANONICAL_SCENARIOS,
@@ -152,6 +153,7 @@
   </div>
 
   <div class="right">
+    <TenantBadge />
     <button class="tab-btn mono" onclick={openBrain} aria-label="Ouvrir le cerveau du clone">cerveau</button>
     <UserMenu bind:open={menuOpen} {onDeletePersona} />
   </div>
