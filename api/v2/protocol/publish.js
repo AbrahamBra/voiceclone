@@ -19,6 +19,7 @@ import {
   setCors as _setCors,
 } from "../../../lib/supabase.js";
 import { publishDraft as _publishDraft } from "../../../lib/protocol-v2-versioning.js";
+import { generateNarrative as _generateNarrative } from "../../../lib/protocol-v2-changelog-narrator.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -29,6 +30,7 @@ export default async function handler(req, res, deps) {
     supabase = _supabase,
     setCors = _setCors,
     publishDraft = _publishDraft,
+    generateNarrative = _generateNarrative,
   } = deps || {};
 
   setCors(res, "POST, OPTIONS");
@@ -68,7 +70,25 @@ export default async function handler(req, res, deps) {
     return;
   }
 
-  const result = await publishDraft(supabase, { documentId });
+  // Bind generateNarrative with the auth client so it can resolve API key
+  // overrides per-tenant if relevant. The narrator returns
+  // { narrative, brief } or { error } — publishDraft swallows errors and
+  // records the publish event without narrative on failure.
+  const narratorBound = ({ accepted, rejected, revised, version }) =>
+    generateNarrative({
+      client,
+      accepted,
+      rejected,
+      revised,
+      fromVersion: version > 1 ? version - 1 : undefined,
+      toVersion: version,
+    });
+
+  const result = await publishDraft(supabase, {
+    documentId,
+    publishedBy: client?.id || null,
+    generateNarrative: narratorBound,
+  });
   if (result.error) {
     res.status(mapPublishErrorToStatus(result.error)).json({ error: result.error });
     return;
@@ -78,6 +98,7 @@ export default async function handler(req, res, deps) {
     document: result.document,
     archived_document_id: result.archived_document_id,
     stats_migrated: result.stats_migrated,
+    publish_event_id: result.publish_event_id,
   });
 }
 
