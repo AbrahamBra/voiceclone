@@ -71,6 +71,56 @@ export function eventToSignal(event) {
   };
 }
 
+// Source channels accepted from `corrections` for the bridge to proposition.
+// Keep in sync with the CHECK constraint widening in migration 040 + future
+// channels added by Chunk 2.5 follow-ups.
+const ELIGIBLE_CORRECTION_CHANNELS = Object.freeze([
+  "copy_paste_out",
+  "regen_rejection",
+  "edit_diff",
+  "chat_correction",
+  "client_validated",
+  "negative_feedback",
+  "direct_instruction",
+  "coaching_correction",
+  "metacognitive_n3",
+  "proactive_n4",
+]);
+
+// Strip the [COPY_PASTE_OUT] / [REGEN_REJECTED] / etc. prefix that
+// api/feedback.js attaches to the `correction` text for implicit signals.
+const PREFIX_TAGS_RE = /^\s*\[(COPY_PASTE_OUT|REGEN_REJECTED|EDIT_DIFF|N3|N4)\]\s*/i;
+
+/**
+ * Build a signal object from a `corrections` row. Used by the bridge that
+ * lets the cron also consume implicit signals (copy_paste_out, regen_rejection)
+ * and explicit corrections that don't go through feedback_events.
+ *
+ * @param {object} correction - Row from corrections.
+ */
+export function correctionToSignal(correction) {
+  if (!correction || typeof correction !== "object") return null;
+
+  const raw = typeof correction.correction === "string" ? correction.correction : "";
+  const stripped = raw.replace(PREFIX_TAGS_RE, "").trim();
+  if (!stripped) return null;
+
+  return {
+    source_type: correction.source_channel || "chat_correction",
+    source_text: stripped,
+    context: {
+      user_message: correction.user_message || undefined,
+      bot_message: correction.bot_message || undefined,
+      persona_id: correction.persona_id,
+      confidence_weight:
+        typeof correction.confidence_weight === "number"
+          ? correction.confidence_weight
+          : undefined,
+      is_implicit: correction.is_implicit === true ? true : undefined,
+    },
+  };
+}
+
 /**
  * Find the active protocol_document for a persona.
  * Returns null if none.
@@ -101,6 +151,7 @@ async function persistCandidate({
   embedding,
   similar,
   dryRun,
+  source = "feedback_event",
 }) {
   const { target_kind, proposal } = candidate;
 
@@ -141,7 +192,7 @@ async function persistCandidate({
 
   const insertRow = {
     document_id: documentId,
-    source: "feedback_event",
+    source,
     source_ref: eventId,
     source_refs: [eventId],
     count: 1,
@@ -299,6 +350,142 @@ export async function drainEventsToProposition(args) {
   return summary;
 }
 
+/**
+ * Drain undrained `corrections` rows into propositions (Task 2.5.11 bridge).
+ * Mirrors drainEventsToProposition but reads from `corrections` and writes
+ * `proposition_drained_at` for idempotency. Only rows where
+ * `source_channel IN ELIGIBLE_CORRECTION_CHANNELS` are picked up.
+ *
+ * @param {object} args - Same shape as drainEventsToProposition.
+ * @returns {Promise<{processed:number, merged:number, inserted:number, silenced:number, skipped:number, results:Array}>}
+ */
+export async function drainCorrectionsToProposition(args) {
+  const {
+    supabase,
+    routerOpts = {},
+    extractorOpts = {},
+    extractorsMap,
+    embed = embedForProposition,
+    findSimilar = findSimilarProposition,
+    runRouteAndExtract = routeAndExtract,
+    limit = DEFAULT_LIMIT,
+    lookbackMs = DEFAULT_LOOKBACK_MS,
+    dryRun = false,
+  } = args;
+
+  if (!supabase) throw new Error("supabase client required");
+
+  const since = new Date(Date.now() - lookbackMs).toISOString();
+
+  const { data: rows, error: queryErr } = await supabase
+    .from("corrections")
+    .select("*")
+    .is("proposition_drained_at", null)
+    .in("source_channel", ELIGIBLE_CORRECTION_CHANNELS)
+    .gte("created_at", since)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+
+  if (queryErr) {
+    log("protocol_v2_cron_corrections_query_error", { message: queryErr.message });
+    return { processed: 0, merged: 0, inserted: 0, silenced: 0, skipped: 0, results: [] };
+  }
+
+  const summary = { processed: 0, merged: 0, inserted: 0, silenced: 0, skipped: 0, results: [] };
+
+  for (const row of rows ?? []) {
+    summary.processed++;
+    const rowResult = { correction_id: row.id, source_channel: row.source_channel, outcomes: [] };
+
+    const signal = correctionToSignal(row);
+    if (!signal) {
+      summary.skipped++;
+      rowResult.outcomes.push({ action: "skipped", reason: "no_signal_text" });
+      summary.results.push(rowResult);
+      if (!dryRun) {
+        await supabase
+          .from("corrections")
+          .update({ proposition_drained_at: new Date().toISOString() })
+          .eq("id", row.id);
+      }
+      continue;
+    }
+
+    const documentId = await getActiveDocumentId(supabase, row.persona_id);
+    if (!documentId) {
+      summary.skipped++;
+      rowResult.outcomes.push({ action: "skipped", reason: "no_active_document" });
+      summary.results.push(rowResult);
+      if (!dryRun) {
+        await supabase
+          .from("corrections")
+          .update({ proposition_drained_at: new Date().toISOString() })
+          .eq("id", row.id);
+      }
+      continue;
+    }
+
+    let candidates;
+    try {
+      candidates = await runRouteAndExtract(signal, {
+        router: routerOpts,
+        extractor: extractorOpts,
+        extractors: extractorsMap,
+      });
+    } catch (err) {
+      log("protocol_v2_cron_corrections_route_error", {
+        correction_id: row.id,
+        message: err.message,
+      });
+      candidates = [];
+    }
+
+    if (!candidates || candidates.length === 0) {
+      summary.skipped++;
+      rowResult.outcomes.push({ action: "skipped", reason: "no_candidates" });
+    } else {
+      for (const candidate of candidates) {
+        const embedding = await embed(candidate.proposal.proposed_text);
+        let similar = [];
+        if (Array.isArray(embedding) && embedding.length > 0) {
+          similar = await findSimilar(supabase, {
+            documentId,
+            embedding,
+            targetKind: candidate.target_kind,
+            threshold: SEMANTIC_DEDUP_THRESHOLD,
+            limit: 5,
+          });
+        }
+        const outcome = await persistCandidate({
+          supabase,
+          documentId,
+          eventId: row.id,
+          candidate,
+          embedding,
+          similar,
+          dryRun,
+          source: "chat_rewrite", // proposition.source enum value for corrections-sourced rows
+        });
+        rowResult.outcomes.push(outcome);
+        if (outcome.action === "merged" || outcome.action === "merge_dry") summary.merged++;
+        else if (outcome.action === "inserted" || outcome.action === "insert_dry") summary.inserted++;
+        else if (outcome.action === "silenced") summary.silenced++;
+      }
+    }
+
+    summary.results.push(rowResult);
+
+    if (!dryRun) {
+      await supabase
+        .from("corrections")
+        .update({ proposition_drained_at: new Date().toISOString() })
+        .eq("id", row.id);
+    }
+  }
+
+  return summary;
+}
+
 // ─── CLI entrypoint ────────────────────────────────────────────────────────
 async function main() {
   if (!isProtocolEmbeddingAvailable()) {
@@ -309,13 +496,22 @@ async function main() {
   const dryRun = argv.includes("--dry-run");
   const limitIdx = argv.indexOf("--limit");
   const limit = limitIdx >= 0 ? Number(argv[limitIdx + 1]) || DEFAULT_LIMIT : DEFAULT_LIMIT;
+  const skipCorrections = argv.includes("--no-corrections");
 
   const { createClient } = await import("@supabase/supabase-js");
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
   console.log(`🧠 protocole-vivant cron — limit=${limit} dry-run=${dryRun}`);
-  const summary = await drainEventsToProposition({ supabase, limit, dryRun });
-  console.log(JSON.stringify(summary, null, 2));
+
+  const eventsSummary = await drainEventsToProposition({ supabase, limit, dryRun });
+  console.log("# events");
+  console.log(JSON.stringify(eventsSummary, null, 2));
+
+  if (!skipCorrections) {
+    const correctionsSummary = await drainCorrectionsToProposition({ supabase, limit, dryRun });
+    console.log("# corrections");
+    console.log(JSON.stringify(correctionsSummary, null, 2));
+  }
 }
 
 const isMainModule = process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, "/")}`;
