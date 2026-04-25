@@ -93,6 +93,17 @@ export default async function handler(req, res) {
     }
   }
 
+  // Scope check: ensure message_id belongs to conversation_id. Without this,
+  // a user with access to one conversation could attach a feedback (and flip
+  // is_gold below) on a message from another conversation by spoofing
+  // message_id in the payload.
+  const { data: msg } = await supabase
+    .from("messages").select("conversation_id").eq("id", message_id).single();
+  if (!msg || msg.conversation_id !== conversation_id) {
+    res.status(403).json({ error: "message_id does not belong to this conversation" });
+    return;
+  }
+
   // Emit paired learning_event first so feedback_events row can back-link via
   // learning_event_id. Best-effort: if this fails, feedback still records with
   // null FK (non-blocking for the UI journal).

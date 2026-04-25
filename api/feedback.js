@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { authenticateRequest, supabase, getApiKey, hasPersonaAccess, setCors } from "../lib/supabase.js";
 import { clearIntelligenceCache, loadPersonaData, getIntelligenceId } from "../lib/knowledge-db.js";
 import { extractGraphKnowledge } from "../lib/graph-extraction.js";
+import { adjustEntityConfidence } from "../lib/entity-confidence.js";
 import { sanitizeUserText } from "../lib/sanitize.js";
 import { withTimeout } from "../lib/with-timeout.js";
 import { logLearningEvent } from "../lib/learning-events.js";
@@ -177,23 +178,7 @@ export default async function handler(req, res) {
     });
 
     // Boost confidence of entities that match this message
-    const { data: entities } = await supabase
-      .from("knowledge_entities")
-      .select("id, name, confidence")
-      .eq("persona_id", intellId);
-
-    let matchedCount = 0;
-    if (entities?.length > 0) {
-      const msgLower = botMessage.toLowerCase();
-      const matched = entities.filter(e => msgLower.includes(e.name.toLowerCase()));
-      matchedCount = matched.length;
-      for (const e of matched) {
-        const newConf = Math.min(1.0, (e.confidence || 0.8) + 0.05);
-        await supabase.from("knowledge_entities")
-          .update({ confidence: newConf, last_matched_at: new Date().toISOString() })
-          .eq("id", e.id);
-      }
-    }
+    const matchedCount = await adjustEntityConfidence(intellId, botMessage, 0.05);
 
     await logLearningEvent(intellId, "entity_boost", {
       intensity: "low", boost: 0.05, matched_entities: matchedCount, source: "validate",
@@ -218,24 +203,8 @@ export default async function handler(req, res) {
       contributed_by: client?.id || null,
     });
 
-    const { data: entities } = await supabase
-      .from("knowledge_entities")
-      .select("id, name, confidence")
-      .eq("persona_id", intellId);
-
-    let matchedCount = 0;
-    if (entities?.length > 0) {
-      const msgLower = botMessage.toLowerCase();
-      const matched = entities.filter(e => msgLower.includes(e.name.toLowerCase()));
-      matchedCount = matched.length;
-      for (const e of matched) {
-        // +0.12 vs +0.05 on passive 'validate' — explicit client approval weighs more.
-        const newConf = Math.min(1.0, (e.confidence || 0.8) + 0.12);
-        await supabase.from("knowledge_entities")
-          .update({ confidence: newConf, last_matched_at: new Date().toISOString() })
-          .eq("id", e.id);
-      }
-    }
+    // +0.12 vs +0.05 on passive 'validate' — explicit client approval weighs more.
+    const matchedCount = await adjustEntityConfidence(intellId, botMessage, 0.12);
 
     await logLearningEvent(intellId, "entity_boost", {
       intensity: "client", boost: 0.12, matched_entities: matchedCount, source: "client_validate",
@@ -259,23 +228,7 @@ export default async function handler(req, res) {
       contributed_by: client?.id || null,
     });
 
-    const { data: entities } = await supabase
-      .from("knowledge_entities")
-      .select("id, name, confidence")
-      .eq("persona_id", intellId);
-
-    let matchedCount = 0;
-    if (entities?.length > 0) {
-      const msgLower = botMessage.toLowerCase();
-      const matched = entities.filter(e => msgLower.includes(e.name.toLowerCase()));
-      matchedCount = matched.length;
-      for (const e of matched) {
-        const newConf = Math.min(1.0, (e.confidence || 0.8) + 0.15);
-        await supabase.from("knowledge_entities")
-          .update({ confidence: newConf, last_matched_at: new Date().toISOString() })
-          .eq("id", e.id);
-      }
-    }
+    const matchedCount = await adjustEntityConfidence(intellId, botMessage, 0.15);
 
     await logLearningEvent(intellId, "entity_boost", {
       intensity: "high", boost: 0.15, matched_entities: matchedCount, source: "excellent",
@@ -424,7 +377,14 @@ export default async function handler(req, res) {
         try {
           const parsed = JSON.parse(jsonMatch[0]);
           if (parsed.rule) rule = parsed.rule;
-        } catch {}
+        } catch (parseErr) {
+          console.log(JSON.stringify({
+            event: "feedback_save_rule_parse_error",
+            ts: new Date().toISOString(),
+            error: parseErr?.message || "Unknown",
+            preview: jsonMatch[0].slice(0, 100),
+          }));
+        }
       }
 
       await supabase.from("corrections").insert({
@@ -479,7 +439,14 @@ export default async function handler(req, res) {
                 rationale: (r.rationale || "").toString().trim().slice(0, 200),
               }));
           }
-        } catch {}
+        } catch (parseErr) {
+          console.log(JSON.stringify({
+            event: "feedback_extract_rules_parse_error",
+            ts: new Date().toISOString(),
+            error: parseErr?.message || "Unknown",
+            preview: jsonMatch[0].slice(0, 100),
+          }));
+        }
       }
 
       res.json({ ok: true, rules });
@@ -586,23 +553,7 @@ export default async function handler(req, res) {
       is_implicit: true,
     });
 
-    const { data: entities } = await supabase
-      .from("knowledge_entities")
-      .select("id, name, confidence")
-      .eq("persona_id", intellId);
-
-    let matchedCount = 0;
-    if (entities?.length > 0) {
-      const msgLower = botMessage.toLowerCase();
-      const matched = entities.filter(e => msgLower.includes(e.name.toLowerCase()));
-      matchedCount = matched.length;
-      for (const e of matched) {
-        const newConf = Math.min(1.0, (e.confidence || 0.8) + 0.03);
-        await supabase.from("knowledge_entities")
-          .update({ confidence: newConf, last_matched_at: new Date().toISOString() })
-          .eq("id", e.id);
-      }
-    }
+    const matchedCount = await adjustEntityConfidence(intellId, botMessage, 0.03);
 
     await logLearningEvent(intellId, "entity_boost", {
       intensity: "low", boost: 0.03, matched_entities: matchedCount, source: "copy_paste_out",
@@ -629,23 +580,7 @@ export default async function handler(req, res) {
       is_implicit: true,
     });
 
-    const { data: entities } = await supabase
-      .from("knowledge_entities")
-      .select("id, name, confidence")
-      .eq("persona_id", intellId);
-
-    let matchedCount = 0;
-    if (entities?.length > 0) {
-      const msgLower = botMessage.toLowerCase();
-      const matched = entities.filter(e => msgLower.includes(e.name.toLowerCase()));
-      matchedCount = matched.length;
-      for (const e of matched) {
-        const newConf = Math.max(0.0, (e.confidence || 0.8) - 0.03);
-        await supabase.from("knowledge_entities")
-          .update({ confidence: newConf, last_matched_at: new Date().toISOString() })
-          .eq("id", e.id);
-      }
-    }
+    const matchedCount = await adjustEntityConfidence(intellId, botMessage, -0.03);
 
     await logLearningEvent(intellId, "entity_demote", {
       intensity: "low", demote: 0.03, matched_entities: matchedCount, source: "regen_rejection",

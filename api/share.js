@@ -55,7 +55,7 @@ export default async function handler(req, res) {
       .single();
 
     if (selErr) {
-      console.log(JSON.stringify({ event: "share_get_db_error", token, error: selErr.message, code: selErr.code }));
+      console.log(JSON.stringify({ event: "share_get_db_error", token_prefix: token?.slice(0, 8), error: selErr.message, code: selErr.code }));
       // PGRST200 family = relationship/FK hint not resolved → distinct error so the UI can surface it
       if (selErr.code === "PGRST200" || /relationship|fkey/i.test(selErr.message || "")) {
         res.status(500).json({ error: "Configuration share incorrecte" }); return;
@@ -99,7 +99,7 @@ export default async function handler(req, res) {
       .single();
 
     if (selErr) {
-      console.log(JSON.stringify({ event: "share_put_db_error", token, error: selErr.message, code: selErr.code }));
+      console.log(JSON.stringify({ event: "share_put_db_error", token_prefix: token?.slice(0, 8), error: selErr.message, code: selErr.code }));
     }
     if (!st) { res.status(404).json({ error: "Token invalide" }); return; }
     if (new Date(st.expires_at) < new Date()) {
@@ -123,7 +123,7 @@ export default async function handler(req, res) {
     const { error: markErr } = await supabase.from("share_tokens")
       .update({ used_at: new Date().toISOString() })
       .eq("token", token);
-    if (markErr) console.log(JSON.stringify({ event: "share_token_mark_error", token, error: markErr.message }));
+    if (markErr) console.log(JSON.stringify({ event: "share_token_mark_error", token_prefix: token?.slice(0, 8), error: markErr.message }));
 
     res.json({ ok: true, persona_id: st.persona_id });
   }

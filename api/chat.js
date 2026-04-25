@@ -413,7 +413,14 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
           ]),
           supabase.from("conversations").update({ last_message_at: new Date().toISOString() }).eq("id", convId),
         ]);
-      } catch {}
+      } catch (persistErr) {
+        console.log(JSON.stringify({
+          event: "chat_negative_persist_error",
+          ts: new Date().toISOString(),
+          conversation: convId,
+          error: persistErr?.message || "Unknown",
+        }));
+      }
     }
 
     if (convId) sse("conversation", { id: convId });
@@ -575,7 +582,15 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
     if (!res.headersSent) {
       res.status(500).json({ error: "Erreur serveur (pre-pipeline): " + (err?.message || "Unknown") });
     } else {
-      try { res.end(); } catch {}
+      try {
+        res.end();
+      } catch (endErr) {
+        console.log(JSON.stringify({
+          event: "chat_res_end_failed",
+          ts: new Date().toISOString(),
+          error: endErr?.message || "Unknown",
+        }));
+      }
     }
   }
 }
