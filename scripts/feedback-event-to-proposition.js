@@ -85,6 +85,10 @@ const ELIGIBLE_CORRECTION_CHANNELS = Object.freeze([
   "coaching_correction",
   "metacognitive_n3",
   "proactive_n4",
+  // explicit_button is the live DB default for rows inserted via api/feedback.js
+  // (validate / client_validate / excellent / corrected / save_rule paths).
+  // Without this entry, the bridge silently filtered 100% of explicit corrections.
+  "explicit_button",
 ]);
 
 // Strip the [COPY_PASTE_OUT] / [REGEN_REJECTED] / etc. prefix that
