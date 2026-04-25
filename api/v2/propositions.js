@@ -1,4 +1,4 @@
-// Propositions v2 — CRUD on the `proposition` table (migration 038).
+// Propositions v2 — CRUD + acceptance flow on the `proposition` table.
 //
 // Endpoints:
 //   GET  /api/v2/propositions?document=<uuid>&status=pending|accepted|...
@@ -6,20 +6,27 @@
 //   POST /api/v2/propositions
 //     body: { action: 'accept'|'reject'|'revise', id: <uuid>,
 //             user_note?: string, proposed_text?: string (required for revise) }
-//     → { proposition: {...} }
+//     → { proposition: {...}, section?: {...}, training_example_id?: <uuid> }
 //
-// Single-file handler with a body-level `action` discriminator (rather than
-// /api/v2/propositions/accept sub-paths) to keep Vercel routing trivial and
-// serverless-function count small. Chunk 4 will split into a richer UI-facing
-// mutation API (see plan tasks 4.3 / 4.4) once accept needs to patch prose
-// and emit training examples.
+// Single-file handler with body-level `action` discriminator (decision locked
+// during Chunk 2 — see docs/superpowers/chunk-2-progress.md).
 //
-// Auth: authenticateRequest + hasPersonaAccess, same pattern as api/v2/protocol.js.
-// The `supabase` singleton uses the service-role key (per lib/supabase.js),
-// which is required to write under the `service_role_all` RLS policy.
+// Action semantics (post-Task 4.3) :
+//   - accept  → patch target section.prose (append/amend), log extractor_training_example
+//               outcome='accepted', set status='accepted', resolved_at=now()
+//   - reject  → log extractor_training_example outcome='rejected', status='rejected'
+//   - revise  → log extractor_training_example outcome='revised' with revised_text,
+//               status='revised', proposed_text replaced. No prose patch (user keeps it
+//               for manual application or a future re-accept).
 //
-// Handler accepts an optional `deps` 3rd argument for test injection. In
-// production Vercel calls handler(req, res) and real imports are used.
+// Atomicity : the proposition status is the canonical state. If the side-effects
+// (section patch, training example) fail, they are logged but don't fail the request.
+// Partial state is acceptable here — at worst the corpus is missing a row.
+//
+// Auth: authenticateRequest + hasPersonaAccess.
+// The `supabase` singleton uses the service-role key (per lib/supabase.js).
+//
+// Handler accepts an optional `deps` 3rd argument for test injection.
 
 export const maxDuration = 15;
 
@@ -38,6 +45,14 @@ const PROPOSITION_COLUMNS =
   "id, document_id, source, source_ref, source_refs, count, intent, " +
   "target_kind, target_section_id, proposed_text, rationale, confidence, " +
   "status, user_note, created_at, resolved_at";
+
+// Columns we need internally for accept/reject/revise side-effects.
+const FULL_PROPOSITION_COLUMNS =
+  PROPOSITION_COLUMNS;
+
+// Intent → suffix when amending an existing paragraph. Pure append for new
+// content. Real diff/replace UX will arrive in Task 4.4 (versioning UI).
+const AMEND_INTENTS = new Set(["amend_paragraph", "refine_pattern", "remove_rule"]);
 
 export default async function handler(req, res, deps) {
   const {
@@ -128,9 +143,10 @@ async function handleMutate(req, res, { supabase, hasPersonaAccess, client, isAd
     return;
   }
 
+  // Fetch full proposition row up-front — needed by accept/revise side-effects.
   const { data: prop, error: propErr } = await supabase
     .from("proposition")
-    .select("id, document_id, status")
+    .select(FULL_PROPOSITION_COLUMNS)
     .eq("id", id)
     .single();
   if (propErr || !prop) {
@@ -148,14 +164,103 @@ async function handleMutate(req, res, { supabase, hasPersonaAccess, client, isAd
     return;
   }
 
-  const nowIso = new Date().toISOString();
-  const update = { resolved_at: nowIso };
-  if (action === "accept") update.status = "accepted";
-  else if (action === "reject") update.status = "rejected";
-  else {
-    update.status = "revised";
-    update.proposed_text = proposed_text.trim();
+  // ── ACCEPT path ───────────────────────────────────────────────
+  if (action === "accept") {
+    // 1. Resolve target section for the prose patch.
+    const targetSection = await resolveTargetSection(supabase, prop);
+    if (!targetSection) {
+      res.status(422).json({
+        error: "no target section found for this target_kind on the document",
+      });
+      return;
+    }
+
+    // 2. Patch prose.
+    const newProse = patchProse(targetSection.prose || "", prop);
+    const { error: sectionErr } = await supabase
+      .from("protocol_section")
+      .update({ prose: newProse, author_kind: "proposition_accepted" })
+      .eq("id", targetSection.id);
+
+    if (sectionErr) {
+      res.status(500).json({ error: "section patch failed" });
+      return;
+    }
+
+    // 3. Update proposition (status + target_section_id if it was missing).
+    const update = {
+      status: "accepted",
+      resolved_at: new Date().toISOString(),
+      target_section_id: prop.target_section_id || targetSection.id,
+    };
+    if (user_note !== undefined) update.user_note = user_note;
+
+    const { data, error } = await supabase
+      .from("proposition")
+      .update(update)
+      .eq("id", id)
+      .select(PROPOSITION_COLUMNS)
+      .single();
+    if (error) {
+      res.status(500).json({ error: "db error" });
+      return;
+    }
+
+    // 4. Log positive training example (best-effort — don't fail request).
+    const trainingExampleId = await logTrainingExample(supabase, {
+      personaId,
+      proposition: prop,
+      outcome: "accepted",
+      userNote: user_note,
+    });
+
+    res.status(200).json({
+      proposition: data,
+      section: { id: targetSection.id, prose: newProse },
+      training_example_id: trainingExampleId,
+    });
+    return;
   }
+
+  // ── REJECT path ───────────────────────────────────────────────
+  if (action === "reject") {
+    const update = {
+      status: "rejected",
+      resolved_at: new Date().toISOString(),
+    };
+    if (user_note !== undefined) update.user_note = user_note;
+
+    const { data, error } = await supabase
+      .from("proposition")
+      .update(update)
+      .eq("id", id)
+      .select(PROPOSITION_COLUMNS)
+      .single();
+    if (error) {
+      res.status(500).json({ error: "db error" });
+      return;
+    }
+
+    const trainingExampleId = await logTrainingExample(supabase, {
+      personaId,
+      proposition: prop,
+      outcome: "rejected",
+      userNote: user_note,
+    });
+
+    res.status(200).json({ proposition: data, training_example_id: trainingExampleId });
+    return;
+  }
+
+  // ── REVISE path ───────────────────────────────────────────────
+  // proposed_text is replaced ; status='revised'. No prose patch — user can
+  // re-accept later or the cron may pick it up via a new signal.
+  const revisedText = proposed_text.trim();
+  const update = {
+    status: "revised",
+    resolved_at: new Date().toISOString(),
+    proposed_text: revisedText,
+  };
   if (user_note !== undefined) update.user_note = user_note;
 
   const { data, error } = await supabase
@@ -164,13 +269,23 @@ async function handleMutate(req, res, { supabase, hasPersonaAccess, client, isAd
     .eq("id", id)
     .select(PROPOSITION_COLUMNS)
     .single();
-
   if (error) {
     res.status(500).json({ error: "db error" });
     return;
   }
-  res.status(200).json({ proposition: data });
+
+  const trainingExampleId = await logTrainingExample(supabase, {
+    personaId,
+    proposition: prop,
+    outcome: "revised",
+    revisedText,
+    userNote: user_note,
+  });
+
+  res.status(200).json({ proposition: data, training_example_id: trainingExampleId });
 }
+
+// ─── helpers ───────────────────────────────────────────────────────────────
 
 async function documentPersonaId(sb, documentId) {
   const { data, error } = await sb
@@ -180,4 +295,80 @@ async function documentPersonaId(sb, documentId) {
     .single();
   if (error || !data || data.owner_kind !== "persona") return null;
   return data.owner_id;
+}
+
+async function resolveTargetSection(supabase, prop) {
+  // Direct hit by id (router/cron usually fills this in).
+  if (prop.target_section_id && UUID_RE.test(prop.target_section_id)) {
+    const { data } = await supabase
+      .from("protocol_section")
+      .select("id, document_id, kind, prose")
+      .eq("id", prop.target_section_id)
+      .single();
+    if (data && data.document_id === prop.document_id) return data;
+  }
+  // Fallback : find section in this document with matching kind.
+  const { data } = await supabase
+    .from("protocol_section")
+    .select("id, document_id, kind, prose")
+    .eq("document_id", prop.document_id)
+    .eq("kind", prop.target_kind)
+    .order("order", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return data || null;
+}
+
+/**
+ * Append the proposed_text to the section's prose. For amend_paragraph /
+ * refine_pattern / remove_rule, prefix with a tag so the user can see
+ * which paragraphs were proposition-driven (Task 4.4 will add a real diff
+ * UI ; for now we just append with a marker).
+ *
+ * Pure function — exported for tests.
+ */
+export function patchProse(currentProse, prop) {
+  const text = (prop?.proposed_text || "").trim();
+  if (!text) return currentProse;
+
+  const sep = currentProse && !currentProse.endsWith("\n") ? "\n\n" : "";
+  if (AMEND_INTENTS.has(prop?.intent)) {
+    return `${currentProse}${sep}[${prop.intent}] ${text}`;
+  }
+  return `${currentProse}${sep}${text}`;
+}
+
+async function logTrainingExample(supabase, args) {
+  const { personaId, proposition, outcome, revisedText, userNote } = args;
+  try {
+    const row = {
+      scope: "persona",
+      scope_id: personaId,
+      extractor_kind: proposition.target_kind,
+      input_signal: {
+        proposition_id: proposition.id,
+        source: proposition.source,
+        source_ref: proposition.source_ref,
+        rationale: proposition.rationale || null,
+      },
+      proposed: {
+        intent: proposition.intent,
+        target_kind: proposition.target_kind,
+        proposed_text: proposition.proposed_text,
+        confidence: proposition.confidence,
+      },
+      outcome,
+      revised_text: revisedText || null,
+      user_note: userNote || null,
+    };
+    const { data, error } = await supabase
+      .from("extractor_training_example")
+      .insert(row)
+      .select("id")
+      .single();
+    if (error) return null;
+    return data?.id || null;
+  } catch {
+    return null;
+  }
 }
