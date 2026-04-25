@@ -6,6 +6,7 @@ export const accessCode = writable("");
 export const sessionToken = writable(null);
 export const client = writable(null);
 export const isAdmin = writable(false);
+export const clientName = writable("");
 export const isHydrated = writable(false);
 
 // Hydrate from localStorage on module load
@@ -17,6 +18,7 @@ if (typeof localStorage !== "undefined") {
       if (saved.accessCode) accessCode.set(saved.accessCode);
       if (saved.sessionToken) sessionToken.set(saved.sessionToken);
       if (saved.isAdmin) isAdmin.set(true);
+      if (saved.clientName) clientName.set(saved.clientName);
     }
   } catch {
     // ignore corrupt data
@@ -58,6 +60,17 @@ if (typeof localStorage !== "undefined") {
       // ignore
     }
   });
+
+  clientName.subscribe((val) => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const saved = raw ? JSON.parse(raw) : {};
+      saved.clientName = val || "";
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    } catch {
+      // ignore
+    }
+  });
 }
 
 export function logout() {
@@ -65,6 +78,7 @@ export function logout() {
   sessionToken.set(null);
   client.set(null);
   isAdmin.set(false);
+  clientName.set("");
   if (typeof localStorage !== "undefined") {
     localStorage.removeItem(STORAGE_KEY);
     // Mémorisation du dernier clone visité : purge au logout pour éviter

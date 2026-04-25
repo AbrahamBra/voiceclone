@@ -9,7 +9,7 @@
 
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
-  import { accessCode, sessionToken, isAdmin, logout } from "$lib/stores/auth.js";
+  import { accessCode, sessionToken, isAdmin, clientName, logout } from "$lib/stores/auth.js";
 
   // TODO swap par ton lien Typeform / Tally / form waitlist quand tu l'as.
   const DEMO_CTA_HREF = "mailto:a.brakha@challengerslab.com?subject=Waitlist%20VoiceClone%20(20%20premiers%20clients)";
@@ -46,6 +46,7 @@
       if (!resp.ok) return "/create";
       const data = await resp.json();
       isAdmin.set(!!data.isAdmin);
+      if (data.clientName) clientName.set(data.clientName);
       const target = pickPersona(data.personas);
       return target ? `/chat/${target.id}` : "/create";
     } catch {
@@ -81,6 +82,7 @@
       accessCode.set(code);
       if (data.session?.token) sessionToken.set(data.session.token);
       isAdmin.set(!!data.isAdmin);
+      if (data.clientName) clientName.set(data.clientName);
       const target = pickPersona(data.personas);
       goto(target ? `/chat/${target.id}` : "/create");
     } catch {
@@ -120,6 +122,7 @@
       accessCode.set("demo");
       if (data.session?.token) sessionToken.set(data.session.token);
       isAdmin.set(!!data.isAdmin);
+      if (data.clientName) clientName.set(data.clientName);
       goto(`/chat/${target.id}`);
     } catch {
       demoLoading = false;
