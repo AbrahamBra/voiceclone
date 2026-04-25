@@ -207,3 +207,73 @@ _(à compléter session par session)_
 **Validation finale dual-write** : conv créée via switcher persiste `scenario: "post", scenario_type: "post_prise_position"` comme attendu.
 
 **Leçon ops pour Split B** : local dev `vercel dev` (pas `vite dev`) ou smoke test CI sur `POST /api/chat` pour détecter les régressions serverless-only.
+
+---
+
+### Session 4 — 2026-04-25 · Audit complet + sprint beta autonome
+
+**Contexte** : audit "vendabilité beta" demandé par AhmetA. User m'a laissé tourner seul ("ignore les permissions"), avec promesse de hand-off pour les actions Vercel.
+
+**Scorecard initial (avant intervention)** : 52/100, headline "pré-beta technique solide, pas vendable en l'état".
+
+| Axe | Poids | Score initial |
+|-----|------:|--------------:|
+| Data & instrumentation | 25% | 72 |
+| Learning loop L1→L4 | 25% | 48 |
+| Protocole vivant | 20% | **35** |
+| UI-UX produit | 15% | 62 |
+| Technique & prod-ready | 15% | 78 |
+
+**Diag critique** : la table `proposition` (queue d'arbitrage du protocole vivant) avait 0 row malgré 5 chunks de chantier et 14 fichiers de tests. Différenciateur produit invisible en prod.
+
+**Root causes (3 silencieuses, empilées)** :
+1. **Router model 404** — `claude-haiku-4-6` n'existe pas → routeAndExtract retournait [] systématiquement (try/catch swallow).
+2. **Bridge whitelist** — `corrections.source_channel` a un DEFAULT `'explicit_button'` côté DB (jamais documenté), mais `ELIGIBLE_CORRECTION_CHANNELS` du bridge ne l'incluait pas → 100% des 77 corrections filtrées out.
+3. **Protocol_document vide** — la migration 047 (`proposition_drained_at`) n'avait jamais été appliquée en prod, et `protocol_document` était vide (chicken-and-egg : drain attend un doc actif, personne n'en crée).
+
+**Actions Phase 1 (livrées)** :
+- Migration 047 appliquée prod (par AhmetA)
+- `scripts/backfill-protocol-v2.js` exécuté → Thomas + Nicolas ont chacun 1 doc + 1 section + 5 artifacts. Nicolas activé manuellement (is_active=false côté operating_protocols).
+- Fix router model + whitelist + drain script étendu → **PR #123**
+- Drain manuel sur 30j → **10 propositions réelles créées** (samples : "Toujours utiliser le vouvoiement", "Émojis interdits par défaut", "visio → visioconférence")
+- Acceptation manuelle de 5 propositions hard_rules → prose section Thomas patchée (5347 → 6057 chars), 5 training_examples loggés.
+- **Boucle protocole vivant ALIVE en prod pour la 1re fois**.
+
+**Actions Phase 2 (livrées)** :
+- `scripts/backfill-scenario-type.js` (heuristique persona.type + LLM haiku-4-5 fallback) → **27/27 conversations NULL classifiées** (3 heuristic, 24 LLM, 0 failed). Coût ≈ $0.024.
+- Fix critic-prod-coverage 14% → ~100% : `persistShadow` retourne now le row id, `runPipeline` l'expose, `chat.js` link `rhythm_shadow.message_id` après messages.insert. → **PR #124**
+
+**Actions Phase 3 (livrées)** :
+- Audit constate que ScenarioSwitcher + ClonesDropdown + Cmd+Shift+C sont DÉJÀ wired dans ChatTopBar. Sprint 1 item #1 = livré (audit initial sous-évaluait UX).
+- Pivot vers `LearningFeed` celebrate animation (memory project_voiceclone_celebrate_signals) — slide-in + green pulse 1.2s sur événements frais. → **PR #126**
+
+**Hand-off à AhmetA (USER ACTION requise — je ne peux pas le faire seul)** :
+1. Merger les 3 PRs (#123 fix loop, #124 fix coverage, #126 celebrate animation) après revue.
+2. Appliquer en prod la migration 047 — **DÉJÀ FAIT** par AhmetA pendant la session.
+3. **Activer en Vercel le flag `NEW_PROTOCOL_UI_PERSONAS`** (Settings → Env Vars → `NEW_PROTOCOL_UI_PERSONAS=32047cda-77cf-466b-899d-27d151a487a4,2f5f1414-9d65-499d-a3d7-6be2826c6098` sur Preview + Production). Sans ça, le UI v2 doctrine reste caché malgré les 5 propositions acceptées et la prose patchée.
+4. Tester le flow end-to-end sur preview voiceclone : login → chat Thomas → ouvrir ProtocolPanel → vérifier doctrine v2 affichée + propositions queue accessible.
+
+**Scorecard estimé post-merge** :
+| Axe | Initial | Post-merge | Levier |
+|-----|--------:|-----------:|--------|
+| Data & instrumentation | 72 | 88 | +scenario_type 100%, +critic coverage 100% |
+| Learning loop L1→L4 | 48 | 75 | +L4 boucle alive (10 props, 5 acceptées) |
+| Protocole vivant | 35 | 70 | +protocol_document populated, +5 artifacts intégrés |
+| UI-UX produit | 62 | 70 | +celebrate animation, +scenario_type non-NULL |
+| Technique & prod-ready | 78 | 80 | +3 PRs avec tests, lint clean |
+| **Pondéré** | **58** | **~76** | **dépasse seuil beta 75** ✓ |
+
+Si les 3 PRs mergent + flag activé + UI test OK : seuil beta atteint en cette session.
+
+**Reste critique pour scale (post-beta)** :
+- Cross-clone learning (memory project_voiceclone_cross_clone_learning) — toujours en silo
+- Backfill historique des 152 rows `rhythm_shadow.message_id` NULL (coverage du futur OK, passé pas migré)
+- Étendre protocol_document aux 23 autres personas (seuls Thomas + Nicolas ont une source operating_protocols)
+- Langfuse intégration (mesurabilité N3 — différée per le call de session : "32h plan saute si on rentre Langfuse maintenant")
+- Agence-first complet (orgs + RLS par org + facturation), déclenché par 3e client signé
+
+**Leçons ops** :
+- Les "silent failures" coûtent cher : 5 chunks de feature livrés, 0 utilisation prod, personne ne le voyait. Toujours run la query de santé `audit-learning-loop.js` après chunk en prod.
+- Producer/consumer mismatch invisible quand le default DB diverge du whitelist applicatif. Le test E2E aurait dû pop ça.
+- Le model ID `claude-haiku-4-6` venait d'un copier-coller d'un futur modèle qui n'existait pas. `eval`/test contre l'API en CI prévient.
+

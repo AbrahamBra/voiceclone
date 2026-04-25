@@ -2,9 +2,16 @@
   import { api } from "$lib/api.js";
   import { getRelativeTime } from "$lib/utils.js";
 
+  import { SvelteSet } from "svelte/reactivity";
+
   let { personaId, pollMs = 8000, limit = 30 } = $props();
 
   let events = $state([]);
+  let newIds = new SvelteSet(); // ids that arrived in the latest poll → animate
+  // Non-reactive bookkeeping — only consulted inside load(), never read by template.
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
+  let seenIds = new Set();
+  let firstLoad = true;
   let loading = $state(true);
   let error = $state(null);
   let pollTimer = null;
@@ -28,9 +35,25 @@
         if (!Array.isArray(rules) || rules.length === 0) return true; // keep (source_message fallback)
         return rules.some(r => !isValidationMarker(r));
       };
-      events = (res.events || [])
+      const next = (res.events || [])
         .filter(e => e.event_type === "consolidation_run")
         .filter(hasRealRule);
+
+      // Detect events that weren't in the previous snapshot. Skip the very
+      // first poll (otherwise everything would animate on mount).
+      if (!firstLoad) {
+        const freshIds = [];
+        for (const ev of next) if (!seenIds.has(ev.id)) freshIds.push(ev.id);
+        if (freshIds.length > 0) {
+          newIds.clear();
+          for (const id of freshIds) newIds.add(id);
+          // Auto-clear the highlight after the animation finishes.
+          setTimeout(() => { newIds.clear(); }, 2200);
+        }
+      }
+      for (const ev of next) seenIds.add(ev.id);
+      firstLoad = false;
+      events = next;
       error = null;
     } catch (e) {
       error = e?.message || "Erreur de chargement";
@@ -105,7 +128,7 @@
       {#each events as ev (ev.id)}
         {@const lbl = eventLabel(ev)}
         {@const fid = fidelityDelta(ev)}
-        <li class="event" data-type={ev.event_type}>
+        <li class="event" data-type={ev.event_type} class:fresh={newIds.has(ev.id)}>
           <div class="row">
             <span class="icon">{lbl.icon}</span>
             <span class="title">{lbl.title}</span>
@@ -146,6 +169,23 @@
   .event[data-type="correction_saved"]     { border-left-color: #8b5cf6; }
   .event[data-type="consolidation_run"]    { border-left-color: #10b981; }
   .event[data-type="consolidation_reverted"]{ border-left-color: #ef4444; }
+  /* Fresh-event highlight: slide-in + green pulse, fades out after 2s. */
+  .event.fresh {
+    animation: feed-fresh-in 220ms ease-out, feed-fresh-pulse 1.2s ease-out 220ms;
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+  }
+  @keyframes feed-fresh-in {
+    from { transform: translateY(-6px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+  @keyframes feed-fresh-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55), inset 0 0 0 0 rgba(16, 185, 129, 0.10); }
+    50%  { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0),    inset 0 0 0 999px rgba(16, 185, 129, 0.10); }
+    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0),      inset 0 0 0 0 rgba(16, 185, 129, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .event.fresh { animation: none; }
+  }
   .row { display: flex; align-items: baseline; gap: 0.5rem; }
   .icon { flex-shrink: 0; }
   .title { font-weight: 500; flex: 1; }
