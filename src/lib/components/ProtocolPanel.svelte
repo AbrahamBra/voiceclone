@@ -7,6 +7,7 @@
   //
   // Tab Doctrine = ProtocolDoctrine (TOC + prose + activity feed live).
   // Tab Registre = ProtocolRegistry (tableau transversal des artifacts).
+  // Tab Propositions = ProtocolPropositionsQueue (Chunk 4 queue d'arbitrage).
   //
   // Quand le flag est off → on rend ProtocolPanelLegacy (zéro changement
   // de comportement pour les personas non-flaggées).
@@ -14,6 +15,7 @@
   import ProtocolPanelLegacy from "./ProtocolPanelLegacy.svelte";
   import ProtocolDoctrine from "./protocol-v2/ProtocolDoctrine.svelte";
   import ProtocolRegistry from "./protocol-v2/ProtocolRegistry.svelte";
+  import ProtocolPropositionsQueue from "./protocol-v2/ProtocolPropositionsQueue.svelte";
   import { api } from "$lib/api.js";
 
   /** @type {{ personaId: string, useNewProtocolUi?: boolean }} */
@@ -22,29 +24,34 @@
   // New-UI tab state — lazy-initialised, only consumed when the flag is on.
   let activeView = $state("doctrine");
 
-  // Registry needs the sections+artifacts list. We fetch it here once when
-  // the user switches to Registry view to avoid duplicating the doctrine
-  // fetch (which has its own internal load).
-  let registrySections = $state(null);
-  let registryLoading = $state(false);
-  let registryError = $state(null);
+  // Shared lazy fetch of the protocol document : Registry needs sections,
+  // Propositions tab needs document.id. We fetch once when the user switches
+  // to either tab (Doctrine has its own internal fetch — too coupled to the
+  // pulse / activity feed wiring to refactor right now).
+  let docMeta = $state(/** @type {null | { id:string, sections:any[], pendingPropositionsCount:number }} */ (null));
+  let metaLoading = $state(false);
+  let metaError = $state(null);
 
   $effect(() => {
-    if (useNewProtocolUi && activeView === "registry" && personaId && !registrySections && !registryLoading) {
-      loadRegistry();
+    if (useNewProtocolUi && (activeView === "registry" || activeView === "propositions") && personaId && !docMeta && !metaLoading) {
+      loadMeta();
     }
   });
 
-  async function loadRegistry() {
-    registryLoading = true;
-    registryError = null;
+  async function loadMeta() {
+    metaLoading = true;
+    metaError = null;
     try {
       const data = await api(`/api/v2/protocol?persona=${personaId}`);
-      registrySections = data.sections || [];
+      docMeta = {
+        id: data?.document?.id || null,
+        sections: data?.sections || [],
+        pendingPropositionsCount: data?.pendingPropositionsCount || 0,
+      };
     } catch (e) {
-      registryError = e?.message || String(e);
+      metaError = e?.message || String(e);
     } finally {
-      registryLoading = false;
+      metaLoading = false;
     }
   }
 
@@ -80,22 +87,41 @@
         class:active={activeView === "registry"}
         onclick={() => (activeView = "registry")}
       >Registre</button>
+      <button
+        type="button"
+        class="ppv2-tab"
+        class:active={activeView === "propositions"}
+        onclick={() => (activeView = "propositions")}
+      >
+        Propositions
+        {#if docMeta?.pendingPropositionsCount}
+          <span class="ppv2-tab-count">{docMeta.pendingPropositionsCount}</span>
+        {/if}
+      </button>
       <span class="ppv2-flag" title="Nouveau Protocole — rollout flaggé">v2</span>
     </nav>
 
     <div class="ppv2-body">
       {#if activeView === "doctrine"}
         <ProtocolDoctrine {personaId} />
-      {:else if registryLoading}
-        <div class="ppv2-loading">Chargement du registre…</div>
-      {:else if registryError}
-        <div class="ppv2-error">Erreur : {registryError}</div>
-      {:else if registrySections}
+      {:else if metaLoading}
+        <div class="ppv2-loading">Chargement…</div>
+      {:else if metaError}
+        <div class="ppv2-error">Erreur : {metaError}</div>
+      {:else if !docMeta}
+        <div class="ppv2-loading">Initialisation…</div>
+      {:else if activeView === "registry"}
         <ProtocolRegistry
-          sections={registrySections}
+          sections={docMeta.sections}
           onJumpToSection={jumpToSection}
           onSelectArtifact={selectArtifact}
         />
+      {:else if activeView === "propositions"}
+        {#if docMeta.id}
+          <ProtocolPropositionsQueue documentId={docMeta.id} />
+        {:else}
+          <div class="ppv2-error">Aucun document de protocole actif pour cette persona.</div>
+        {/if}
       {/if}
     </div>
   </div>
@@ -131,6 +157,17 @@
   .ppv2-tab.active {
     color: var(--ink);
     border-bottom-color: var(--ink);
+  }
+  .ppv2-tab-count {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 0 5px;
+    border-radius: 8px;
+    background: var(--vermillon);
+    color: var(--bg, #fff);
+    font-size: var(--fs-nano);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.4;
   }
   .ppv2-flag {
     margin-left: auto;
