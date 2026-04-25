@@ -243,48 +243,47 @@ const VALID_TYPES = new Set(["validated", "validated_edited", "corrected", "save
 
 7 values. Missing 4 (2 from 040 drift + 2 from chantier #2).
 
-- [ ] **Step 2: Add a test for the 4 new accepted event_types**
+- [ ] **Step 2: Add a static-coverage test for the 4 new accepted event_types**
 
-Add this test block to the existing `test/api-feedback-events.test.js`, inside the outer describe (before `describe("POST /api/feedback-events"`). Don't reorder existing tests.
+**Important context (verified at plan time):** in `api/feedback-events.js` the auth check (line 36) runs **before** the `VALID_TYPES.has()` check (line 80). A test without real auth gets 401/403 and never reaches the VALID_TYPES gate, which makes a runtime-handler test pass vacuously. The existing `test/api-feedback-events.test.js` `it("rejects invalid event_type", ...)` is wrapped in `describe(..., { skip: !HAS_DB && "no DB env vars" })` for this exact reason.
+
+Rather than running the handler, we test VALID_TYPES **statically**: import the module, parse the source, and assert each new event_type is in the Set. This runs without a DB and produces a real fail signal when VALID_TYPES is missing entries.
+
+Add this test block to the existing `test/api-feedback-events.test.js`, after the existing top-level `describe` blocks (don't reorder existing tests):
 
 ```javascript
-describe("POST /api/feedback-events — VALID_TYPES coverage (chantier #2)", () => {
-  const NEW_ACCEPTED = [
-    'copy_paste_out',           // added by migration 040, missing from VALID_TYPES (drift)
-    'regen_rejection',          // added by migration 040, missing from VALID_TYPES (drift)
+import { readFileSync } from "node:fs";
+
+describe("api/feedback-events VALID_TYPES — static coverage (chantier #2)", () => {
+  const REQUIRED = [
+    'copy_paste_out',           // added by migration 040, must be in VALID_TYPES (drift fix)
+    'regen_rejection',          // added by migration 040, must be in VALID_TYPES (drift fix)
     'brain_drawer_opened',      // added by migration 046
     'brain_edit_during_draft',  // added by migration 046
   ];
 
-  for (const eventType of NEW_ACCEPTED) {
-    it(`does NOT reject '${eventType}' at the VALID_TYPES gate (no 400 with /invalid event_type/)`, async () => {
-      const handler = (await import("../api/feedback-events.js")).default;
-      const req = {
-        method: "POST",
-        query: {},
-        headers: { "x-access-code": process.env.ADMIN_ACCESS_CODE || "admin" },
-        body: {
-          conversation_id: "00000000-0000-0000-0000-000000000000",
-          message_id: "00000000-0000-0000-0000-000000000000",
-          event_type: eventType,
-        },
-      };
-      const res = makeRes();
-      await handler(req, res);
-      // With no real DB (zero-uuid), we expect either 404 (conv not found) or 500 (DB insert fail).
-      // The critical assertion: NOT a 400 with /invalid event_type/ — that would prove VALID_TYPES drift.
-      if (res.statusCode === 400 && res.body?.error) {
-        assert.doesNotMatch(res.body.error, /invalid event_type/i, `'${eventType}' was rejected as invalid — VALID_TYPES missing it`);
-      }
+  for (const eventType of REQUIRED) {
+    it(`VALID_TYPES contains '${eventType}'`, () => {
+      const source = readFileSync("api/feedback-events.js", "utf8");
+      // Match the literal inside the VALID_TYPES Set (handles either single-line or multi-line declaration).
+      const validTypesBlock = source.match(/VALID_TYPES\s*=\s*new\s+Set\s*\(\s*\[([\s\S]*?)\]\s*\)/);
+      assert.ok(validTypesBlock, "could not locate VALID_TYPES declaration in api/feedback-events.js");
+      assert.match(
+        validTypesBlock[1],
+        new RegExp(`["']${eventType}["']`),
+        `VALID_TYPES is missing '${eventType}' — block content: ${validTypesBlock[1].slice(0, 200)}`
+      );
     });
   }
 });
 ```
 
+The `readFileSync` import goes at the top of the test file (alongside the existing imports). If the existing file already imports it, skip the duplicate.
+
 - [ ] **Step 3: Run test to verify it FAILS (current VALID_TYPES is missing the 4 events)**
 
 Run: `npm test -- test/api-feedback-events.test.js`
-Expected: 4 failures in the new `VALID_TYPES coverage` describe, each with message `'<event>' was rejected as invalid — VALID_TYPES missing it`.
+Expected: 4 failures in the new `static coverage` describe, each with message `VALID_TYPES is missing '<event>'`.
 
 - [ ] **Step 4: Update VALID_TYPES**
 
@@ -805,17 +804,12 @@ export const brainDrawer = createBrainDrawerCore({
 });
 ```
 
-- [ ] **Step 2: Smoke check — the wrapper imports & store instantiates**
-
-Run: `node -e "import('./src/lib/stores/brainDrawer.js').catch(e => { console.error('FAIL:', e.message); process.exit(1); })"`
-Expected result: likely FAILS with `Cannot find module '$app/navigation'` — this is **expected**, the wrapper is SvelteKit-only and cannot be imported from bare Node. The real verification is `vite build` (step 3).
-
-- [ ] **Step 3: Verify the build still compiles**
+- [ ] **Step 2: Verify the build compiles**
 
 Run: `npm run build`
-Expected: build succeeds. If Svelte/Vite complains about the import of `brainDrawer`, the wrapper is broken.
+Expected: build succeeds. The wrapper imports `$app/navigation` and `$app/stores` (SvelteKit-virtual modules), so it can't be imported from bare Node — `vite build` is the only meaningful smoke check at this stage.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
 git add src/lib/stores/brainDrawer.js
@@ -969,18 +963,18 @@ git commit -m "feat(brain-drawer): pure buildBrainEventPayload (message_id + ski
 
 No dedicated automated test — the wrapper is `read stores → call core → fetch POST`. The core's skip policy is already tested in Task 7; the fetch side is covered by preview smoke (adding a rule during draft shows the toast AND a row appears in `feedback_events` — acceptance criterion #8).
 
-- [ ] **Step 1: Identify the existing stores + auth helper**
+- [ ] **Step 1: Confirm exact import paths in the codebase**
 
-Search for the imports needed by the wrapper. Confirm:
-```bash
-```
-Run: `grep -rn "export const messages\|export const currentConversationId" src/lib/`
-Expected: find the exports in `src/lib/stores/` (exact path confirms the import statement to use).
+The default paths below are **verified at plan time** but the executing agent should re-confirm before pasting (paths can drift):
 
-Run: `grep -rn "export function authHeaders\|export const authHeaders" src/lib/`
-Expected: find `authHeaders` export (exact path).
+| Symbol | Verified path | Re-check command |
+|---|---|---|
+| `messages`, `currentConversationId` | `$lib/stores/chat` | `grep -n "export.*messages\|export.*currentConversationId" src/lib/stores/chat.js` |
+| `authHeaders` | `$lib/api` (i.e. `src/lib/api.js`) | `grep -n "export.*authHeaders" src/lib/api.js` |
 
-**If the stores or `authHeaders` are NOT at the paths assumed by the spec** (`$lib/stores/chat`, `$lib/auth`), update the wrapper imports accordingly. Do NOT create new store modules.
+**Note:** `src/lib/auth.js` does NOT exist in this codebase. The reviewer caught this in iteration 1. Use `$lib/api`.
+
+If any path differs from the table above, update the import below before saving. Do NOT create new modules.
 
 - [ ] **Step 2: Write the wrapper**
 
@@ -992,7 +986,7 @@ Create `src/lib/api/brainEvents.js`:
 // POSTs to /api/feedback-events. Never blocks UX.
 import { get } from 'svelte/store';
 import { messages, currentConversationId } from '$lib/stores/chat';  // verified in Step 1
-import { authHeaders } from '$lib/auth';                              // verified in Step 1
+import { authHeaders } from '$lib/api';                               // verified in Step 1 — NOT $lib/auth
 import { buildBrainEventPayload } from './brainEventsCore.js';
 
 const NARRATIVE_KINDS = ['toi', 'prospect', 'clone_draft', 'draft_rejected'];
@@ -1303,7 +1297,7 @@ In the `<script>` block of the chat page, add the imports + the `$effect` sync +
 
 **Integration notes:**
 - `composerText`, `showToast`, and `personaId` are assumed to already exist in the file (chantier #1). If any is missing, halt and report.
-- `regenPulseActive` is consumed by the regen button (to add a CSS pulse class). The existing regen button markup needs one update: `class:pulse={regenPulseActive}`. Locate the regen button in the messages area and add this class.
+- `regenPulseActive` is consumed by the regen button — wiring is done in Step 4c (after grep'ing the actual button class).
 
 - [ ] **Step 3: Add the top-bar 🧠 button (zone 1 continuation)**
 
@@ -1336,9 +1330,23 @@ Add minimal CSS for `.brain-toggle` (inside the page's `<style>`):
 }
 ```
 
-- [ ] **Step 4: Wrap chat shell in grid + mount drawer (zone 2)**
+- [ ] **Step 4a: Locate the existing top-level chat container**
 
-Locate the main chat container (likely `<main>` or `<section>` wrapping messages + composer). Wrap so the grid layout matches spec §"Layout principal":
+Run: `grep -n "^<main\|^  <main\|class=\"[^\"]*shell\|class=\"[^\"]*chat-\(column\|wrap\|container\|page\)\|^<section" src/routes/chat/[persona]/+page.svelte`
+Expected: identifies the existing top-level wrapper element + its current class(es). This is critical — chantier #1 already shipped a layout, so we may need to **add** classes to the existing element rather than wrap a new one around it.
+
+**Decision tree based on what you find:**
+- If existing top-level is `<main>` with no special grid/flex class → add `class="chat-shell"` to it (rename if needed).
+- If existing top-level is `<main class="some-existing-class">` → add `chat-shell` alongside (e.g. `class="some-existing-class chat-shell"`) and ensure the new `.chat-shell` CSS doesn't conflict with the existing class's display/grid rules.
+- If existing top-level uses flex/grid already → halt and report. Don't blindly wrap; the existing layout deserves to be reconciled with this design.
+
+Note the existing element + classes for the next step.
+
+- [ ] **Step 4b: Apply the side-by-side layout**
+
+Modify the existing top-level element identified in Step 4a so it carries `chat-shell` and a conditional `drawer-open` class. Wrap the existing children (messages + composer + paste zone) in a new `<section class="chat-column">` if there isn't already one. Mount `<BrainDrawer />` as a sibling.
+
+Final structure (template — adapt the outer element name/classes to what was found in Step 4a):
 
 ```svelte
 <main class="chat-shell" class:drawer-open={$brainDrawer.open}>
@@ -1372,8 +1380,19 @@ Add CSS (inside the page's `<style>`):
     grid-template-columns: 1fr 0; /* drawer is position:fixed on mobile */
   }
 }
+```
 
-/* Regen pulse — kept minimal; visual tweak during smoke */
+- [ ] **Step 4c: Locate the regen button, confirm its actual class, wire the pulse**
+
+Run: `grep -n "regen\|↻\|↺\|regenerate" src/routes/chat/[persona]/+page.svelte`
+Expected: finds the existing regen button. **Note its actual class name** (e.g. `.regen-btn`, `.composer-regen`, `.icon-btn[data-action="regen"]`, or whatever exists).
+
+Add `class:pulse={regenPulseActive}` to that button's markup.
+
+Then add the pulse CSS using **the actual class name found above**, not the placeholder `.regen-btn`:
+
+```css
+/* Replace .regen-btn below with the class name found in the grep above. */
 .regen-btn.pulse {
   animation: regen-pulse 1.5s ease-out;
 }
@@ -1383,6 +1402,8 @@ Add CSS (inside the page's `<style>`):
   100% { box-shadow: 0 0 0 0 rgba(0, 150, 255, 0); }
 }
 ```
+
+If the regen button has no stable class (e.g. uses an attribute selector), either add a stable class or attach the pulse to a parent wrapper.
 
 - [ ] **Step 5: Update ⌘K palette entry (zone 3)**
 
@@ -1427,12 +1448,16 @@ at rule-save time."
 - Delete: `src/routes/brain/[persona]/+page.svelte`
 - Delete: `src/routes/brain/[persona]/+page.js`
 
-- [ ] **Step 1: Confirm no other file imports from them**
+- [ ] **Step 1: Confirm no other file imports / links / navigates to legacy route**
 
-```bash
+Two greps — imports of the file path + runtime references to the URL:
+
 ```
-Run: `grep -rn "routes/brain/\[persona\]/+page\|from.*brain.*\[persona\]" src/`
-Expected: only self-references (or nothing). If any other route references them, halt and report.
+grep -rn "routes/brain/\[persona\]/+page\|from.*brain.*\[persona\]" src/
+grep -rEn "/brain/\\\$\{|/brain/\\\$persona|href=\"/brain/|goto\\(['\"\`]/brain/" src/
+```
+
+The second grep catches `goto('/brain/${id}')`, `goto(\`/brain/${id}\`)`, `<a href="/brain/...">` markup, and similar runtime nav. The ⌘K palette entry in `src/routes/chat/[persona]/+page.svelte` is one expected hit (Task 11 Step 5 already replaces it). Any other hits (other components, layouts, etc.) → halt, report, and decide whether to also update them or accept the redirect.
 
 - [ ] **Step 2: Delete**
 
@@ -1551,12 +1576,30 @@ Expected: all 7 tests pass.
 Run: `npm run build`
 Expected: build succeeds.
 
-- [ ] **Step 6: Commit (combines Task 12 + Task 13 deletes + redirect add)**
+- [ ] **Step 6: Stage deletes + new files atomically (combines Task 12 + Task 13)**
 
 ```bash
-git add src/routes/brain/[persona]/+page.server.js test/brain-redirect.test.js
-# Also stage the deletes from Task 12:
-git rm "src/routes/brain/[persona]/+page.svelte" "src/routes/brain/[persona]/+page.js" 2>/dev/null || true
+# Stage every change under the brain route folder (additions, modifications, AND
+# the rm-from-disk deletes from Task 12) in one shot. No `|| true` swallow —
+# if anything fails, surface the error.
+git add -A "src/routes/brain/[persona]/"
+git add test/brain-redirect.test.js
+```
+
+- [ ] **Step 7: Verify the staged tree is what we expect (only +page.server.js remains)**
+
+Run: `git diff --cached --name-status -- "src/routes/brain/[persona]/"`
+Expected output:
+```
+D       src/routes/brain/[persona]/+page.js
+D       src/routes/brain/[persona]/+page.svelte
+A       src/routes/brain/[persona]/+page.server.js
+```
+**If +page.svelte is NOT shown as `D`**, the rm in Task 12 didn't take effect — halt and investigate before committing.
+
+- [ ] **Step 8: Commit**
+
+```bash
 git commit -m "feat(brain-drawer): redirect /brain/[persona] → /chat/[persona]?brain=<tab>
 
 Replaces the standalone /brain route (163-line page + load) with a 307 redirect.
@@ -1564,7 +1607,12 @@ Preserves legacy hash (#protocole) and query (?tab=...) for bookmarked URLs.
 Drawer surface in /chat is now the single source of truth for Panel editing."
 ```
 
-- [ ] **Step 7: Full test suite green**
+- [ ] **Step 9: Post-commit verification**
+
+Run: `git ls-tree HEAD -- "src/routes/brain/[persona]/"`
+Expected: only `+page.server.js` (no `+page.svelte`, no `+page.js`).
+
+- [ ] **Step 10: Full test suite green**
 
 Run: `npm test`
 Expected: all tests pass. Any pre-existing failure unrelated to this chantier should be noted (and ignored) but nothing new should break.
