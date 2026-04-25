@@ -4,6 +4,8 @@
   // Remplace ChatInput + l'ex-composer-toolbar.
   import { CANONICAL_SCENARIOS } from "$lib/scenarios.js";
   import { inferPrimary, shouldShowPasteZone } from "$lib/composer-state.js";
+  import ComposerPasteZone from "./ComposerPasteZone.svelte";
+  import ComposerStarterList from "./ComposerStarterList.svelte";
 
   let {
     disabled = false,
@@ -14,8 +16,8 @@
     onSwitchScenario,     // (scenarioId) => Promise<void> — flip scenario_type before drafting (DM sub-mode)
     onIngestPost,         // (post: string) => void — called when user submits a hand-written post to ingest as rules
     onAddProspectReply,   // (content: string) => Promise<void> — DM only, logs prospect message with turn_kind='prospect'
-    lastTurnKind = null,              // NEW : 'toi'|'prospect'|'clone_draft'|'draft_rejected'|null
-    onPasteDismiss,                   // NEW : () => void — appelé au dismiss de la zone paste
+    lastTurnKind = null,              // 'toi'|'prospect'|'clone_draft'|'draft_rejected'|null
+    onPasteDismiss,                   // () => void — appelé au dismiss de la zone paste
   } = $props();
 
   // DM sub-modes exposed as CTAs in the composer. Clicking one switches
@@ -30,23 +32,18 @@
   let isPostMode = $derived(scenarioType?.startsWith("post") ?? false);
 
   // Ingest mode : user wants to paste a hand-written post to teach the clone.
-  // Flip les CTA + placeholder. Reset à chaque changement de scénario.
   let ingestMode = $state(false);
   $effect(() => { scenarioType; ingestMode = false; });
 
-  // --- Zone paste (réponse prospect) — NEW ---
+  // --- Zone paste (réponse prospect) ---
   let pasteDismissed = $state(false);
-  let pasteText = $state("");
   let showPasteZone = $derived(
     shouldShowPasteZone({ isDmMode, lastTurnKind, pasteDismissed })
   );
   // Reset dismiss quand lastTurnKind change (nouvel envoi → re-propose la zone).
-  // On ne wipe PAS pasteText ici : submitPaste/dismissPaste s'en chargent déjà,
-  // et préserver le texte évite de perdre la saisie si un message arrive
-  // pendant que l'opérateur tape.
   $effect(() => { lastTurnKind; pasteDismissed = false; });
 
-  // --- CTA primaire inféré — NEW ---
+  // --- CTA primaire inféré ---
   let inferredPrimary = $derived(
     inferPrimary({ isDmMode, isEmptyConversation, lastTurnKind })
   );
@@ -69,15 +66,13 @@
   );
 
   // Bloque le composer tant que l'opérateur n'a pas choisi de scénario.
-  // Le scénario est le seul switch de contexte qui oriente vraiment le draft
-  // (DM, post, relance…) — le laisser vide = LLM qui part de zéro.
   let scenarioMissing = $derived(!scenarioType);
   let effectiveDisabled = $derived(disabled || scenarioMissing);
 
   let text = $state("");
   let textareaEl = $state(undefined);
 
-  // Charcount target (POST/DM) — repris de ChatInput.svelte
+  // Charcount target (POST/DM)
   const POST_RANGE = { min: 1200, max: 1500 };
   const DM_RANGE = { min: 150, max: 280 };
   const INGEST_MIN = 50;
@@ -89,7 +84,6 @@
     null
   );
   let chars = $derived(text.length);
-  const PROSPECT_MIN = 3;
   let countState = $derived(
     ingestMode
       ? (chars === 0 ? "idle" : chars < INGEST_MIN ? "under" : "ok")
@@ -128,7 +122,6 @@
   });
 
   // Empty-state hint: guide l'user DM vers le scrape LinkedIn quand conv vierge.
-  // Masqué dès qu'une URL est collée (banner prend le relai) ou qu'un message part.
   let showLeadHint = $derived(
     isEmptyConversation && !scenarioMissing && isDmMode && text.length === 0 && !detectedUrl
   );
@@ -184,29 +177,6 @@
     });
   }
 
-  function dismissPaste() {
-    pasteDismissed = true;
-    pasteText = "";
-    onPasteDismiss?.();
-  }
-
-  async function submitPaste() {
-    const content = pasteText.trim();
-    if (content.length < PROSPECT_MIN) return;
-    pasteText = "";
-    await onAddProspectReply?.(content);
-  }
-
-  function handlePasteKeydown(e) {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      submitPaste();
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      dismissPaste();
-    }
-  }
-
   function handleKeydown(e) {
     // Cmd/Ctrl+Enter = action primaire du mode courant
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -243,34 +213,13 @@
     if (textareaEl) textareaEl.style.height = "auto";
     onIngestPost?.(post);
   }
-
 </script>
 
 {#if showPasteZone}
-  <div class="paste-zone" role="region" aria-label="Réponse du prospect">
-    <header class="paste-header">
-      <span class="paste-label">📥 Il a répondu ?</span>
-      <button class="paste-dismiss" type="button" onclick={dismissPaste} aria-label="Ignorer"><span aria-hidden="true">×</span></button>
-    </header>
-    <textarea
-      class="paste-textarea"
-      bind:value={pasteText}
-      onkeydown={handlePasteKeydown}
-      placeholder="Colle sa réponse ici…"
-      rows="2"
-    ></textarea>
-    <footer class="paste-footer">
-      <button
-        class="paste-submit"
-        type="button"
-        onclick={submitPaste}
-        disabled={pasteText.trim().length < PROSPECT_MIN}
-      >
-        ajouter au fil
-      </button>
-      <span class="paste-hint">Cmd+Enter · Esc pour annuler</span>
-    </footer>
-  </div>
+  <ComposerPasteZone
+    onDismiss={() => { pasteDismissed = true; onPasteDismiss?.(); }}
+    onSubmit={(content) => onAddProspectReply?.(content)}
+  />
 {/if}
 
 <div class="composer" class:composer-locked={scenarioMissing}>
@@ -315,19 +264,11 @@
   {/if}
 
   {#if !scenarioMissing && starters.length > 0 && text.length === 0}
-    <div class="starters" role="group" aria-label="Amorces de consigne">
-      {#each starters as s (s.label)}
-        <button
-          type="button"
-          class="starter-chip mono"
-          onclick={() => applyStarter(s.template)}
-          disabled={effectiveDisabled}
-          title={s.template}
-        >
-          {s.label}
-        </button>
-      {/each}
-    </div>
+    <ComposerStarterList
+      {starters}
+      disabled={effectiveDisabled}
+      onApply={applyStarter}
+    />
   {/if}
 
   <textarea
@@ -495,28 +436,6 @@
     padding: 2px 0;
   }
 
-  .starters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 2px 0 4px;
-  }
-  .starter-chip {
-    font-size: 11px;
-    padding: 4px 10px;
-    background: var(--paper-subtle, #f6f5f1);
-    border: 1px solid var(--rule);
-    color: var(--ink);
-    cursor: pointer;
-    transition: border-color var(--dur-fast, 120ms) var(--ease, ease),
-      background var(--dur-fast, 120ms) var(--ease, ease);
-  }
-  .starter-chip:hover:not(:disabled) {
-    border-color: var(--vermillon);
-    background: var(--paper, #fff);
-  }
-  .starter-chip:disabled { opacity: 0.5; cursor: not-allowed; }
-
   textarea {
     width: 100%;
     resize: none;
@@ -667,70 +586,4 @@
   }
   .action-menu li button:hover:not(:disabled) { background: var(--paper-subtle, #f6f5f1); }
   .action-menu li button:disabled { opacity: 0.5; cursor: not-allowed; }
-
-  /* Zone paste "réponse prospect" — apparaît quand on attend une réponse */
-  .paste-zone {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin: 0 16px;
-    padding: 10px 12px;
-    border: 1px dashed var(--rule-strong);
-    border-bottom: none;
-    background: var(--paper-subtle, #f6f5f1);
-  }
-  .paste-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .paste-label {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--ink-70);
-  }
-  .paste-dismiss {
-    background: transparent;
-    border: none;
-    color: var(--ink-40);
-    font-size: 16px;
-    line-height: 1;
-    padding: 2px 6px;
-    cursor: pointer;
-  }
-  .paste-dismiss:hover { color: var(--ink); }
-  .paste-textarea {
-    width: 100%;
-    min-height: 42px;
-    max-height: 120px;
-    resize: vertical;
-    padding: 6px 8px;
-    border: 1px solid var(--rule);
-    background: var(--paper);
-    font-family: inherit;
-    font-size: 13px;
-    color: var(--ink);
-  }
-  .paste-textarea:focus { outline: 1px solid var(--ink); outline-offset: -1px; }
-  .paste-footer {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .paste-submit {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    padding: 6px 14px;
-    background: var(--ink);
-    color: var(--paper);
-    border: 1px solid var(--ink);
-    cursor: pointer;
-  }
-  .paste-submit:hover:not(:disabled) { background: var(--vermillon); border-color: var(--vermillon); }
-  .paste-submit:disabled { opacity: 0.5; cursor: not-allowed; }
-  .paste-hint {
-    font-family: var(--font-mono);
-    font-size: 10.5px;
-    color: var(--ink-40);
-  }
 </style>
