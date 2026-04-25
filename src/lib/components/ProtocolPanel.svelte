@@ -118,7 +118,16 @@
         />
       {:else if activeView === "propositions"}
         {#if docMeta.id}
-          <ProtocolPropositionsQueue documentId={docMeta.id} />
+          <ProtocolPropositionsQueue
+            documentId={docMeta.id}
+            onResolved={() => {
+              // Decrement the pending counter shown on the tab badge so it
+              // stays in sync with the queue after each accept/revise/reject.
+              if (docMeta && docMeta.pendingPropositionsCount > 0) {
+                docMeta.pendingPropositionsCount = docMeta.pendingPropositionsCount - 1;
+              }
+            }}
+          />
         {:else}
           <div class="ppv2-error">Aucun document de protocole actif pour cette persona.</div>
         {/if}
