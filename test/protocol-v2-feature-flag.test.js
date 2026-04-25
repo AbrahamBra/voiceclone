@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import {
   isNewProtocolUiEnabled,
   getNewProtocolUiWhitelist,
-} from "../lib/protocol-v2-feature-flag.js";
+} from "../src/lib/protocol-v2-feature-flag.js";
 
 const PERSONA_A = "11111111-1111-1111-1111-111111111111";
 const PERSONA_B = "22222222-2222-2222-2222-222222222222";
