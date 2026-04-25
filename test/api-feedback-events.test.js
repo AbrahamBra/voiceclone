@@ -1,5 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
+import { readFileSync } from "node:fs";
 
 const HAS_DB = !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE);
 
@@ -71,4 +72,26 @@ describe("POST /api/feedback-events", { skip: !HAS_DB && "no DB env vars" }, () 
     assert.notEqual(res.statusCode, 400, "client_validated should not be rejected by validation");
     assert.equal(res.statusCode, 404);
   });
+});
+
+describe("api/feedback-events VALID_TYPES — static coverage (chantier #2)", () => {
+  const REQUIRED = [
+    'copy_paste_out',           // added by migration 040, must be in VALID_TYPES (drift fix)
+    'regen_rejection',          // added by migration 040, must be in VALID_TYPES (drift fix)
+    'brain_drawer_opened',      // added by migration 046
+    'brain_edit_during_draft',  // added by migration 046
+  ];
+
+  for (const eventType of REQUIRED) {
+    it(`VALID_TYPES contains '${eventType}'`, () => {
+      const source = readFileSync("api/feedback-events.js", "utf8");
+      const validTypesBlock = source.match(/VALID_TYPES\s*=\s*new\s+Set\s*\(\s*\[([\s\S]*?)\]\s*\)/);
+      assert.ok(validTypesBlock, "could not locate VALID_TYPES declaration in api/feedback-events.js");
+      assert.match(
+        validTypesBlock[1],
+        new RegExp(`["']${eventType}["']`),
+        `VALID_TYPES is missing '${eventType}' — block content: ${validTypesBlock[1].slice(0, 200)}`
+      );
+    });
+  }
 });

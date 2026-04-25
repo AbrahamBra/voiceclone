@@ -1,6 +1,18 @@
 import { authenticateRequest, supabase, setCors, hasPersonaAccess } from "../lib/supabase.js";
 
-const VALID_TYPES = new Set(["validated", "validated_edited", "corrected", "saved_rule", "excellent", "client_validated", "paste_zone_dismissed"]);
+const VALID_TYPES = new Set([
+  "validated",
+  "validated_edited",
+  "corrected",
+  "saved_rule",
+  "excellent",
+  "client_validated",
+  "paste_zone_dismissed",
+  "copy_paste_out",           // drift fix from migration 040
+  "regen_rejection",          // drift fix from migration 040
+  "brain_drawer_opened",      // chantier #2
+  "brain_edit_during_draft",  // chantier #2
+]);
 
 // Maps a feedback_events.event_type to a learning_events.event_type. Keeps
 // existing taxonomy (rule_added / correction_saved) where it already matches,
