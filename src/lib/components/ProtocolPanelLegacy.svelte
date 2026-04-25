@@ -4,7 +4,7 @@
   import { getRelativeTime } from "$lib/utils.js";
   import { track } from "$lib/tracking.js";
 
-  let { personaId } = $props();
+  let { personaId, onRuleAdded } = $props();
 
   let protocols = $state([]);
   let loading = $state(true);
@@ -56,6 +56,7 @@
       track("protocol_rule_toggled", { active: !p.is_active });
       showToast(p.is_active ? "Protocole désactivé" : "Protocole activé");
       await load();
+      if (action === "activate") onRuleAdded?.();
     } catch (e) {
       showToast(e.message || "Erreur");
     } finally {

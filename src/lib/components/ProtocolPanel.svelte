@@ -18,8 +18,8 @@
   import ProtocolPropositionsQueue from "./protocol-v2/ProtocolPropositionsQueue.svelte";
   import { api } from "$lib/api.js";
 
-  /** @type {{ personaId: string, useNewProtocolUi?: boolean }} */
-  let { personaId, useNewProtocolUi = false } = $props();
+  /** @type {{ personaId: string, useNewProtocolUi?: boolean, onRuleAdded?: () => void }} */
+  let { personaId, useNewProtocolUi = false, onRuleAdded } = $props();
 
   // New-UI tab state — lazy-initialised, only consumed when the flag is on.
   let activeView = $state("doctrine");
@@ -71,7 +71,7 @@
 </script>
 
 {#if !useNewProtocolUi}
-  <ProtocolPanelLegacy {personaId} />
+  <ProtocolPanelLegacy {personaId} {onRuleAdded} />
 {:else}
   <div class="ppv2">
     <nav class="ppv2-tabs" aria-label="Vue protocole">
