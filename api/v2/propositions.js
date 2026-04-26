@@ -36,10 +36,26 @@ import {
   supabase as _supabase,
   setCors as _setCors,
 } from "../../lib/supabase.js";
+import { computeArtifactHash } from "../../lib/protocol-v2-db.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STATUS_VALUES = new Set(["pending", "accepted", "rejected", "revised", "merged"]);
 const ACTIONS = new Set(["accept", "reject", "revise"]);
+
+// Chantier 2 — accept materializes an artifact for new content.
+// add_rule  → hard_check (severity=hard) — atomic constraint.
+// add_paragraph → pattern (severity=light) — soft template/state.
+// Other intents (amend_paragraph, refine_pattern, remove_rule) modify
+// existing structure and do NOT create a new artifact in this iteration —
+// artifact-level diff/replace lives in a future Chantier 2bis.
+const INTENT_TO_ARTIFACT_KIND = {
+  add_rule: "hard_check",
+  add_paragraph: "pattern",
+};
+const ARTIFACT_KIND_TO_SEVERITY = {
+  hard_check: "hard",
+  pattern: "light",
+};
 
 const PROPOSITION_COLUMNS =
   "id, document_id, source, source_ref, source_refs, count, intent, " +
@@ -214,10 +230,19 @@ async function handleMutate(req, res, { supabase, hasPersonaAccess, client, isAd
       userNote: user_note,
     });
 
+    // 5. Materialize a structured artifact for the accepted proposition
+    //    (Chantier 2 — best-effort, don't fail request). Only fires for
+    //    add_rule / add_paragraph intents — see INTENT_TO_ARTIFACT_KIND.
+    const artifactId = await materializeArtifact(supabase, {
+      proposition: prop,
+      sectionId: targetSection.id,
+    });
+
     res.status(200).json({
       proposition: data,
       section: { id: targetSection.id, prose: newProse },
       training_example_id: trainingExampleId,
+      artifact_id: artifactId,
     });
     return;
   }
@@ -336,6 +361,48 @@ export function patchProse(currentProse, prop) {
     return `${currentProse}${sep}[${prop.intent}] ${text}`;
   }
   return `${currentProse}${sep}${text}`;
+}
+
+/**
+ * Insert a `protocol_artifact` row mirroring an accepted proposition's
+ * structured intent. Best-effort: returns artifact id or null on any error.
+ *
+ * The artifact lives alongside the prose patch — prose is the human-readable
+ * doctrine view, the artifact is the queryable + future-firable form (RAG,
+ * rule firing telemetry, cross-clone similarity match).
+ */
+async function materializeArtifact(supabase, { proposition, sectionId }) {
+  const kind = INTENT_TO_ARTIFACT_KIND[proposition.intent];
+  if (!kind) return null;
+  const text = (proposition.proposed_text || "").trim();
+  if (!text) return null;
+  const hash = computeArtifactHash(text);
+  if (!hash) return null;
+  try {
+    const row = {
+      source_section_id: sectionId,
+      source_quote: proposition.rationale || null,
+      kind,
+      content: {
+        text,
+        intent: proposition.intent,
+        source_proposition_id: proposition.id,
+        source_kind: proposition.target_kind,
+        confidence: proposition.confidence,
+      },
+      severity: ARTIFACT_KIND_TO_SEVERITY[kind],
+      content_hash: hash,
+    };
+    const { data, error } = await supabase
+      .from("protocol_artifact")
+      .insert(row)
+      .select("id")
+      .single();
+    if (error) return null;
+    return data?.id || null;
+  } catch {
+    return null;
+  }
 }
 
 async function logTrainingExample(supabase, args) {
