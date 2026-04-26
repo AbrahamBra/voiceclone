@@ -7,6 +7,8 @@ import { authenticateRequest, checkBudget, getApiKey, logUsage, hasPersonaAccess
 import { recomputeStage } from "../lib/stage.js";
 import { getPersonaFromDb, findRelevantKnowledgeFromDb, loadScenarioFromDb, getCorrectionsFromDb, findRelevantEntities, getIntelligenceId } from "../lib/knowledge-db.js";
 import { getActiveHardRules } from "../lib/protocol-db.js";
+import { getActiveArtifactsForPersona } from "../lib/protocol-v2-db.js";
+import { recordFiring } from "../lib/protocol-v2-rule-counters.js";
 import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, detectMetacognitiveInsights, looksLikeDirectInstruction, looksLikeNegativeFeedback, detectNegativeFeedback, classifyMessage, looksLikeHorsCible } from "../lib/feedback-detect.js";
 import { selectModel } from "../lib/model-router.js";
 import { consolidateCorrections } from "../lib/correction-consolidation.js";
@@ -251,12 +253,13 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
     ? CANONICAL_SCENARIOS[scenarioType].kind
     : scenario === "post" ? "post" : "dm";
 
-  // Entities + corrections + protocol rules in parallel.
-  // Protocol rules fail silently: an opt-in layer must never block the chat.
-  const [ontology, corrections, protocolRules] = await Promise.all([
+  // Entities + corrections + protocol rules + protocol_v2 artifacts in parallel.
+  // Protocol layers fail silently: an opt-in layer must never block the chat.
+  const [ontology, corrections, protocolRules, protocolArtifacts] = await Promise.all([
     findRelevantEntities(personaId, messages),
     getCorrectionsFromDb(personaId),
     getActiveHardRules(personaId, scenario).catch(() => []),
+    getActiveArtifactsForPersona(supabase, personaId).catch(() => []),
   ]);
 
   // Knowledge uses boost terms from graph — must wait for ontology
@@ -278,6 +281,7 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
     detectedPages,
     injectedEntities,
     injectedCorrectionsCount,
+    injectedArtifactIds,
   } = buildSystemPrompt({
     persona,
     knowledgeMatches,
@@ -286,6 +290,7 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
     ontology,
     scenarioKind,
     protocolRules,
+    protocolArtifacts,
     scenarioSlug: scenario,
   });
 
@@ -516,6 +521,18 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
                 await supabase.from("rhythm_shadow").update({ message_id: dbBot.id }).eq("id", shadowId);
               }
             } catch { /* best-effort linking — never fail the chat for this */ }
+          }
+          // Chantier 2bis — log a rule_firing row per artifact that made it
+          // into the system prompt. Outcome='pending' until the user resolves
+          // the message (helpful/harmful), which Chantier 3 will wire.
+          if (dbBot?.id && Array.isArray(injectedArtifactIds) && injectedArtifactIds.length > 0) {
+            recordFiring({
+              supabase,
+              artifactIds: injectedArtifactIds,
+              messageId: dbBot.id,
+              conversationId: convId,
+              personaId,
+            }).catch(() => { /* best-effort telemetry — never fail the chat */ });
           }
         }
       } catch (err) {

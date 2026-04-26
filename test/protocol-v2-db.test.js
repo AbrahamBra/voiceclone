@@ -4,6 +4,7 @@ import {
   getActiveDocument,
   listSections,
   listArtifacts,
+  getActiveArtifactsForPersona,
 } from "../lib/protocol-v2-db.js";
 
 // Stub supabase: returns configurable data.
@@ -12,19 +13,28 @@ function makeStub(rows) {
     from(table) {
       return {
         _rows: rows[table] || [],
-        _filter: {},
+        _filter: {},        // { col: val } via eq
+        _inFilter: null,    // { col, values } via in
+        _limit: null,
         select() { return this; },
         eq(col, val) { this._filter[col] = val; return this; },
+        in(col, values) { this._inFilter = { col, values }; return this; },
         order() { return this; },
-        single() {
-          const match = this._rows.find(r =>
+        limit(n) { this._limit = n; return this; },
+        _matches() {
+          let m = this._rows.filter(r =>
             Object.entries(this._filter).every(([k, v]) => r[k] === v));
-          return Promise.resolve({ data: match || null, error: null });
+          if (this._inFilter) {
+            m = m.filter(r => this._inFilter.values.includes(r[this._inFilter.col]));
+          }
+          if (this._limit != null) m = m.slice(0, this._limit);
+          return m;
+        },
+        single() {
+          return Promise.resolve({ data: this._matches()[0] || null, error: null });
         },
         then(resolve) {
-          const matches = this._rows.filter(r =>
-            Object.entries(this._filter).every(([k, v]) => r[k] === v));
-          resolve({ data: matches, error: null });
+          resolve({ data: this._matches(), error: null });
         },
       };
     },
@@ -72,5 +82,60 @@ describe("protocol-v2-db", () => {
     const arts = await listArtifacts(sb, "s1", { activeOnly: true });
     assert.equal(arts.length, 1);
     assert.equal(arts[0].id, "a1");
+  });
+
+  describe("getActiveArtifactsForPersona (Chantier 2bis)", () => {
+    it("returns active artifacts of all sections of the persona's active doc", async () => {
+      const sb = makeStub({
+        protocol_document: [
+          { id: "d1", owner_kind: "persona", owner_id: "p1", status: "active", version: 1 },
+        ],
+        protocol_section: [
+          { id: "s1", document_id: "d1" },
+          { id: "s2", document_id: "d1" },
+          { id: "sX", document_id: "dOther" },
+        ],
+        protocol_artifact: [
+          { id: "a1", source_section_id: "s1", is_active: true, kind: "hard_check", content: { text: "rule 1" }, severity: "hard" },
+          { id: "a2", source_section_id: "s2", is_active: true, kind: "pattern", content: { text: "pattern 1" }, severity: "light" },
+          { id: "a3", source_section_id: "s1", is_active: false, kind: "hard_check", content: { text: "retired" }, severity: "hard" },
+          { id: "aX", source_section_id: "sX", is_active: true, kind: "hard_check", content: { text: "other doc" }, severity: "hard" },
+        ],
+      });
+      const arts = await getActiveArtifactsForPersona(sb, "p1");
+      const ids = arts.map(a => a.id).sort();
+      assert.deepEqual(ids, ["a1", "a2"]);
+    });
+
+    it("returns [] when persona has no active doc", async () => {
+      const sb = makeStub({ protocol_document: [], protocol_section: [], protocol_artifact: [] });
+      const arts = await getActiveArtifactsForPersona(sb, "p1");
+      assert.deepEqual(arts, []);
+    });
+
+    it("returns [] when active doc has no sections", async () => {
+      const sb = makeStub({
+        protocol_document: [{ id: "d1", owner_kind: "persona", owner_id: "p1", status: "active", version: 1 }],
+        protocol_section: [],
+        protocol_artifact: [],
+      });
+      const arts = await getActiveArtifactsForPersona(sb, "p1");
+      assert.deepEqual(arts, []);
+    });
+
+    it("respects limit option", async () => {
+      const sections = Array.from({ length: 3 }, (_, i) => ({ id: `s${i}`, document_id: "d1" }));
+      const artifacts = Array.from({ length: 10 }, (_, i) => ({
+        id: `a${i}`, source_section_id: `s${i % 3}`, is_active: true,
+        kind: "hard_check", content: { text: `rule ${i}` }, severity: "hard",
+      }));
+      const sb = makeStub({
+        protocol_document: [{ id: "d1", owner_kind: "persona", owner_id: "p1", status: "active", version: 1 }],
+        protocol_section: sections,
+        protocol_artifact: artifacts,
+      });
+      const arts = await getActiveArtifactsForPersona(sb, "p1", { limit: 4 });
+      assert.equal(arts.length, 4);
+    });
   });
 });
