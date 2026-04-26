@@ -132,6 +132,8 @@ export default async function handler(req, res) {
   // --- 2. Search messages ---
   // Search targets the DM simulation content only — meta shortcut
   // confirmations are noise for the user looking for a past draft.
+  // Scope client_id côté DB (était filtré Node-side : à 1M rows ça scanne tout
+  // + bypass RLS si la query échappe au filter).
   if (search && persona) {
     let query = supabase
       .from("messages")
@@ -142,12 +144,14 @@ export default async function handler(req, res) {
       .order("created_at", { ascending: false })
       .limit(20);
 
+    if (!isAdmin) {
+      query = query.eq("conversations.client_id", client.id);
+    }
+
     const { data, error } = await query;
     if (error) { res.status(500).json({ error: error.message }); return; }
 
-    const rows = (data || []).filter(m =>
-      isAdmin || m.conversations.client_id === client.id
-    );
+    const rows = data || [];
 
     const results = rows.map(m => ({
       conversation_id: m.conversation_id,
