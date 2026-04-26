@@ -11,12 +11,12 @@ const NEW_EVENTS = ['brain_drawer_opened', 'brain_edit_during_draft'];
 const DRIFT_FIX_EVENTS = ['copy_paste_out', 'regen_rejection'];
 const EXISTING_EVENTS = ['validated', 'validated_edited', 'corrected', 'saved_rule', 'excellent', 'client_validated', 'paste_zone_dismissed'];
 
-describe("migration 046 — feedback_brain_drawer", () => {
+describe("migration 051 — feedback_brain_drawer", () => {
   let sb;
   before(() => { if (TEST_URL && TEST_KEY) sb = createClient(TEST_URL, TEST_KEY); });
 
   it("applies without error", skipIfNoTestDb(), async () => {
-    const sql = readFileSync("supabase/046_feedback_brain_drawer.sql", "utf8");
+    const sql = readFileSync("supabase/051_feedback_brain_drawer.sql", "utf8");
     const { error } = await sb.rpc("exec_sql", { sql });
     assert.equal(error, null, `SQL exec failed: ${error?.message}`);
   });
@@ -24,7 +24,7 @@ describe("migration 046 — feedback_brain_drawer", () => {
   it("CHECK accepts all 11 valid event_types", skipIfNoTestDb(), async () => {
     const allValid = [...EXISTING_EVENTS, ...DRIFT_FIX_EVENTS, ...NEW_EVENTS];
     assert.equal(allValid.length, 11);
-    const sql = readFileSync("supabase/046_feedback_brain_drawer.sql", "utf8");
+    const sql = readFileSync("supabase/051_feedback_brain_drawer.sql", "utf8");
     for (const event of allValid) {
       assert.ok(sql.includes(`'${event}'`), `migration missing event '${event}'`);
     }

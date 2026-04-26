@@ -1,4 +1,4 @@
--- 046_feedback_brain_drawer.sql
+-- 051_feedback_brain_drawer.sql
 --
 -- Chantier #2 (drawer cerveau latéral) — ajoute deux event_types au pipeline
 -- feedback :
@@ -14,10 +14,9 @@
 -- §"Cas limites" du spec). Pas de relaxation DB.
 --
 -- Spec source : docs/superpowers/specs/2026-04-24-brain-drawer-lateral-design.md.
--- Numéros 038/039 = protocole-v2 core/hooks (PR #79). 040 = training signal capture.
--- 041-043 réservés paper-space pour les follow-ups Chunk 2.5 protocole-vivant
--- (rule_proposals, n4_paused_until, promoted_to_rule_index). 044-045 déjà
--- appliqués (dernier = 045 match_propositions vector(1024)). D'où 046.
+-- Renumbered 046 → 051 on rebase : master shipped 046–050 in parallel
+-- (feedback_events_drained, corrections_proposition_drained, clients_role_agency,
+-- rule_firing_counters, protocol_publish_event). Numéro = simple ordre d'apply.
 -- Additif uniquement — aucun DROP destructif.
 
 ALTER TABLE feedback_events
@@ -40,4 +39,4 @@ ALTER TABLE feedback_events
   ));
 
 COMMENT ON COLUMN feedback_events.event_type IS
-  'Feedback taxonomy. 11 event types: validated, validated_edited, corrected, saved_rule, excellent, client_validated, paste_zone_dismissed, copy_paste_out, regen_rejection, brain_drawer_opened, brain_edit_during_draft. See 046_feedback_brain_drawer.sql.';
+  'Feedback taxonomy. 11 event types: validated, validated_edited, corrected, saved_rule, excellent, client_validated, paste_zone_dismissed, copy_paste_out, regen_rejection, brain_drawer_opened, brain_edit_during_draft. See 051_feedback_brain_drawer.sql.';
