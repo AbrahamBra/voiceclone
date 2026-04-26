@@ -250,37 +250,39 @@ export default async function handler(req, res) {
     let demotedEntities = 0;
     let demotedCorrections = 0;
 
-    // Demote specific entities by ID
+    // Demote specific entities by ID — batched: 1 SELECT + N parallel UPDATEs
+    // (was: 2N sequential round-trips; now N+1 with rtt-bound latency).
     if (entityIds?.length > 0) {
-      for (const id of entityIds) {
-        const { data: entity } = await supabase
-          .from("knowledge_entities")
-          .select("confidence")
-          .eq("id", id).eq("persona_id", intellId).single();
-        if (!entity) continue;
-        const newConf = Math.max(0.0, (entity.confidence || 0.8) - 0.1);
-        await supabase.from("knowledge_entities")
-          .update({ confidence: newConf, last_matched_at: new Date().toISOString() })
-          .eq("id", id);
-        demotedEntities++;
-      }
+      const { data: entities } = await supabase
+        .from("knowledge_entities")
+        .select("id, confidence")
+        .in("id", entityIds)
+        .eq("persona_id", intellId);
+      const now = new Date().toISOString();
+      await Promise.all((entities || []).map((e) => {
+        const newConf = Math.max(0.0, (e.confidence || 0.8) - 0.1);
+        return supabase.from("knowledge_entities")
+          .update({ confidence: newConf, last_matched_at: now })
+          .eq("id", e.id);
+      }));
+      demotedEntities = (entities || []).length;
     }
 
-    // Demote specific corrections by ID
+    // Demote specific corrections by ID — same pattern.
     if (correctionIds?.length > 0) {
-      for (const id of correctionIds) {
-        const { data: corr } = await supabase
-          .from("corrections")
-          .select("confidence")
-          .eq("id", id).eq("persona_id", intellId).single();
-        if (!corr) continue;
-        const newConf = Math.max(0.0, (corr.confidence || 0.8) - 0.15);
+      const { data: corrs } = await supabase
+        .from("corrections")
+        .select("id, confidence")
+        .in("id", correctionIds)
+        .eq("persona_id", intellId);
+      await Promise.all((corrs || []).map((c) => {
+        const newConf = Math.max(0.0, (c.confidence || 0.8) - 0.15);
         const newStatus = newConf <= 0.1 ? "archived" : "active";
-        await supabase.from("corrections")
+        return supabase.from("corrections")
           .update({ confidence: newConf, status: newStatus })
-          .eq("id", id);
-        demotedCorrections++;
-      }
+          .eq("id", c.id);
+      }));
+      demotedCorrections = (corrs || []).length;
     }
 
     clearIntelligenceCache(intellId);
