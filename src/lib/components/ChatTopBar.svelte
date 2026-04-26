@@ -23,6 +23,7 @@
     currentPersonaId = null,
     persona = null,          // pour ScenarioSwitcher (type + scenarios)
     scenarioType = null,
+    styleHealth = "unknown", // ok | warn | drift | unknown — vue d'ensemble cockpit
     onScenarioChange,
     onSwitchClone,
     onToggleSidebar,
@@ -31,6 +32,35 @@
   } = $props();
 
   let menuOpen = $state(false);
+
+  // Pulse vermillon quand l'état santé change — célèbre le signal d'apprentissage
+  // (transitions ok/warn/drift). Ne pulse pas vers/depuis "unknown" (état initial).
+  let healthPulse = $state(false);
+  let prevHealth = "unknown";
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let healthPulseTimer = null;
+  $effect(() => {
+    const current = styleHealth;
+    if (current !== prevHealth && current !== "unknown" && prevHealth !== "unknown") {
+      healthPulse = false;
+      requestAnimationFrame(() => { healthPulse = true; });
+      if (healthPulseTimer) clearTimeout(healthPulseTimer);
+      healthPulseTimer = setTimeout(() => { healthPulse = false; }, 700);
+    }
+    prevHealth = current;
+  });
+
+  const HEALTH_GLYPH = { ok: "≡", warn: "▲", drift: "●" };
+  const HEALTH_LABEL = {
+    ok: "voix calibrée",
+    warn: "à surveiller",
+    drift: "dérive style",
+  };
+  const HEALTH_TITLE = {
+    ok: "Le clone tient sa voix sur les derniers messages.",
+    warn: "Quelques signaux faibles — règles actives ou collapse moyen.",
+    drift: "Dérive détectée — fidélité sous le seuil ou collapse bas.",
+  };
 
   // Mode courant (post/dm) dérivé du scenario_type actif. Null tant que rien
   // n'est choisi (première visite sur un clone multi-mode).
@@ -149,6 +179,21 @@
           direction="down"
         />
       {/if}
+    {/if}
+
+    {#if styleHealth !== "unknown"}
+      <span
+        class="style-health"
+        class:health-ok={styleHealth === "ok"}
+        class:health-warn={styleHealth === "warn"}
+        class:health-drift={styleHealth === "drift"}
+        class:pulse={healthPulse}
+        title={HEALTH_TITLE[styleHealth]}
+        aria-live="polite"
+      >
+        <span class="health-glyph" aria-hidden="true">{HEALTH_GLYPH[styleHealth]}</span>
+        <span class="health-label">{HEALTH_LABEL[styleHealth]}</span>
+      </span>
     {/if}
   </div>
 
@@ -287,6 +332,51 @@
   .kind-tab.active {
     background: var(--vermillon);
     color: var(--paper);
+  }
+
+  /* Style-health badge — synthèse santé du clone (collapse + fidelity + rules
+     actives). Marche avec le styleHealth dérivé côté parent. */
+  .style-health {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    color: var(--ink-60);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+  }
+  .style-health .health-glyph {
+    font-size: 11px;
+    line-height: 1;
+  }
+  .style-health.health-ok {
+    color: var(--ink-60);
+    border-color: var(--rule-strong);
+  }
+  .style-health.health-warn {
+    color: var(--vermillon);
+    border-color: var(--vermillon);
+  }
+  .style-health.health-drift {
+    color: var(--paper);
+    background: var(--vermillon);
+    border-color: var(--vermillon);
+  }
+  /* Pulse à la transition d'état — célèbre que la santé du clone bouge. */
+  .style-health.pulse {
+    animation: stylehealthpulse 700ms ease-out;
+  }
+  @keyframes stylehealthpulse {
+    0%   { box-shadow: 0 0 0 0 rgba(214, 73, 51, 0.55); }
+    100% { box-shadow: 0 0 0 10px rgba(214, 73, 51, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .style-health.pulse { animation: none; }
   }
 
   @media (max-width: 768px) {
