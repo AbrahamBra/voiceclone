@@ -77,9 +77,34 @@ export default async function handler(req, res, deps) {
   );
   const pendingPropositionsCount = await countPendingPropositions(supabase, document.id);
 
+  // Count resolved propositions NOT yet covered by a publish_event on this doc.
+  // Drives the "Publier vN+1 (X)" button in the UI.
+  let publishablePropsCount = 0;
+  try {
+    const { data: priorEvents } = await supabase
+      .from("protocol_publish_event")
+      .select("accepted_proposition_ids, rejected_proposition_ids, revised_proposition_ids")
+      .eq("document_id", document.id);
+    const alreadyPublished = new Set();
+    for (const ev of priorEvents || []) {
+      for (const id of ev.accepted_proposition_ids || []) alreadyPublished.add(id);
+      for (const id of ev.rejected_proposition_ids || []) alreadyPublished.add(id);
+      for (const id of ev.revised_proposition_ids || []) alreadyPublished.add(id);
+    }
+    const { data: resolved } = await supabase
+      .from("proposition")
+      .select("id")
+      .eq("document_id", document.id)
+      .in("status", ["accepted", "rejected", "revised"]);
+    publishablePropsCount = (resolved || []).filter(p => !alreadyPublished.has(p.id)).length;
+  } catch {
+    publishablePropsCount = 0;
+  }
+
   res.status(200).json({
     document,
     sections: sectionsWithArtifacts,
     pendingPropositionsCount,
+    publishablePropsCount,
   });
 }

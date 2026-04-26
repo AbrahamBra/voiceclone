@@ -18,10 +18,16 @@
   let document = $state(null);
   let sections = $state([]);
   let pendingPropositionsCount = $state(0);
+  let publishablePropsCount = $state(0); // resolved props not yet covered by a publish_event
   let loading = $state(true);
   let error = $state(null);
   let activeSectionId = $state(null);
   let pulsedSectionId = $state(null);
+
+  // Publish state
+  let publishing = $state(false);
+  let publishResult = $state(null);
+  let publishError = $state(null);
 
   let pulseTimer = null;
 
@@ -40,12 +46,38 @@
       document = data.document;
       sections = data.sections || [];
       pendingPropositionsCount = data.pendingPropositionsCount || 0;
+      publishablePropsCount = data.publishablePropsCount || 0;
       if (!activeSectionId && sections[0]) activeSectionId = sections[0].id;
     } catch (e) {
       error = e?.message || String(e);
     } finally {
       loading = false;
     }
+  }
+
+  async function publish() {
+    if (publishing) return;
+    publishing = true;
+    publishError = null;
+    publishResult = null;
+    try {
+      const res = await api("/api/v2/protocol/publish-active", {
+        method: "POST",
+        body: JSON.stringify({ personaId }),
+      });
+      publishResult = res;
+      // Reload to refresh version number + reset publishable count
+      await load();
+    } catch (e) {
+      publishError = e?.message || String(e);
+    } finally {
+      publishing = false;
+    }
+  }
+
+  function closePublishModal() {
+    publishResult = null;
+    publishError = null;
   }
 
   // Public API — called by parent (eventually wired to SSE in Task 3.6).
@@ -97,6 +129,21 @@
           <span class="pd-pending">{pendingPropositionsCount} prop.</span>
         {/if}
       </div>
+      {#if publishablePropsCount > 0}
+        <button
+          type="button"
+          class="pd-publish-btn"
+          onclick={publish}
+          disabled={publishing}
+          title="Publier la version {(document?.version || 1) + 1} avec les {publishablePropsCount} propositions résolues"
+        >
+          {#if publishing}
+            Publication…
+          {:else}
+            Publier v{(document?.version || 1) + 1} ({publishablePropsCount})
+          {/if}
+        </button>
+      {/if}
       <ul class="pd-toc-list">
         {#each sections as section (section.id)}
           <li>
@@ -150,6 +197,42 @@
     </aside>
   {/if}
 </div>
+
+{#if publishResult || publishError}
+  <div class="pd-modal-backdrop" onclick={closePublishModal} role="presentation">
+    <div class="pd-modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-label="Résultat publication">
+      {#if publishResult}
+        <header class="pd-modal-head">
+          <span class="pd-modal-version">v{publishResult.version_old} → v{publishResult.version}</span>
+          <button type="button" class="pd-modal-close" onclick={closePublishModal} aria-label="Fermer">×</button>
+        </header>
+        <div class="pd-modal-counts">
+          {publishResult.accepted_count} intégrées
+          {#if publishResult.revised_count > 0} · {publishResult.revised_count} reformulées{/if}
+          {#if publishResult.rejected_count > 0} · {publishResult.rejected_count} refusées{/if}
+        </div>
+        {#if publishResult.brief}
+          <div class="pd-modal-brief">{publishResult.brief}</div>
+        {/if}
+        {#if publishResult.narrative}
+          <div class="pd-modal-narrative">
+            {#each publishResult.narrative.split(/\n\n+/) as para}
+              <p>{para}</p>
+            {/each}
+          </div>
+        {:else}
+          <div class="pd-modal-empty">Narrative non générée (LLM erreur, publish event quand même enregistré).</div>
+        {/if}
+      {:else if publishError}
+        <header class="pd-modal-head">
+          <span class="pd-modal-version pd-error">Erreur</span>
+          <button type="button" class="pd-modal-close" onclick={closePublishModal} aria-label="Fermer">×</button>
+        </header>
+        <div class="pd-modal-narrative"><p>{publishError}</p></div>
+      {/if}
+    </div>
+  </div>
+{/if}
 
 <style>
   .pd {
@@ -300,5 +383,96 @@
     .pd { grid-template-columns: 1fr; }
     .pd-toc, .pd-side { display: none; }
     .pd-prose { max-width: 100%; padding: 14px; }
+  }
+
+  /* Publish button */
+  .pd-publish-btn {
+    width: 100%;
+    margin-bottom: 14px;
+    padding: 8px 10px;
+    background: var(--vermillon);
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+    transition: opacity 120ms ease;
+  }
+  .pd-publish-btn:hover:not(:disabled) { opacity: 0.85; }
+  .pd-publish-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Publish modal */
+  .pd-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+  }
+  .pd-modal {
+    background: var(--paper, #fff);
+    border-radius: 6px;
+    max-width: 640px;
+    width: 100%;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 24px 28px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.25);
+  }
+  .pd-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--rule-strong);
+  }
+  .pd-modal-version {
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+    color: var(--vermillon);
+    letter-spacing: 0.06em;
+  }
+  .pd-modal-version.pd-error { color: var(--vermillon); }
+  .pd-modal-close {
+    background: none;
+    border: none;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--ink-40);
+    padding: 0 4px;
+  }
+  .pd-modal-close:hover { color: var(--ink); }
+  .pd-modal-counts {
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    color: var(--ink-40);
+    margin-bottom: 14px;
+  }
+  .pd-modal-brief {
+    font-style: italic;
+    color: var(--ink-70);
+    padding: 10px 14px;
+    background: color-mix(in srgb, var(--ink) 4%, transparent);
+    border-left: 2px solid var(--vermillon);
+    margin-bottom: 16px;
+    font-size: var(--fs-small);
+  }
+  .pd-modal-narrative p {
+    margin: 0 0 12px;
+    color: var(--ink);
+    font-size: var(--fs-small);
+    line-height: 1.65;
+  }
+  .pd-modal-narrative p:last-child { margin-bottom: 0; }
+  .pd-modal-empty {
+    color: var(--ink-40);
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
   }
 </style>
