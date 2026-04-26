@@ -495,6 +495,178 @@ describe("Task 4.3 — accept patches prose", () => {
   });
 });
 
+describe("Chantier 2 — accept materializes protocol_artifact", () => {
+  it("add_rule accept inserts protocol_artifact with kind=hard_check, severity=hard", async () => {
+    const handler = await loadHandler();
+    const res = makeRes();
+    const deps = baseDeps();
+    await handler(
+      { method: "POST", query: {}, body: { action: "accept", id: PROP_ID } },
+      res,
+      deps,
+    );
+    assert.equal(res.statusCode, 200);
+    const insert = deps.supabase._inserts.find((i) => i.table === "protocol_artifact");
+    assert.ok(insert, "should insert protocol_artifact");
+    assert.equal(insert.row.kind, "hard_check");
+    assert.equal(insert.row.severity, "hard");
+    assert.equal(insert.row.source_section_id, SECTION_ID);
+    assert.equal(insert.row.content.text, "Max 2 questions par message.");
+    assert.equal(insert.row.content.intent, "add_rule");
+    assert.equal(insert.row.content.source_proposition_id, PROP_ID);
+    assert.equal(insert.row.content.source_kind, "hard_rules");
+    assert.match(insert.row.content_hash, /^[0-9a-f]{64}$/);
+    assert.equal(res._body.artifact_id, "gen-id");
+  });
+
+  it("add_paragraph accept inserts protocol_artifact with kind=pattern, severity=light", async () => {
+    const handler = await loadHandler();
+    const res = makeRes();
+    const deps = baseDeps({
+      supabase: makeSupabase({
+        protocol_document: {
+          rows: [{ id: DOC_ID, owner_kind: "persona", owner_id: PERSONA_ID }],
+        },
+        proposition: {
+          rows: [
+            {
+              id: PROP_ID, document_id: DOC_ID, status: "pending",
+              source: "feedback_event", intent: "add_paragraph", target_kind: "process",
+              target_section_id: SECTION_ID,
+              proposed_text: "Étape 'qualification' — prérequis: lead a répondu.",
+              rationale: "from corrections", confidence: 0.84,
+            },
+          ],
+          onUpdate: (filter, patch) => ({ id: filter.id, document_id: DOC_ID, ...patch }),
+        },
+        protocol_section: {
+          rows: [{ id: SECTION_ID, document_id: DOC_ID, kind: "process", prose: "" }],
+          onUpdate: (filter, patch) => ({ id: filter.id, ...patch }),
+        },
+        extractor_training_example: { rows: [], onInsert: (r) => ({ ...r, id: "t-1" }) },
+      }),
+    });
+    await handler(
+      { method: "POST", query: {}, body: { action: "accept", id: PROP_ID } },
+      res,
+      deps,
+    );
+    assert.equal(res.statusCode, 200);
+    const insert = deps.supabase._inserts.find((i) => i.table === "protocol_artifact");
+    assert.ok(insert);
+    assert.equal(insert.row.kind, "pattern");
+    assert.equal(insert.row.severity, "light");
+    assert.equal(insert.row.content.intent, "add_paragraph");
+  });
+
+  it("amend_paragraph accept does NOT insert artifact (only patches prose)", async () => {
+    const handler = await loadHandler();
+    const res = makeRes();
+    const deps = baseDeps({
+      supabase: makeSupabase({
+        protocol_document: {
+          rows: [{ id: DOC_ID, owner_kind: "persona", owner_id: PERSONA_ID }],
+        },
+        proposition: {
+          rows: [
+            {
+              id: PROP_ID, document_id: DOC_ID, status: "pending",
+              source: "feedback_event", intent: "amend_paragraph", target_kind: "errors",
+              target_section_id: SECTION_ID,
+              proposed_text: "Évite 'visio' — préfère 'visioconférence'.",
+              confidence: 0.78,
+            },
+          ],
+          onUpdate: (filter, patch) => ({ id: filter.id, document_id: DOC_ID, ...patch }),
+        },
+        protocol_section: {
+          rows: [{ id: SECTION_ID, document_id: DOC_ID, kind: "errors", prose: "Existing." }],
+          onUpdate: (filter, patch) => ({ id: filter.id, ...patch }),
+        },
+        extractor_training_example: { rows: [], onInsert: (r) => ({ ...r, id: "t-1" }) },
+      }),
+    });
+    await handler(
+      { method: "POST", query: {}, body: { action: "accept", id: PROP_ID } },
+      res,
+      deps,
+    );
+    assert.equal(res.statusCode, 200);
+    const insert = deps.supabase._inserts.find((i) => i.table === "protocol_artifact");
+    assert.equal(insert, undefined, "amend_paragraph should not produce artifact");
+    assert.equal(res._body.artifact_id, null);
+  });
+
+  it("returns 200 with artifact_id=null if artifact insert errors", async () => {
+    const handler = await loadHandler();
+    const res = makeRes();
+    const deps = baseDeps({
+      supabase: makeSupabase({
+        protocol_document: {
+          rows: [{ id: DOC_ID, owner_kind: "persona", owner_id: PERSONA_ID }],
+        },
+        proposition: {
+          rows: [
+            {
+              id: PROP_ID, document_id: DOC_ID, status: "pending",
+              source: "feedback_event", intent: "add_rule", target_kind: "hard_rules",
+              target_section_id: SECTION_ID,
+              proposed_text: "Some rule.", confidence: 0.9,
+            },
+          ],
+          onUpdate: (filter, patch) => ({ id: filter.id, document_id: DOC_ID, ...patch }),
+        },
+        protocol_section: {
+          rows: [{ id: SECTION_ID, document_id: DOC_ID, kind: "hard_rules", prose: "" }],
+          onUpdate: (filter, patch) => ({ id: filter.id, ...patch }),
+        },
+        extractor_training_example: { rows: [], onInsert: (r) => ({ ...r, id: "t-1" }) },
+        protocol_artifact: { rows: [], insertError: { message: "boom" } },
+      }),
+    });
+    await handler(
+      { method: "POST", query: {}, body: { action: "accept", id: PROP_ID } },
+      res,
+      deps,
+    );
+    assert.equal(res.statusCode, 200);
+    assert.equal(res._body.proposition.status, "accepted");
+    assert.equal(res._body.artifact_id, null);
+  });
+
+  it("content_hash is stable for semantically identical text (case + punctuation)", async () => {
+    const { computeArtifactHash } = await import("../lib/protocol-v2-db.js");
+    const a = computeArtifactHash("Max 2 questions par message.");
+    const b = computeArtifactHash("MAX 2 questions, par message !");
+    const c = computeArtifactHash("Max 1 question par message.");
+    assert.equal(a, b, "case+punctuation should not change hash");
+    assert.notEqual(a, c, "different content must produce different hash");
+    assert.match(a, /^[0-9a-f]{64}$/);
+  });
+
+  it("computeArtifactHash returns null on empty/whitespace input", async () => {
+    const { computeArtifactHash } = await import("../lib/protocol-v2-db.js");
+    assert.equal(computeArtifactHash(""), null);
+    assert.equal(computeArtifactHash("   "), null);
+    assert.equal(computeArtifactHash(null), null);
+    assert.equal(computeArtifactHash(undefined), null);
+  });
+
+  it("reject does NOT create an artifact", async () => {
+    const handler = await loadHandler();
+    const res = makeRes();
+    const deps = baseDeps();
+    await handler(
+      { method: "POST", query: {}, body: { action: "reject", id: PROP_ID } },
+      res,
+      deps,
+    );
+    assert.equal(res.statusCode, 200);
+    const insert = deps.supabase._inserts.find((i) => i.table === "protocol_artifact");
+    assert.equal(insert, undefined, "reject path must not materialize artifacts");
+  });
+});
+
 describe("Task 4.3 — training examples", () => {
   it("accept logs extractor_training_example with outcome=accepted", async () => {
     const handler = await loadHandler();
