@@ -9,8 +9,8 @@
   import { api } from "$lib/api.js";
   import ProtocolPropositionCard from "./ProtocolPropositionCard.svelte";
 
-  /** @type {{ documentId: string }} */
-  let { documentId } = $props();
+  /** @type {{ documentId: string, onResolved?: (propositionId: string) => void }} */
+  let { documentId, onResolved: notifyResolved } = $props();
 
   let propositions = $state([]);
   let loading = $state(true);
@@ -44,6 +44,7 @@
 
   function handleResolved(propositionId) {
     propositions = propositions.filter((p) => p.id !== propositionId);
+    if (typeof notifyResolved === "function") notifyResolved(propositionId);
   }
 
   // Compute available filter options from current data.

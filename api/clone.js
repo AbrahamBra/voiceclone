@@ -164,6 +164,47 @@ export default async function handler(req, res) {
 
     if (insertErr) throw new Error("Failed to save persona: " + insertErr.message);
 
+    // Bootstrap an empty Protocol-v2 document for the new persona, with the
+    // 6 canonical sections pre-created. This unblocks the propositions queue
+    // (the bridge needs a doc with status='active' AND a section matching the
+    // proposition's target_kind to land an Accept). Best-effort — a failure
+    // here must not fail the clone creation. The legacy `operating_protocols`
+    // / `protocol_hard_rules` row is still created the day the operator
+    // uploads a real playbook ; this scaffold is the empty container ready
+    // to receive learnings from day one.
+    try {
+      const { data: doc, error: docErr } = await supabase
+        .from("protocol_document")
+        .insert({
+          owner_kind: "persona",
+          owner_id: persona.id,
+          version: 1,
+          status: "active",
+        })
+        .select("id")
+        .single();
+      if (docErr || !doc?.id) throw new Error(docErr?.message || "no doc id");
+      const sections = [
+        { kind: "hard_rules",   order: 0, heading: "Règles absolues" },
+        { kind: "errors",       order: 1, heading: "Erreurs à éviter — préférences de formulation" },
+        { kind: "process",      order: 2, heading: "Process — étapes opérationnelles" },
+        { kind: "icp_patterns", order: 3, heading: "ICP patterns — taxonomie prospects" },
+        { kind: "scoring",      order: 4, heading: "Scoring — axes de qualification" },
+        { kind: "templates",    order: 5, heading: "Templates — skeletons par scénario" },
+      ].map((s) => ({
+        ...s,
+        document_id: doc.id,
+        prose: "",
+        structured: null,
+        author_kind: "auto_extraction",
+      }));
+      const { error: secErr } = await supabase.from("protocol_section").insert(sections);
+      if (secErr) throw new Error(secErr.message);
+      console.log(JSON.stringify({ event: "protocol_v2_scaffold_ok", persona: persona.id, doc: doc.id }));
+    } catch (e) {
+      console.log(JSON.stringify({ event: "protocol_v2_scaffold_error", persona: persona.id, error: e.message }));
+    }
+
     // Insert default scenario files
     const defaultScenario = `# Scenario : Conversation\n\nTu es ${personaConfig.name}.\n\n${personaConfig.voice.writingRules.map(r => `- ${r}`).join("\n")}\n`;
     const writingRules = personaConfig.voice.writingRules.map(r => `- ${r}`).join("\n");
