@@ -1274,6 +1274,7 @@
         currentPersonaId={personaId}
         persona={$personaConfig}
         scenarioType={$currentScenarioType}
+        {styleHealth}
         onScenarioChange={handleScenarioChange}
         onSwitchClone={handleSwitchToClone}
         onToggleSidebar={() => sidebarOpen = !sidebarOpen}

@@ -4,6 +4,8 @@
   // Append local via export appendEvent(ev) pour insertion optimiste.
   import { api } from "$lib/api.js";
   import { showToast } from "$lib/stores/ui.js";
+  import { fly } from "svelte/transition";
+  import { quintOut } from "svelte/easing";
 
   let {
     conversationId = null,
@@ -15,6 +17,28 @@
   let events = $state([]);
   let loading = $state(false);
   let rulesExpanded = $state(false);
+
+  // Suit les events insérés via appendEvent (pas via load) pour appliquer un
+  // flash vermillon "fresh". Un Set d'IDs vivant ~700ms après l'insertion.
+  let freshIds = $state(new Set());
+  /** @type {Map<string, ReturnType<typeof setTimeout>>} */
+  const freshTimers = new Map();
+
+  // Pulse vermillon sur la pill quand le nombre de règles actives augmente.
+  let rulesPulse = $state(false);
+  let prevRulesCount = activeRules.length;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let rulesPulseTimer = null;
+  $effect(() => {
+    const n = activeRules.length;
+    if (n > prevRulesCount && prevRulesCount >= 0) {
+      rulesPulse = false;
+      requestAnimationFrame(() => { rulesPulse = true; });
+      if (rulesPulseTimer) clearTimeout(rulesPulseTimer);
+      rulesPulseTimer = setTimeout(() => { rulesPulse = false; }, 800);
+    }
+    prevRulesCount = n;
+  });
 
   $effect(() => {
     if (!conversationId) { events = []; return; }
@@ -38,9 +62,22 @@
     }
   }
 
-  // Exposé au parent (bind:this) pour append après POST success
+  // Exposé au parent (bind:this) pour append après POST success.
+  // Marque l'event comme "fresh" pour déclencher le flash vermillon ~700ms.
   export function appendEvent(ev) {
     events = [ev, ...events];
+    if (ev?.id) {
+      const next = new Set(freshIds);
+      next.add(ev.id);
+      freshIds = next;
+      if (freshTimers.has(ev.id)) clearTimeout(freshTimers.get(ev.id));
+      freshTimers.set(ev.id, setTimeout(() => {
+        const after = new Set(freshIds);
+        after.delete(ev.id);
+        freshIds = after;
+        freshTimers.delete(ev.id);
+      }, 700));
+    }
   }
 
   function fmtTime(iso) {
@@ -88,7 +125,7 @@
   <header class="rail-head mono">feedback</header>
 
   {#if activeRules.length > 0}
-    <div class="rules-pill">
+    <div class="rules-pill" class:pulse={rulesPulse}>
       <button
         class="pill-btn mono"
         aria-expanded={rulesExpanded}
@@ -116,7 +153,13 @@
     {:else if events.length > 0}
       <ul class="event-list">
         {#each events as ev (ev.id)}
-          <li class="event" class:event-excellent={ev.event_type === "excellent"} class:event-client-validated={ev.event_type === "client_validated"}>
+          <li
+            class="event"
+            class:event-excellent={ev.event_type === "excellent"}
+            class:event-client-validated={ev.event_type === "client_validated"}
+            class:event-fresh={ev.id && freshIds.has(ev.id)}
+            in:fly={{ y: -8, duration: 240, easing: quintOut }}
+          >
             <div class="event-head">
               <span class="event-icon">{iconFor(ev.event_type)}</span>
               <span class="event-time mono">{fmtTime(ev.created_at)}</span>
@@ -259,4 +302,30 @@
     text-decoration: underline;
   }
   .event-ref:hover { color: var(--vermillon); }
+
+  /* Flash vermillon brièvement à l'append d'un nouvel event. Combiné avec le
+     in:fly du transition Svelte, ça matérialise visuellement que le signal
+     vient d'être enregistré côté DB. */
+  .event-fresh {
+    animation: eventfreshflash 700ms ease-out;
+  }
+  @keyframes eventfreshflash {
+    0%   { background: rgba(214, 73, 51, 0.18); }
+    100% { background: transparent; }
+  }
+
+  /* Pulse halo sur la pill quand activeRules.length augmente — un nouveau
+     pattern vient d'être promu en règle active. */
+  .rules-pill.pulse {
+    animation: rulespillpulse 800ms ease-out;
+  }
+  @keyframes rulespillpulse {
+    0%   { box-shadow: inset 0 0 0 2px rgba(214, 73, 51, 0.55); }
+    100% { box-shadow: inset 0 0 0 2px rgba(214, 73, 51, 0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .event-fresh,
+    .rules-pill.pulse { animation: none; }
+  }
 </style>
