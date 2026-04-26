@@ -96,6 +96,18 @@ async function main() {
   const { data: lastCorr } = await supabase
     .from("corrections").select("created_at, status").order("created_at", { ascending: false }).limit(1);
 
+  // 9. N3 auto-critique health (7d window — N3 is supposed to run frequently)
+  const SINCE_7D = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+  const { count: autoCritique7d } = await supabase
+    .from("learning_events").select("*", { count: "exact", head: true })
+    .eq("event_type", "auto_critique").gte("created_at", SINCE_7D);
+  const { data: lastAutoCritique } = await supabase
+    .from("learning_events").select("created_at, payload, persona_id")
+    .eq("event_type", "auto_critique").order("created_at", { ascending: false }).limit(1);
+  const { count: autoCritique30d } = await supabase
+    .from("learning_events").select("*", { count: "exact", head: true })
+    .eq("event_type", "auto_critique").gte("created_at", SINCE);
+
   const bridgingRate = feedbackTotal30d
     ? ((feedbackWithLearningEvent / feedbackTotal30d) * 100).toFixed(1) + "%"
     : "n/a";
@@ -127,6 +139,11 @@ async function main() {
       last_learning_event: lastLE?.[0] || null,
       last_correction: lastCorr?.[0] || null,
     },
+    n3_auto_critique: {
+      events_7d: autoCritique7d || 0,
+      events_30d: autoCritique30d || 0,
+      last_run: lastAutoCritique?.[0] || null,
+    },
   };
 
   console.log(JSON.stringify(report, null, 2));
@@ -153,6 +170,14 @@ async function main() {
     if (gradTotal === 0 && corrTotal > 0) {
       console.log("⚠️  Aucune correction graduée sur 30j malgré des corrections émises — consolidation tourne-t-elle ?");
     }
+  }
+
+  // N3 verdict
+  const n3_7d = autoCritique7d || 0;
+  if (n3_7d === 0) {
+    console.log("❌ N3 (auto-critique) DORT : 0 événements sur 7j. Endpoint /api/auto-critique shipped (#104) mais jamais appelé en prod.");
+  } else {
+    console.log(`✓ N3 actif : ${n3_7d} auto_critique events 7j (${autoCritique30d || 0} sur 30j)`);
   }
 }
 
