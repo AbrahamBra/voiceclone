@@ -1,6 +1,14 @@
 import { authenticateRequest, supabase, setCors, hasPersonaAccess } from "../lib/supabase.js";
+import { resolveFirings } from "../lib/protocol-v2-rule-counters.js";
 
-const VALID_TYPES = new Set(["validated", "validated_edited", "corrected", "saved_rule", "excellent", "client_validated", "paste_zone_dismissed"]);
+const VALID_TYPES = new Set([
+  "validated", "validated_edited", "corrected", "saved_rule",
+  "excellent", "client_validated", "paste_zone_dismissed",
+  // Chantier 3.1 — implicit signals. implicit_accept is emitted by api/chat.js
+  // on a prior bot message when the user sends a follow-up without correcting.
+  // implicit_dismiss is reserved for future beforeunload / abandon detection.
+  "implicit_accept", "implicit_dismiss",
+]);
 
 // Maps a feedback_events.event_type to a learning_events.event_type. Keeps
 // existing taxonomy (rule_added / correction_saved) where it already matches,
@@ -15,6 +23,24 @@ const FB_TO_LEARNING = {
   corrected:            { type: "correction_saved",       intensity: null },
   saved_rule:           { type: "rule_added",             intensity: null },
   paste_zone_dismissed: { type: "signal_dismissed",       intensity: null },
+  implicit_accept:      { type: "positive_reinforcement", intensity: "implicit" },
+  implicit_dismiss:     { type: "signal_dismissed",       intensity: "implicit" },
+};
+
+// Chantier 3.1 — feedback event_type → protocol_rule_firing outcome resolution.
+// Pure mapping: helpful = the rules likely contributed; harmful = they likely
+// didn't (user corrected); unrelated = signal too noisy to attribute.
+// saved_rule is intentionally absent — it's an off-flow action (user saving a
+// new rule from scratch), not feedback on the artifact set that fired.
+const EVENT_TO_FIRING_OUTCOME = {
+  validated:            "helpful",
+  validated_edited:     "helpful",
+  excellent:            "helpful",
+  client_validated:     "helpful",
+  implicit_accept:      "helpful",
+  corrected:            "harmful",
+  paste_zone_dismissed: "unrelated",
+  implicit_dismiss:     "unrelated",
 };
 
 export default async function handler(req, res) {
@@ -146,6 +172,15 @@ export default async function handler(req, res) {
     const { error: goldErr } = await supabase
       .from("messages").update({ is_gold: true }).eq("id", message_id);
     if (goldErr) console.error("[feedback-events] is_gold update failed", goldErr.message);
+  }
+
+  // Chantier 3.1 — resolve the protocol_rule_firing rows that were inserted
+  // pending when this assistant message was generated (Chantier 2bis #137).
+  // Best-effort: never fail the feedback insert if the resolution path errors.
+  const firingOutcome = EVENT_TO_FIRING_OUTCOME[event_type];
+  if (firingOutcome) {
+    resolveFirings({ supabase, messageId: message_id, outcome: firingOutcome })
+      .catch((err) => console.error("[feedback-events] resolveFirings failed", err?.message));
   }
 
   res.status(201).json({ id: data.id, created_at: data.created_at });

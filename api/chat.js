@@ -8,7 +8,61 @@ import { recomputeStage } from "../lib/stage.js";
 import { getPersonaFromDb, findRelevantKnowledgeFromDb, loadScenarioFromDb, getCorrectionsFromDb, findRelevantEntities, getIntelligenceId } from "../lib/knowledge-db.js";
 import { getActiveHardRules } from "../lib/protocol-db.js";
 import { getActiveArtifactsForPersona } from "../lib/protocol-v2-db.js";
-import { recordFiring } from "../lib/protocol-v2-rule-counters.js";
+import { recordFiring, resolveFirings } from "../lib/protocol-v2-rule-counters.js";
+
+/**
+ * Chantier 3.1 — emit an implicit_accept feedback_event on a prior bot message
+ * when the user sends a follow-up without explicit feedback, and resolve the
+ * corresponding rule_firings to outcome='helpful'. Skips if the message
+ * already has any feedback_event (avoids overwriting explicit signal).
+ *
+ * Fire-and-forget — never awaited so chat latency is unchanged. Errors logged.
+ */
+function emitImplicitAccept(supabase, messageId, conversationId, personaId) {
+  (async () => {
+    try {
+      // Skip if any feedback_event already exists for this message — explicit
+      // signal wins over implicit, and we don't want duplicate inserts when a
+      // user re-opens the same conversation.
+      const { data: existing } = await supabase
+        .from("feedback_events")
+        .select("id")
+        .eq("message_id", messageId)
+        .limit(1);
+      if (existing && existing.length > 0) return;
+
+      const lePayload = {
+        source: "chat_followup_implicit",
+        fb_event_type: "implicit_accept",
+        message_id: messageId,
+        conversation_id: conversationId,
+        intensity: "implicit",
+      };
+      const { data: leData } = await supabase
+        .from("learning_events")
+        .insert({ persona_id: personaId, event_type: "positive_reinforcement", payload: lePayload })
+        .select("id").single();
+
+      await supabase.from("feedback_events").insert({
+        conversation_id: conversationId,
+        message_id: messageId,
+        persona_id: personaId,
+        event_type: "implicit_accept",
+        rules_fired: [],
+        learning_event_id: leData?.id || null,
+      });
+
+      await resolveFirings({ supabase, messageId, outcome: "helpful" });
+    } catch (err) {
+      console.log(JSON.stringify({
+        event: "implicit_accept_error",
+        ts: new Date().toISOString(),
+        message_id: messageId,
+        error: err?.message || "Unknown",
+      }));
+    }
+  })();
+}
 import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, detectMetacognitiveInsights, looksLikeDirectInstruction, looksLikeNegativeFeedback, detectNegativeFeedback, classifyMessage, looksLikeHorsCible } from "../lib/feedback-detect.js";
 import { selectModel } from "../lib/model-router.js";
 import { consolidateCorrections } from "../lib/correction-consolidation.js";
@@ -139,14 +193,22 @@ export default async function handler(req, res) {
     // Limit bumped from 19 → 40 so long prospect threads keep the full arc
     // in-context.
     const { data: dbMessages } = await supabase
-      .from("messages").select("role, content")
+      .from("messages").select("id, role, content")
       .eq("conversation_id", convId)
       .eq("message_type", "chat")
       .order("created_at", { ascending: false })
       .limit(40);
 
     const history = (dbMessages || []).reverse();
-    messages = [...history, { role: "user", content: message }];
+    // Chantier 3.1 — implicit_accept on the prior bot message. The user just
+    // sent a follow-up without correcting → strongest signal we have that the
+    // previous output was acceptable. Best-effort, fire-and-forget so chat
+    // latency is unchanged. Skips if the message already has any feedback row.
+    const lastBotInHistory = [...history].reverse().find((m) => m.role === "assistant");
+    if (lastBotInHistory?.id) {
+      emitImplicitAccept(supabase, lastBotInHistory.id, convId, personaId);
+    }
+    messages = [...history.map(({ role, content }) => ({ role, content })), { role: "user", content: message }];
   } else {
     // Create new conversation for any authenticated user (including admin)
     const clientId = client?.id || null;
