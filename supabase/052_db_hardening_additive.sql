@@ -27,9 +27,20 @@
 
 -- ── 1. CHECK on learning_events.event_type ──────────────────
 --
--- Values mirror the documented set in 017_learning_events.sql.
--- DO block lets us skip if the constraint is somehow already there
--- (idempotent re-run safety).
+-- Source canonique = grep des writers (logLearningEvent + .insert event_type),
+-- PAS le commentaire de 017_learning_events.sql qui est obsolète (5 valeurs
+-- documentées vs 12 réellement écrites).
+--
+-- Writers grep:
+--   lib/learning-events.js          : logLearningEvent generic
+--   api/feedback-events.js          : FB_TO_LEARNING mapping
+--   api/feedback.js                 : rhythm_flag_feedback, entity_*
+--   api/chat.js                     : rule_weakened, correction_saved,
+--                                     consolidation_run, prospect_out_of_target
+--   api/auto-critique.js            : auto_critique
+--   lib/correction-consolidation.js : consolidation_run, consolidation_reverted
+--
+-- Idempotent — safe à re-run après échec partiel.
 
 DO $$
 BEGIN
@@ -46,13 +57,20 @@ BEGIN
         'rule_weakened',
         'correction_saved',
         'consolidation_run',
-        'consolidation_reverted'
+        'consolidation_reverted',
+        'positive_reinforcement',
+        'signal_dismissed',
+        'rhythm_flag_feedback',
+        'auto_critique',
+        'prospect_out_of_target',
+        'entity_boost',
+        'entity_demote'
       ));
   END IF;
 END $$;
 
 COMMENT ON CONSTRAINT learning_events_event_type_check ON learning_events IS
-  'Mirrors the documented set in 017_learning_events.sql. Update both when adding a new event_type.';
+  'Source canonique = code (grep logLearningEvent + .insert event_type), PAS le commentaire de 017_learning_events.sql qui est obsolète. À étendre quand un nouveau event_type est ajouté côté app.';
 
 -- ── 2. embedding_model on vector tables ─────────────────────
 --
