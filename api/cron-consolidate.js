@@ -65,26 +65,38 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Dedup by intelligence source (shared personas consolidate once)
+    // Dedup by intelligence source (shared personas consolidate once).
+    // Single batched query for all active correction counts — was a per-persona
+    // count query before, which made N round-trips at scaling.
     const seenIntelIds = new Set();
-    const candidates = [];
-
+    const dedupedPersonas = [];
     for (const p of personas) {
       const intelId = p.intelligence_source_id || p.id;
       if (seenIntelIds.has(intelId)) continue;
       seenIntelIds.add(intelId);
+      dedupedPersonas.push({ persona: p, intelId });
+    }
 
-      // Count active corrections for this intelligence source
-      const { count } = await supabase
+    const intelIds = dedupedPersonas.map(d => d.intelId);
+    const countByIntelId = new Map();
+    if (intelIds.length > 0) {
+      const { data: rows, error: countErr } = await supabase
         .from("corrections")
-        .select("id", { count: "exact", head: true })
-        .eq("persona_id", intelId)
+        .select("persona_id")
+        .in("persona_id", intelIds)
         .eq("status", "active");
-
-      if ((count || 0) >= MIN_ACTIVE_CORRECTIONS) {
-        candidates.push({ personaId: p.id, intelId, activeCount: count });
+      if (countErr) throw countErr;
+      for (const r of rows || []) {
+        countByIntelId.set(r.persona_id, (countByIntelId.get(r.persona_id) || 0) + 1);
       }
+    }
 
+    const candidates = [];
+    for (const { persona: p, intelId } of dedupedPersonas) {
+      const activeCount = countByIntelId.get(intelId) || 0;
+      if (activeCount >= MIN_ACTIVE_CORRECTIONS) {
+        candidates.push({ personaId: p.id, intelId, activeCount });
+      }
       if (candidates.length >= MAX_PERSONAS_PER_RUN) break;
     }
 
