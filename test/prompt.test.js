@@ -185,7 +185,9 @@ describe("buildSystemPrompt", () => {
     assert.ok(prompt.includes("Tu es Thomas"));
     assert.ok(!prompt.includes("CORRECTIONS"));
     assert.ok(!prompt.includes("CONCEPTS CLES"));
-    assert.ok(!prompt.includes("CONTEXTE"));
+    // "CONTEXTE :" is the knowledge block header; core also mentions
+    // "CONTEXTE CONVERSATIONNEL", so match the header form only.
+    assert.ok(!prompt.includes("CONTEXTE :"));
   });
 
   it("merges baseline voice — baseline items appear in prompt even when persona omits them", () => {
@@ -301,7 +303,9 @@ describe("buildSystemPrompt", () => {
     const corrIdx = prompt.indexOf("CORRECTIONS");
     const scenIdx = prompt.indexOf("INSTRUCTIONS DU SCENARIO");
     const ontIdx = prompt.indexOf("CONCEPTS CLES");
-    const knIdx = prompt.indexOf("CONTEXTE");
+    // "CONTEXTE :" is the knowledge block header — distinguishes from
+    // "CONTEXTE CONVERSATIONNEL" rule emitted earlier in core.
+    const knIdx = prompt.indexOf("CONTEXTE :");
 
     assert.ok(voiceIdx < corrIdx, "voice before corrections");
     assert.ok(corrIdx < scenIdx, "corrections before scenario");
