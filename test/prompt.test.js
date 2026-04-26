@@ -224,6 +224,70 @@ describe("buildSystemPrompt", () => {
     assert.ok(merged.forbiddenWords.includes("custom-word"));
   });
 
+  describe("Chantier 2bis — protocolArtifacts injection", () => {
+    it("injects active artifacts and returns their ids", () => {
+      const protocolArtifacts = [
+        { id: "a1", content: { text: "Toujours utiliser le vouvoiement." }, severity: "hard" },
+        { id: "a2", content: { text: "Évite 'visio' — préfère 'visioconférence'." }, severity: "light" },
+      ];
+      const { prompt, injectedArtifactIds } = buildSystemPrompt({ persona: PERSONA, protocolArtifacts });
+      assert.ok(prompt.includes("REGLES APPRISES (PROTOCOLE-V2)"));
+      assert.ok(prompt.includes("vouvoiement"));
+      assert.ok(prompt.includes("visioconférence"));
+      assert.deepEqual(injectedArtifactIds, ["a1", "a2"]);
+    });
+
+    it("returns empty injectedArtifactIds when protocolArtifacts is empty", () => {
+      const { prompt, injectedArtifactIds } = buildSystemPrompt({ persona: PERSONA });
+      assert.ok(!prompt.includes("REGLES APPRISES (PROTOCOLE-V2)"));
+      assert.deepEqual(injectedArtifactIds, []);
+    });
+
+    it("skips artifacts without content.text", () => {
+      const protocolArtifacts = [
+        { id: "a1", content: { text: "Real rule." }, severity: "hard" },
+        { id: "a2", content: {}, severity: "light" },
+        { id: "a3", content: { text: "" }, severity: "light" },
+      ];
+      const { injectedArtifactIds } = buildSystemPrompt({ persona: PERSONA, protocolArtifacts });
+      assert.deepEqual(injectedArtifactIds, ["a1"]);
+    });
+
+    it("uses severity tag prefix in rendered lines", () => {
+      const protocolArtifacts = [
+        { id: "a1", content: { text: "Hard rule." }, severity: "hard" },
+        { id: "a2", content: { text: "Light pattern." }, severity: "light" },
+      ];
+      const { prompt } = buildSystemPrompt({ persona: PERSONA, protocolArtifacts });
+      assert.ok(prompt.includes("[!] Hard rule."));
+      assert.ok(prompt.includes("[-] Light pattern."));
+    });
+
+    it("budget cuts off injection but still returns the ids that fit", () => {
+      // Build many large artifacts that overflow PROTOCOL_TOKEN_BUDGET (400 tokens).
+      const big = "X".repeat(2000); // ~500 tokens
+      const protocolArtifacts = Array.from({ length: 5 }, (_, i) => ({
+        id: `a${i}`, content: { text: big }, severity: "light",
+      }));
+      const { injectedArtifactIds } = buildSystemPrompt({ persona: PERSONA, protocolArtifacts });
+      assert.ok(injectedArtifactIds.length < protocolArtifacts.length, "budget should truncate");
+    });
+
+    it("artifact block sits AFTER legacy protocolRules block in the prompt", () => {
+      const protocolRules = [
+        { rule_id: "r1", description: "Legacy rule X", severity: "hard" },
+      ];
+      const protocolArtifacts = [
+        { id: "a1", content: { text: "Learned rule Y." }, severity: "hard" },
+      ];
+      const { prompt } = buildSystemPrompt({ persona: PERSONA, protocolRules, protocolArtifacts });
+      const legacyIdx = prompt.indexOf("PROTOCOLE ACTIF");
+      const learnedIdx = prompt.indexOf("REGLES APPRISES");
+      assert.ok(legacyIdx >= 0 && learnedIdx >= 0);
+      assert.ok(legacyIdx < learnedIdx, "legacy block should come first");
+    });
+  });
+
   it("priority order: voice > corrections > scenario > ontology > knowledge", () => {
     // Need 4+ lines (guard: split("\n").length > 3)
     const corrections = "# Corrections apprises\n\n- **2026-04-10** — Toujours tutoyer\n- **2026-04-11** — Jamais de vouvoiement";
