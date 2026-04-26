@@ -71,4 +71,32 @@ describe("POST /api/feedback-events", { skip: !HAS_DB && "no DB env vars" }, () 
     assert.notEqual(res.statusCode, 400, "client_validated should not be rejected by validation");
     assert.equal(res.statusCode, 404);
   });
+
+  it("Chantier 3.1 — accepts event_type='implicit_accept' (passes validation)", async () => {
+    const handler = (await import("../api/feedback-events.js")).default;
+    const req = {
+      method: "POST",
+      query: {},
+      headers: { "x-access-code": process.env.ADMIN_ACCESS_CODE || "admin" },
+      body: { conversation_id: "00000000-0000-0000-0000-000000000000", message_id: "00000000-0000-0000-0000-000000000000", event_type: "implicit_accept" },
+    };
+    const res = makeRes();
+    await handler(req, res);
+    assert.notEqual(res.statusCode, 400, "implicit_accept should not be rejected by validation");
+    assert.equal(res.statusCode, 404);
+  });
+
+  it("Chantier 3.1 — accepts event_type='implicit_dismiss' (passes validation)", async () => {
+    const handler = (await import("../api/feedback-events.js")).default;
+    const req = {
+      method: "POST",
+      query: {},
+      headers: { "x-access-code": process.env.ADMIN_ACCESS_CODE || "admin" },
+      body: { conversation_id: "00000000-0000-0000-0000-000000000000", message_id: "00000000-0000-0000-0000-000000000000", event_type: "implicit_dismiss" },
+    };
+    const res = makeRes();
+    await handler(req, res);
+    assert.notEqual(res.statusCode, 400, "implicit_dismiss should not be rejected by validation");
+    assert.equal(res.statusCode, 404);
+  });
 });
