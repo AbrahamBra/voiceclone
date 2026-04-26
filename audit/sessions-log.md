@@ -233,10 +233,10 @@ _(à compléter session par session)_
 
 **Actions Phase 1 (livrées)** :
 - Migration 047 appliquée prod (par AhmetA)
-- `scripts/backfill-protocol-v2.js` exécuté → Thomas + Nicolas ont chacun 1 doc + 1 section + 5 artifacts. Nicolas activé manuellement (is_active=false côté operating_protocols).
+- `scripts/backfill-protocol-v2.js` exécuté → thierry-brahim (Immostates) + nicolas-lavall-e ont chacun 1 doc + 1 section + 5 artifacts. Nicolas activé manuellement (is_active=false côté operating_protocols).
 - Fix router model + whitelist + drain script étendu → **PR #123**
 - Drain manuel sur 30j → **10 propositions réelles créées** (samples : "Toujours utiliser le vouvoiement", "Émojis interdits par défaut", "visio → visioconférence")
-- Acceptation manuelle de 5 propositions hard_rules → prose section Thomas patchée (5347 → 6057 chars), 5 training_examples loggés.
+- Acceptation manuelle de 5 propositions hard_rules → prose section thierry-brahim patchée (5347 → 6057 chars), 5 training_examples loggés.
 - **Boucle protocole vivant ALIVE en prod pour la 1re fois**.
 
 **Actions Phase 2 (livrées)** :
@@ -251,7 +251,7 @@ _(à compléter session par session)_
 1. Merger les 3 PRs (#123 fix loop, #124 fix coverage, #126 celebrate animation) après revue.
 2. Appliquer en prod la migration 047 — **DÉJÀ FAIT** par AhmetA pendant la session.
 3. **Activer en Vercel le flag `NEW_PROTOCOL_UI_PERSONAS`** (Settings → Env Vars → `NEW_PROTOCOL_UI_PERSONAS=32047cda-77cf-466b-899d-27d151a487a4,2f5f1414-9d65-499d-a3d7-6be2826c6098` sur Preview + Production). Sans ça, le UI v2 doctrine reste caché malgré les 5 propositions acceptées et la prose patchée.
-4. Tester le flow end-to-end sur preview voiceclone : login → chat Thomas → ouvrir ProtocolPanel → vérifier doctrine v2 affichée + propositions queue accessible.
+4. Tester le flow end-to-end sur preview voiceclone : login → chat thierry-brahim (Immostates) → ouvrir ProtocolPanel → vérifier doctrine v2 affichée + propositions queue accessible.
 
 **Scorecard estimé post-merge** :
 | Axe | Initial | Post-merge | Levier |
@@ -268,7 +268,7 @@ Si les 3 PRs mergent + flag activé + UI test OK : seuil beta atteint en cette s
 **Reste critique pour scale (post-beta)** :
 - Cross-clone learning (memory project_voiceclone_cross_clone_learning) — toujours en silo
 - Backfill historique des 152 rows `rhythm_shadow.message_id` NULL (coverage du futur OK, passé pas migré)
-- Étendre protocol_document aux 23 autres personas (seuls Thomas + Nicolas ont une source operating_protocols)
+- Étendre protocol_document aux 23 autres personas (seuls thierry-brahim (Immostates) + nicolas-lavall-e ont une source operating_protocols)
 - Langfuse intégration (mesurabilité N3 — différée per le call de session : "32h plan saute si on rentre Langfuse maintenant")
 - Agence-first complet (orgs + RLS par org + facturation), déclenché par 3e client signé
 
