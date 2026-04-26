@@ -1,5 +1,9 @@
 -- ============================================================
--- Migration 051 — DB hardening (additive)
+-- Migration 052 — DB hardening (additive)
+--
+-- Renumbered 051 → 052 to defer to PR #110 (feat/brain-drawer) which
+-- already holds slot 051 (feedback_brain_drawer.sql) on rebase.
+-- Numéro = simple ordre d'apply, no semantic claim.
 --
 -- Three safe, additive changes following an audit of the schema:
 --

@@ -36,7 +36,7 @@ External critique reviewed the schema and produced a checklist of suggestions. A
 
 ### 🟡 PR-B+C (bundled, additive DDL, zero code impact)
 
-**Single migration** `051_db_hardening_additive.sql`:
+**Single migration** `052_db_hardening_additive.sql` (renumbered from 051 to defer to PR #110 brain-drawer):
 - Add `CHECK` on `learning_events.event_type` (currently only commented). Values: `'rule_added','rule_weakened','correction_saved','consolidation_run','consolidation_reverted'`.
 - Add `embedding_model text` column to `chunks`, `knowledge_entities`, `proposition`. Default backfill to current model name.
 - `ALTER COLUMN created_at SET NOT NULL` sweep on tables from migrations 002-018 era (`chunks`, `corrections`, `knowledge_files`, `knowledge_entities`, `knowledge_relations`, `usage_log`, `personas`, `clients`, `conversations`, `scenario_files`, `share_tokens`). Backfill `created_at = now()` where currently NULL.
