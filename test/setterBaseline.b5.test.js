@@ -1,19 +1,19 @@
-import { describe, it, expect } from "vitest";
+import { describe, it } from "node:test";
+import { strict as assert } from "node:assert";
 import { evaluateSetterBaseline } from "../lib/critic/setterBaseline.js";
 
 describe("B5 vouvoiement par défaut (shadow)", () => {
   it("does not contribute to violationScore (shadow)", () => {
-    // Tutoiement sans signal lead, sans override → shadow violation, pas de score
     const r = evaluateSetterBaseline("Salut, tu vas bien ?");
-    expect(r.shadowViolations.find(v => v.id === "B5")).toBeTruthy();
-    // maxScore ne doit PAS inclure le poids de B5
-    const ratio = r.violations.find(v => v.id === "B5");
-    expect(ratio).toBeUndefined();
+    const inShadow = r.shadowViolations.find(v => v.id === "B5");
+    const inActive = r.violations.find(v => v.id === "B5");
+    assert.ok(inShadow, "B5 should fire in shadowViolations");
+    assert.ok(!inActive, "B5 should NOT contribute to violations[]");
   });
 
   it("does not fire when clone vouvoie", () => {
     const r = evaluateSetterBaseline("Bonjour, comment allez-vous ?");
-    expect(r.shadowViolations.find(v => v.id === "B5")).toBeFalsy();
+    assert.ok(!r.shadowViolations.find(v => v.id === "B5"));
   });
 
   it("does not fire when lead initiated tutoiement (miroir)", () => {
@@ -21,7 +21,7 @@ describe("B5 vouvoiement par défaut (shadow)", () => {
       "Salut, ça roule pour toi ?",
       { priorLeadMessage: "Hello, tu peux m'expliquer ce que tu fais ?" }
     );
-    expect(r.shadowViolations.find(v => v.id === "B5")).toBeFalsy();
+    assert.ok(!r.shadowViolations.find(v => v.id === "B5"));
   });
 
   it("fires when lead vouvoyed but clone tutoyes (miroir miss)", () => {
@@ -29,7 +29,7 @@ describe("B5 vouvoiement par défaut (shadow)", () => {
       "Salut, ça roule pour toi ?",
       { priorLeadMessage: "Bonjour, pouvez-vous m'expliquer votre offre ?" }
     );
-    expect(r.shadowViolations.find(v => v.id === "B5")).toBeTruthy();
+    assert.ok(r.shadowViolations.find(v => v.id === "B5"));
   });
 
   it("does not fire when persona has tutoiement_default override", () => {
@@ -37,7 +37,7 @@ describe("B5 vouvoiement par défaut (shadow)", () => {
       "Salut, tu vas bien ?",
       { persona: { tutoiement_default: true } }
     );
-    expect(r.shadowViolations.find(v => v.id === "B5")).toBeFalsy();
+    assert.ok(!r.shadowViolations.find(v => v.id === "B5"));
   });
 
   it("override is bypassed when lead vouvoyed (mirror always wins)", () => {
@@ -48,6 +48,6 @@ describe("B5 vouvoiement par défaut (shadow)", () => {
         persona: { tutoiement_default: true },
       }
     );
-    expect(r.shadowViolations.find(v => v.id === "B5")).toBeTruthy();
+    assert.ok(r.shadowViolations.find(v => v.id === "B5"));
   });
 });
