@@ -47,24 +47,10 @@ export default async function handler(req, res) {
     return;
   }
 
-  let { linkedin_text, posts, dms, documents, name, cloneType, client_label } = req.body || {};
-
-  const validTypes = ['posts', 'dm', 'both'];
-  if (cloneType && !validTypes.includes(cloneType)) {
-    res.status(400).json({ error: "cloneType must be 'posts', 'dm', or 'both'" });
-    return;
-  }
+  let { linkedin_text, posts, dms, documents, name, client_label } = req.body || {};
 
   if (!linkedin_text || typeof linkedin_text !== "string" || linkedin_text.length < 50) {
     res.status(400).json({ error: "linkedin_text required (min 50 chars)" });
-    return;
-  }
-  if (cloneType !== 'dm' && (!posts || !Array.isArray(posts) || posts.length < 3)) {
-    res.status(400).json({ error: "posts required (array, min 3 posts)" });
-    return;
-  }
-  if (cloneType === 'dm' && (!dms || !Array.isArray(dms) || dms.length < 1)) {
-    res.status(400).json({ error: "dms required (array, min 1 conversation)" });
     return;
   }
 
@@ -112,7 +98,7 @@ export default async function handler(req, res) {
         system: CLONE_SYSTEM_PROMPT,
         messages: [{ role: "user", content: userContent.join("\n") }],
       }, { signal }), CALL_TIMEOUT, "clone-config"),
-      cloneType !== 'dm' && postsContentForStyle
+      postsContentForStyle
         ? withTimeout((signal) => anthropic.messages.create({
             model: MODEL, max_tokens: 2048,
             system: STYLE_ANALYSIS_PROMPT,
@@ -149,7 +135,7 @@ export default async function handler(req, res) {
       .insert({
         slug,
         client_id: client?.id || null,
-        type: cloneType || 'both',
+        type: 'dm',
         name: personaConfig.name,
         title: personaConfig.title || "",
         avatar: personaConfig.avatar || personaConfig.name.slice(0, 2).toUpperCase(),
@@ -209,49 +195,6 @@ export default async function handler(req, res) {
     const defaultScenario = `# Scenario : Conversation\n\nTu es ${personaConfig.name}.\n\n${personaConfig.voice.writingRules.map(r => `- ${r}`).join("\n")}\n`;
     const writingRules = personaConfig.voice.writingRules.map(r => `- ${r}`).join("\n");
     const neverDoes = personaConfig.voice.neverDoes.map(r => `- ${r}`).join("\n");
-    const postScenario = `# Scenario : Creation de post LinkedIn
-
-Tu es ${personaConfig.name}. L'utilisateur veut creer un post LinkedIn dans son style.
-
-## Process
-
-1. **Comprends le sujet** — Demande de quoi le post doit parler. UNE question.
-2. **Identifie l'angle** — Propose le format adapte :
-   - Recit personnel (histoire + lecon)
-   - Framework (methode en etapes)
-   - Contrarian (contre-pied d'un conseil populaire)
-   - Cas client (resultats concrets)
-3. **Ecris le post** — Dans le style du persona, avec :
-   - Accroche qui arrete le scroll (1ere ligne decisive)
-   - Corps court, paragraphes de 1-2 lignes
-   - Pas de hashtags sauf si demande
-   - CTA naturel en fin
-
-## Regles d'ecriture du post
-
-- **Accroche** : Affirmation forte OU chiffre precis OU situation concrete. JAMAIS de question generique.
-- **Structure** : Phrases courtes. Sauts de ligne frequents. Facile a scanner. 800-1500 caracteres.
-- **Ton** : Celui du persona — direct, sans jargon.
-- **Pas de** : Emojis a chaque ligne, hashtags en masse, "Qu'en pensez-vous ?" generique en CTA.
-${writingRules}
-
-## Ne jamais faire
-
-${neverDoes}
-
-## Format de reponse
-
-Presente le post ainsi :
-
----
-**Format :** [Recit / Framework / Contrarian / Cas client]
-**Cible :** [Audience visee]
-
-[LE POST PRET A COPIER/COLLER]
-
----
-**Variante accroche :** [Une alternative d'accroche]
-`;
 
     const qualificationScenario = `# Scenario : Qualification de lead
 
@@ -300,13 +243,8 @@ ${neverDoes}
 
     const scenarioRows = [
       { persona_id: persona.id, slug: "default", content: defaultScenario },
+      { persona_id: persona.id, slug: "qualification", content: qualificationScenario },
     ];
-    if (cloneType !== 'dm') {
-      scenarioRows.push({ persona_id: persona.id, slug: "post", content: postScenario });
-    }
-    if (cloneType !== 'posts') {
-      scenarioRows.push({ persona_id: persona.id, slug: "qualification", content: qualificationScenario });
-    }
     const { error: scenarioErr } = await supabase.from("scenario_files").insert(scenarioRows);
     if (scenarioErr) console.log(JSON.stringify({ event: "scenario_insert_error", persona: persona.id, error: scenarioErr.message }));
 

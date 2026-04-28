@@ -1,30 +1,22 @@
 <script>
   // Barre supérieure unifiée — remplace ChatCockpit après suppression du hub.
   // Left : burger mobile + ClonesDropdown (avec points de triage par clone).
-  // Center : pill scenario + badge style-health.
+  // Center : badge style-health.
   // Right : bouton cerveau + UserMenu ⋯.
   //
-  // Pas de flèche "back" ni bouton "changer de clone" : la nav se fait via
-  // le dropdown et le menu ⋯ (nouveau clone / admin / guide / logout).
+  // DM-only depuis 2026-04-28 — plus de scenario picker (le composer expose
+  // déjà les 4 sous-modes DM en CTA). Plus de kind-tabs (un seul kind).
   import { goto } from "$app/navigation";
   import ClonesDropdown from "./ClonesDropdown.svelte";
-  import ScenarioSwitcher from "./ScenarioSwitcher.svelte";
   import TenantBadge from "./TenantBadge.svelte";
   import UserMenu from "./UserMenu.svelte";
-  import {
-    CANONICAL_SCENARIOS,
-    supportedCanonicalScenarios,
-  } from "$lib/scenarios.js";
 
   let {
     personaName = "",
     personaAvatar = "?",
     personasList = [],       // enrichies par parent avec { triage, triageLabel }
     currentPersonaId = null,
-    persona = null,          // pour ScenarioSwitcher (type + scenarios)
-    scenarioType = null,
     styleHealth = "unknown", // ok | warn | drift | unknown — vue d'ensemble cockpit
-    onScenarioChange,
     onSwitchClone,
     onToggleSidebar,
     onDeletePersona = null,
@@ -62,46 +54,6 @@
     drift: "Dérive détectée — fidélité sous le seuil ou collapse bas.",
   };
 
-  // Mode courant (post/dm) dérivé du scenario_type actif. Null tant que rien
-  // n'est choisi (première visite sur un clone multi-mode).
-  let currentKind = $derived(
-    scenarioType && CANONICAL_SCENARIOS[scenarioType]
-      ? CANONICAL_SCENARIOS[scenarioType].kind
-      : null
-  );
-
-  // Quels kinds ce clone supporte-t-il ? On lit supportedCanonicalScenarios
-  // (même logique que ScenarioSwitcher) pour rester cohérent avec persona.type.
-  let availableKinds = $derived.by(() => {
-    if (!persona) return /** @type {('post'|'dm')[]} */ ([]);
-    const ids = supportedCanonicalScenarios(persona);
-    /** @type {('post'|'dm')[]} */
-    const kinds = [];
-    if (ids.some((id) => CANONICAL_SCENARIOS[id].kind === "post")) kinds.push("post");
-    if (ids.some((id) => CANONICAL_SCENARIOS[id].kind === "dm")) kinds.push("dm");
-    return kinds;
-  });
-
-  // Tabs affichés seulement si le clone supporte réellement les deux modes.
-  // Pour un clone mono-mode (posts-only ou dm-only), les tabs seraient du
-  // bruit — on retombe sur le dropdown seul (même UX qu'avant).
-  let showKindTabs = $derived(availableKinds.length > 1);
-
-  // Valeur par défaut de scenario_type quand on bascule de kind via les tabs.
-  // post_autonome et DM_1st sont les scénarios "neutres" de chaque mode.
-  const DEFAULT_SCENARIO_BY_KIND = {
-    post: "post_autonome",
-    dm: "DM_1st",
-  };
-
-  /** @param {'post'|'dm'} kind */
-  function pickKind(kind) {
-    if (kind === currentKind) return;
-    const defaultId = DEFAULT_SCENARIO_BY_KIND[kind];
-    // Le parent gère la confirmation conv-active via pendingScenarioType.
-    onScenarioChange?.(defaultId);
-  }
-
   function openBrain() {
     if (currentPersonaId) goto(`/brain/${currentPersonaId}`);
   }
@@ -135,52 +87,6 @@
   </div>
 
   <div class="center">
-    {#if persona}
-      {#if showKindTabs}
-        <div class="kind-tabs" role="tablist" aria-label="Mode de sortie">
-          <button
-            type="button"
-            role="tab"
-            class="kind-tab"
-            class:active={currentKind === "post"}
-            aria-selected={currentKind === "post"}
-            onclick={() => pickKind("post")}
-            title="Mode Post — contenu diffusé sur le feed"
-          >
-            Post
-          </button>
-          <button
-            type="button"
-            role="tab"
-            class="kind-tab"
-            class:active={currentKind === "dm"}
-            aria-selected={currentKind === "dm"}
-            onclick={() => pickKind("dm")}
-            title="Mode DM — conversation privée (sous-modes au composer)"
-          >
-            DM
-          </button>
-        </div>
-        {#if currentKind === "post"}
-          <ScenarioSwitcher
-            {persona}
-            value={scenarioType}
-            onchange={onScenarioChange}
-            direction="down"
-            kind="post"
-          />
-        {/if}
-      {:else}
-        <!-- Clone mono-mode : dropdown seul, comportement inchangé. -->
-        <ScenarioSwitcher
-          {persona}
-          value={scenarioType}
-          onchange={onScenarioChange}
-          direction="down"
-        />
-      {/if}
-    {/if}
-
     {#if styleHealth !== "unknown"}
       <span
         class="style-health"
@@ -298,41 +204,6 @@
     transition: color 0.08s linear, border-color 0.08s linear;
   }
   .tab-btn:hover { color: var(--ink); border-color: var(--ink-40); }
-
-  /* KindTabs — segmented Post / DM au centre de la topbar. Visible seulement
-     pour les clones multi-mode. L'actif est rempli vermillon (même code
-     visuel que les btn-dm du composer) pour rester cohérent. */
-  .kind-tabs {
-    display: inline-flex;
-    border: 1px solid var(--rule-strong);
-    background: var(--paper);
-  }
-  .kind-tab {
-    background: transparent;
-    border: none;
-    border-right: 1px solid var(--rule-strong);
-    color: var(--ink-40);
-    padding: 8px 14px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    letter-spacing: 0.04em;
-    cursor: pointer;
-    min-height: var(--touch-min);
-    transition: color 0.08s linear, background 0.08s linear;
-  }
-  .kind-tab:last-child { border-right: none; }
-  .kind-tab:hover:not(.active) {
-    color: var(--ink);
-    background: var(--paper-subtle);
-  }
-  .kind-tab:focus-visible {
-    outline: 2px solid var(--vermillon);
-    outline-offset: -2px;
-  }
-  .kind-tab.active {
-    background: var(--vermillon);
-    color: var(--paper);
-  }
 
   /* Style-health badge — synthèse santé du clone (collapse + fidelity + rules
      actives). Marche avec le styleHealth dérivé côté parent. */
