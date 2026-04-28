@@ -476,6 +476,13 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
         isFirstContact: !convId || (Array.isArray(messages) && messages.length <= 1),
         personaOverrides: Array.isArray(persona.voice?.setter_overrides) ? persona.voice.setter_overrides : [],
         personaVoice: persona.voice || null,
+        // Dernier message du prospect — sert aux règles miroir (B5 vouvoiement par défaut).
+        priorLeadMessage: (() => {
+          const last = Array.isArray(messages) ? [...messages].reverse().find(m => m.role === "user") : null;
+          return typeof last?.content === "string" ? last.content : "";
+        })(),
+        // Flags de préférences documentées per-persona, lus par les règles setter.
+        persona: { tutoiement_default: !!persona.voice?.tutoiement_default },
         scenario,
       },
     });
