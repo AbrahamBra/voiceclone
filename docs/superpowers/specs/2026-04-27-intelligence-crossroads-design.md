@@ -12,7 +12,7 @@ Aujourd'hui VoiceClone a deux pipelines d'apprentissage qui coexistent :
 - **Protocole-v2 (Cerveau / Protocole)** — `feedback_events` → `proposition` → arbitrage user → `protocol_artifact` + mutation `protocol_section.prose`. Réactif, immédiat, chirurgical.
 - **Legacy Intelligence** — `corrections` → `correction-consolidation.js` (cron 10min) → cluster ≥3 + Haiku synthèse → push dans `voice.writingRules`. Filtre du bruit par clustering, pas d'arbitrage humain.
 
-L'onglet **Intelligence** dans l'UI surface aujourd'hui le legacy `voice.writingRules`. Ce qui le condamne à terme à être un **doublon partiel** du Cerveau quand le legacy sera retiré (Phase 4 du plan protocole-vivant).
+L'onglet **Intelligence** dans l'UI surface aujourd'hui le legacy `voice.writingRules`. Ce qui le condamne à terme à être un **doublon partiel** du Cerveau. La migration de `voice.writingRules` (générées par `correction-consolidation.js`) vers le seed Intelligence n'est pas couverte dans le spec parent et doit être ajoutée comme **Phase 4-bis** distincte.
 
 **Le problème de fond** : il manque dans l'architecture un **lieu de croisement** entre les sources de signaux. Aujourd'hui chaque source vit en silo :
 - Documents uploadés (playbook, ICP)
@@ -176,6 +176,12 @@ Le `correction-consolidation.js` cron est retiré au même moment.
 5. **Scope agence vs persona** : l'Intelligence est-elle uniquement par-persona, ou existe-t-il une vue agence-wide qui croise les patterns récurrents sur plusieurs clones ?
 6. **N2 client direct** : si un jour un endpoint `/train/{token}` permet au client de pousser N2 directement (sans relais agence), faut-il distinguer `client_direct` de `client_relay` dans `source_actor` ?
 
+## Critères de validation (mesurables)
+
+- [ ] **Précision algo contradictions** : sur fixture de 50 propositions arbitrées (à constituer pré-implé), l'algo identifie ≥80% des contradictions identifiées par revue manuelle (gold standard à figer en début d'implé).
+- [ ] **Latence calcul** : `buildIntelligenceView(personaId)` < 2s sur persona avec 200 artifacts (mesure : test perf sur fixture).
+- [ ] **Pas de contradiction "ghost"** : 0 contradiction déjà résolue mais encore affichée après cycle complet d'arbitrage (test E2E sur scénario : créer contradiction → arbitrer → re-fetch view → assert absence).
+
 ## Mémoires utilisées
 
 - [feedback_every_action_trains](../../../../../.claude/projects/C--Users-abrah-AhmetA/memory/feedback_every_action_trains.md) — N1/N2/N3/N4 framework
@@ -199,3 +205,47 @@ Le `correction-consolidation.js` cron est retiré au même moment.
 - 1j migration legacy → seed Intelligence + retrait clustering
 
 À ne pas démarrer avant la beta validée et **au moins 50 propositions arbitrées en conditions réelles** sur 2 clones — sinon l'algorithme de croisement n'aura pas de matière à se calibrer.
+
+---
+
+## Appendix — Audit 2026-04-28
+
+Audit indépendant réalisé après le draft initial. Findings load-bearing à arbitrer avant implémentation :
+
+### A1 — `proposition.source` couvre déjà 80% du gap N2/N3
+
+`migration 038` introduit `proposition.source` avec valeurs `client_validation`, `agency_supervision`, `upload_batch`, `feedback_event`. Le croisement N2/N3 peut donc se faire **au niveau proposition** sans avoir besoin de la migration ALTER `feedback_events.source_actor` proposée Gap 1.
+
+**Implication** : la migration Gap 1 est probablement évitable. Alternative légère : à l'insert dans `feedback-events.js`, dériver le rôle depuis `clients.role` (migration 048 : `agency_admin/setter/client`) + `is_admin` flag — pas de champ UI à ajouter, pas de migration table feedback_events.
+
+**À trancher** : on garde la migration explicite pour clarté future, ou on dérive ?
+
+### A2 — Collision sémantique avec `personas.maturity_level` (L1/L2/L3)
+
+La spec `2026-04-27-clone-meta-rules-and-maturity.md` (mergée le même jour) introduit `personas.maturity_level ∈ {L1, L2, L3}` pour la maturité du **document source** d'un clone. Le panneau 4 du présent spec parle de "maturité par section" (N1 / N1+N3 / N1+N2+N3) — concept orthogonal mais lexique identique.
+
+**Risque** : confusion dev + UI ambiguë.
+
+**Suggestion** : renommer le panneau 4 en "**Couverture par section**" (N1 / N1+N3 / N1+N2+N3) pour réserver "maturité" à `maturity_level`.
+
+### A3 — État initial / dégradé non spécifié
+
+Pour un persona L1 (sans corpus N3) ou un persona neuf < 10 corrections, les 4 panneaux du panel Intelligence affichent quoi ? État vide silencieux = produit cassé sans alerte.
+
+**À ajouter** : section "État initial" décrivant le rendu pour (a) persona neuf, (b) persona L1, (c) persona en cohabitation transitoire avec `correction-consolidation.js` actif.
+
+### A4 — Backfill non spécifié
+
+100% des `feedback_events` existants seront classés `source_actor='setter'` (default proposé) — mais une partie sont en réalité des retours clients transcrits historiquement. La spec ne propose ni heuristique ni audit pour reclassifier.
+
+**À ajouter** : plan de backfill (heuristique sur `source_message_id` → `conv.client_id` ; ou flag manuel "à reclasser" sur les rows pré-migration).
+
+### A5 — Pas d'observabilité
+
+Combien de contradictions/semaine ? Taux d'arbitrage ? Time-to-resolve ? Sans métriques, impossible de calibrer le seuil "50 propositions arbitrées" mentionné en scope.
+
+**À ajouter** : 3 métriques dans la doc Phase 4-bis : `intelligence_contradictions_count_weekly`, `intelligence_arbitration_rate`, `intelligence_arbitration_p50_latency`.
+
+---
+
+**Verdict appendix** : draft de design valide comme vision, **needs rework opérationnel** avant implé. Trancher A1 (migration ou dérivation) avant tout autre travail puisque ça change le scope.
