@@ -86,9 +86,9 @@ describe("selectModel — scenario signal", () => {
     assert.ok(r.reason.includes("scenario:qualification"));
   });
 
-  it("post scenario adds 2", () => {
+  it("post scenario contributes 0 (DM-only app, no special routing)", () => {
     const r = selectModel({ ...EMPTY, scenario: "post" });
-    assert.equal(r.score, 2);
+    assert.equal(r.score, 0);
   });
 
   it("default scenario contributes 0", () => {

@@ -32,18 +32,14 @@ export default async function handler(req, res) {
       };
     }
 
-    // DM-only clones don't have a post scenario
-    if (persona.type === 'dm') delete scenarios.post;
+    // DM-only app: post scenario is never exposed, even on legacy 'posts'/'both' personas.
+    delete scenarios.post;
 
     res.json({
       id: persona.id,
       name: persona.name,
       title: persona.title,
       avatar: persona.avatar,
-      // type drives ScenarioSwitcher filtering on the frontend
-      // ('posts' | 'dm' | 'both' per migration 008). Exposing it is safe —
-      // it's already implicitly leaked by the scenarios dict shape.
-      type: persona.type || null,
       scenarios,
       theme: persona.theme,
     });

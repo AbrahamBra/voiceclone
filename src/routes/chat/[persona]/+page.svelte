@@ -22,7 +22,7 @@
   import { api, authHeaders } from "$lib/api.js";
   import { track } from "$lib/tracking.js";
   import { streamChat } from "$lib/sse.js";
-  import { legacyKeyFor, isScenarioId } from "$lib/scenarios.js";
+  import { isScenarioId } from "$lib/scenarios.js";
   import ChatMessage from "$lib/components/ChatMessage.svelte";
   import ChatComposer from "$lib/components/ChatComposer.svelte";
   import FeedbackRail from "$lib/components/FeedbackRail.svelte";
@@ -33,7 +33,6 @@
   // AuditStrip/HeatThermometer/LiveMetricsStrip removed (Chunk 3 cleanup).
   import LeadPanel from "$lib/components/LeadPanel.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
-  import IngestPreviewBubble from "$lib/components/IngestPreviewBubble.svelte";
 
   let personaId = $derived($page.data.personaId);
   let scenario = $derived($page.data.scenario);
@@ -60,13 +59,6 @@
   let pendingProspectName = $state(null); // set on lead scrape; auto-PATCHed once conv exists
   let showCommandPalette = $state(false);
   let switcherOpen = $state(false);
-  let pendingScenarioType = $state(/** @type {string|null} */(null));
-
-  // Ingest post flow : paste un post écrit à la main → extraire règles candidates
-  // → user valide celles qu'il veut push dans le cerveau. Preview uniquement côté
-  // bubble, pas persisté tant que validé.
-  let ingestPending = $state(/** @type {{sourcePost: string, rules: Array<{text: string, rationale: string}>}|null} */(null));
-  let ingesting = $state(false);
 
   // Populate personas list for the inline clone switcher (top-bar dropdown).
   // triage=true attache last_message_at → point de triage par clone dans le menu.
@@ -446,8 +438,8 @@
       localStorage.setItem("conv_" + personaId, convId);
 
       // Sync scenario stores with the conversation's stored values so the
-      // composer unlocks (scenario-gate) and the ScenarioSwitcher reflects
-      // the right pick. Canonical enum wins; legacy text is dual-written.
+      // composer unlocks (scenario-gate) and reflects the right sub-mode.
+      // Canonical enum wins; legacy text is dual-written.
       if (isScenarioId(conv.scenario_type)) currentScenarioType.set(conv.scenario_type);
       if (conv.scenario) currentScenario.set(conv.scenario);
 
@@ -478,61 +470,17 @@
     if (!scenarioType || !isScenarioId(scenarioType)) return;
     if (scenarioType === $currentScenarioType) return;
 
-    // Kind change = post↔dm, forces a new thread (different rule set, analytics
-    // bucket). If the user has an active conversation, ask before wiping it —
-    // the conv is persisted server-side but disappears from the current view
-    // and comes back as a surprise via the sidebar.
-    const legacy = legacyKeyFor(scenarioType);
-    const kindChanged = legacy !== $currentScenario;
-    if (kindChanged && $currentConversationId) {
-      pendingScenarioType = scenarioType;
-      return;
-    }
-
-    await applyScenarioChange(scenarioType);
-  }
-
-  async function applyScenarioChange(scenarioType) {
-    const legacy = legacyKeyFor(scenarioType);
-    const kindChanged = legacy !== $currentScenario;
-
+    // DM-only app: all canonicals share the same kind, so a switch never
+    // wipes the conversation. URL is updated in place (no SvelteKit
+    // re-load) so we don't remount the page between sub-modes.
     currentScenarioType.set(scenarioType);
-    currentScenario.set(legacy);
+    currentScenario.set("dm");
 
     const url = new URL(window.location.href);
     url.searchParams.set("scenario_type", scenarioType);
-    url.searchParams.set("scenario", legacy);
+    url.searchParams.set("scenario", "dm");
     const newPath = url.pathname + "?" + url.searchParams.toString();
-
-    if (kindChanged) {
-      // Kind change (post↔dm) : full SvelteKit navigation — +page.js load()
-      // re-runs, which is fine since we reset the conversation thread anyway.
-      await goto(newPath, {
-        replaceState: true,
-        noScroll: true,
-        keepFocus: true,
-      });
-      localStorage.removeItem("conv_" + personaId);
-      currentConversationId.set(null);
-      showWelcome();
-    } else {
-      // Same-kind switch (post↔post) : update URL in place. goto() would
-      // re-trigger +page.js load() (it reads url.searchParams), causing a
-      // visible page remount between post variants. history.replaceState
-      // keeps bookmarks honest without the reload.
-      history.replaceState(history.state, "", newPath);
-    }
-  }
-
-  async function confirmScenarioSwitch() {
-    if (!pendingScenarioType) return;
-    const target = pendingScenarioType;
-    pendingScenarioType = null;
-    await applyScenarioChange(target);
-  }
-
-  function cancelScenarioSwitch() {
-    pendingScenarioType = null;
+    history.replaceState(history.state, "", newPath);
   }
 
   async function handleSend(text) {
@@ -880,48 +828,6 @@
     } catch (e) {
       showToast("Ajout échoué : " + (e?.message || "erreur réseau"));
     }
-  }
-
-  async function handleIngestPost(post) {
-    ingesting = true;
-    ingestPending = null;
-    try {
-      const result = await api("/api/feedback", {
-        method: "POST",
-        body: JSON.stringify({
-          type: "extract_rules_from_post",
-          post,
-          persona: get(currentPersonaId),
-        }),
-      });
-      ingestPending = { sourcePost: post, rules: result.rules || [] };
-      if (!result.rules || result.rules.length === 0) {
-        showToast("Rien d'actionnable à extraire de ce post");
-      }
-    } catch (e) {
-      showToast("Erreur extraction : " + (e.message || "inconnue"));
-    } finally {
-      ingesting = false;
-    }
-  }
-
-  // Validation d'une règle candidate → push dans le cerveau via save_rule_direct.
-  async function handleValidateIngestRule(ruleText) {
-    await api("/api/feedback", {
-      method: "POST",
-      body: JSON.stringify({
-        type: "save_rule_direct",
-        ruleText,
-        sourcePost: ingestPending?.sourcePost?.slice(0, 200) || "",
-        persona: get(currentPersonaId),
-      }),
-    });
-    track("ingest_rule_validated", {});
-    showToast("Règle ajoutée au cerveau ✓");
-  }
-
-  function handleDismissIngest() {
-    ingestPending = null;
   }
 
   // ✓ valider : PATCH message turn_kind='toi' + POST feedback-events.
@@ -1272,10 +1178,7 @@
         personaAvatar={$personaConfig?.avatar || "?"}
         personasList={personasListEnriched}
         currentPersonaId={personaId}
-        persona={$personaConfig}
-        scenarioType={$currentScenarioType}
         {styleHealth}
-        onScenarioChange={handleScenarioChange}
         onSwitchClone={handleSwitchToClone}
         onToggleSidebar={() => sidebarOpen = !sidebarOpen}
         onDeletePersona={$personaConfig?._shared ? null : handleDeletePersona}
@@ -1299,17 +1202,6 @@
                 onCopyOut={(text) => handleCopyOut(message, text)}
               />
             {/each}
-            {#if ingesting}
-              <div class="ingest-loading mono">📝 Extraction des règles…</div>
-            {/if}
-            {#if ingestPending}
-              <IngestPreviewBubble
-                rules={ingestPending.rules}
-                sourcePost={ingestPending.sourcePost}
-                onValidate={handleValidateIngestRule}
-                onDismiss={handleDismissIngest}
-              />
-            {/if}
             <div bind:this={scrollAnchor}></div>
           </div>
 
@@ -1320,7 +1212,6 @@
             onDraftNext={handleDraftNext}
             onSwitchScenario={handleScenarioChange}
             onAnalyzeProspect={(url) => { leadInitialUrl = url; leadOpen = true; }}
-            onIngestPost={handleIngestPost}
             onAddProspectReply={handleAddProspectReply}
             {lastTurnKind}
             onPasteDismiss={handlePasteDismiss}
@@ -1403,21 +1294,6 @@
     />
   {/if}
 
-  {#if pendingScenarioType}
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="scenario-confirm-backdrop" onclick={cancelScenarioSwitch}>
-      <div class="scenario-confirm" onclick={(e) => e.stopPropagation()}>
-        <h4>Changer de scenario ?</h4>
-        <p>Cette conversation va etre mise de cote et un nouveau thread demarrera.</p>
-        <p class="scenario-confirm-hint">Tu pourras la retrouver dans l'historique (☰ en haut a gauche).</p>
-        <div class="scenario-confirm-actions">
-          <button class="scenario-confirm-cancel" onclick={cancelScenarioSwitch}>Annuler</button>
-          <button class="scenario-confirm-ok" onclick={confirmScenarioSwitch}>Continuer</button>
-        </div>
-      </div>
-    </div>
-  {/if}
 {/if}
 
 <style>
@@ -1492,8 +1368,6 @@
     gap: 0.625rem;
   }
 
-  /* ScenarioSwitcher relocated to ProspectDossierHeader; composer-toolbar CSS removed. */
-
   .loading-screen {
     display: flex;
     align-items: center;
@@ -1541,70 +1415,4 @@
     background: var(--paper-subtle, #f6f5f1);
   }
 
-  .scenario-confirm-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(20, 20, 26, 0.45);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 50;
-  }
-  .scenario-confirm {
-    background: var(--paper);
-    border: 1px solid var(--rule-strong);
-    padding: 18px 20px;
-    width: 90%;
-    max-width: 420px;
-    font-family: var(--font-ui);
-    box-shadow: 0 12px 40px rgba(20, 20, 26, 0.12);
-  }
-  .scenario-confirm h4 {
-    margin: 0 0 0.5rem;
-    font-size: 0.9375rem;
-    color: var(--text);
-  }
-  .scenario-confirm p {
-    margin: 0 0 0.375rem;
-    font-size: 0.8125rem;
-    color: var(--text-secondary);
-    line-height: 1.4;
-  }
-  .scenario-confirm-hint {
-    font-size: 0.75rem;
-    color: var(--text-tertiary);
-  }
-  .scenario-confirm-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    margin-top: 1rem;
-  }
-  .scenario-confirm-cancel,
-  .scenario-confirm-ok {
-    padding: 7px 14px;
-    font-family: var(--font-mono);
-    font-size: var(--fs-tiny);
-    letter-spacing: 0.02em;
-    cursor: pointer;
-    border: 1px solid var(--rule-strong);
-    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
-  }
-  .scenario-confirm-cancel {
-    background: transparent;
-    color: var(--ink-70);
-  }
-  .scenario-confirm-cancel:hover {
-    color: var(--ink);
-    border-color: var(--ink-40);
-  }
-  .scenario-confirm-ok {
-    background: var(--ink);
-    color: var(--paper);
-    border-color: var(--ink);
-  }
-  .scenario-confirm-ok:hover {
-    background: var(--vermillon);
-    border-color: var(--vermillon);
-  }
 </style>

@@ -67,7 +67,7 @@ import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, 
 import { selectModel } from "../lib/model-router.js";
 import { consolidateCorrections } from "../lib/correction-consolidation.js";
 import { logLearningEvent } from "../lib/learning-events.js";
-import { isScenarioId, CANONICAL_SCENARIOS } from "../src/lib/scenarios.js";
+import { isScenarioId } from "../src/lib/scenarios.js";
 
 /** Extract a smart conversation title from the first message */
 function extractConvTitle(message, scenario) {
@@ -249,37 +249,6 @@ export default async function handler(req, res) {
   // Canonical scenario overrides — injected on top of the stored scenario file
   // to give sub-type-specific instructions without rewriting per-persona DB files.
   const SCENARIO_OVERRIDES = {
-    post_lead_magnet: `## MODE : Post Lead Magnet
-Génère directement un post complet. Ne pose pas de questions sauf si le sujet est totalement absent.
-Structure obligatoire : accroche forte → valeur concrète → CTA explicite vers le lead magnet.
-Le CTA doit nommer le lead magnet et expliquer comment l'obtenir (commenter, DM, lien bio, etc.).
-Longueur : 800–1 500 caractères. Pas de question générique en fin de post.`,
-
-    post_actu: `## MODE : Post Actualité Croisée
-Génère directement un post. Si aucune actu n'est fournie, demande-la en UNE question.
-Structure : accroche sur l'actu → angle personnel → leçon/opinion → CTA léger.`,
-
-    post_prise_position: `## MODE : Post Prise de Position
-Génère directement un post avec une opinion tranchée. Ne cherche pas à nuancer.
-Structure : affirmation forte en accroche → argument principal → contre-argument bref → conclusion assumée.`,
-
-    post_framework: `## MODE : Post Framework
-Génère directement un post. Si aucun framework n'est fourni, demande le sujet en UNE question.
-Structure : accroche → framework en étapes numérotées ou liste → insight final.`,
-
-    post_coulisse: `## MODE : Post Coulisse
-Génère directement un post en mode storytelling interne/transparence.
-Structure : situation concrète → ce que j'ai appris/découvert → leçon universelle.`,
-
-    post_cas_client: `## MODE : Post Cas Client
-Génère directement un post centré sur un résultat client concret. Si le starter chip a été utilisé, les infos clés (client/secteur, situation de départ, résultat, durée, levier) sont dans le message de l'opérateur — reprends-les sans les inventer.
-Structure : accroche sur le résultat chiffré ou l'avant/après → contexte court (situation de départ) → ce qui a été fait → résultat détaillé → leçon transférable (pas un CTA clickbait).
-Si des infos manquent pour un cas crédible (chiffre, durée, levier), demande-les en UNE question avant d'écrire. Pas d'invention de chiffres.
-Longueur : 1000-2000 caractères.`,
-
-    post_autonome: `## MODE : Post Autonome
-Génère directement un post standalone sans CTA fort. Si le sujet manque, pose UNE question.`,
-
     DM_1st: `## MODE : DM 1er message (cold outreach)
 Génère directement UN premier message d'approche — pas d'accueil, pas de "colle-moi un profil". Le thread contient déjà le [Contexte lead] du prospect ; sers-t'en.
 Accroche OBLIGATOIREMENT sur un élément concret du contexte lead : un post récent du prospect, son titre, un sujet du moment. Pas d'opener générique type "j'ai vu ton profil".
@@ -306,14 +275,6 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
   const scenarioContent = override
     ? (override + "\n\n" + (baseScenarioContent || ""))
     : baseScenarioContent;
-
-  // Kind drives the FORMAT DE REPONSE (post = single block, dm = WhatsApp thread).
-  // Canonical id is authoritative. Without one, only scenario==="post" is a
-  // reliable post signal — everything else (qualification, default, empty)
-  // stays on DM defaults for back-compat.
-  const scenarioKind = scenarioType
-    ? CANONICAL_SCENARIOS[scenarioType].kind
-    : scenario === "post" ? "post" : "dm";
 
   // Entities + corrections + protocol rules + protocol_v2 artifacts in parallel.
   // Protocol layers fail silently: an opt-in layer must never block the chat.
@@ -350,7 +311,6 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
     scenarioContent,
     corrections,
     ontology,
-    scenarioKind,
     protocolRules,
     protocolArtifacts,
     scenarioSlug: scenario,

@@ -6,19 +6,14 @@
   import { track } from "$lib/tracking.js";
   import { fly } from "svelte/transition";
 
-  let cloneType = $state(null); // 'posts' | 'dm' | 'both'
-  let step = $state('type');
+  let step = $state('info');
   let direction = $state(1);
 
-  const steps = $derived([
-    'type',
-    'info',
-    ...(cloneType !== 'dm'    ? ['posts'] : []),
-    ...(cloneType !== 'posts' ? ['dm']    : []),
-    'protocol',
-    'docs',
-  ]);
-  const TOTAL = $derived(steps.length);
+  // DM-only flow: scrape LinkedIn for voice samples, paste DM conversations,
+  // optional protocol + docs. The "Posts LinkedIn" generation mode was
+  // removed (2026-04-28) — scraped posts still feed voice baseline as INPUT.
+  const steps = ['info', 'dm', 'protocol', 'docs'];
+  const TOTAL = steps.length;
 
   // Step 1: Infos générales
   let linkedinUrl = $state("");
@@ -30,10 +25,10 @@
   let profileText = $state("");
   let clientLabel = $state("");
 
-  // Step 2: Posts LinkedIn
+  // Voice samples (scraped LinkedIn posts — used as embeddings, not generated)
   let postsText = $state("");
 
-  // Step 3: DMs LinkedIn
+  // DMs LinkedIn (training conversations)
   let dmsText = $state("");
 
   // Step 4: Protocole opérationnel (optionnel — parsed async après création)
@@ -157,10 +152,6 @@
     ].filter(Boolean).join("\n\n");
 
     const posts = postsText.trim().split(/\n---\n/).map(p => p.trim()).filter(p => p.length > 30);
-    if (cloneType !== 'dm' && posts.length < 3) {
-      showToast("Minimum 3 posts (séparés par ---)");
-      return;
-    }
 
     const dms = dmsText.trim()
       ? dmsText.trim().split(/\n---\n/).map(d => d.trim()).filter(d => d.length > 20)
@@ -187,16 +178,15 @@
         method: "POST",
         body: JSON.stringify({
           linkedin_text: linkedin,
-          posts: cloneType !== 'dm' ? posts : undefined,
+          posts: posts.length > 0 ? posts : undefined,
           dms: dms.length > 0 ? dms : undefined,
           name: personaName.trim() || undefined,
-          cloneType,
           client_label: clientLabel.trim() || undefined,
         }),
       });
       persona = data.persona;
       track("clone_created", {
-        type: cloneType,
+        type: "dm",
         has_docs: pendingFiles.filter(f => f.status === "pending").length > 0,
         has_protocol: !!protocolFile,
       });
@@ -278,12 +268,6 @@
     setTimeout(() => { goto(`/calibrate/${persona.id}`); }, 800);
   }
 
-  function setCloneType(value) {
-    cloneType = value;
-    if (value === 'dm')    postsText = '';
-    if (value === 'posts') dmsText = '';
-  }
-
   function nextStep() {
     const idx = steps.indexOf(step);
     if (idx < steps.length - 1) {
@@ -321,51 +305,7 @@
         in:fly={{ x: 100 * direction, duration: 250 }}
         out:fly={{ x: -100 * direction, duration: 200 }}
       >
-        {#if step === 'type'}
-          <div class="create-step">
-            <div class="step-header">
-              <strong>Pourquoi créer ce clone ?</strong>
-              <span>Le flow de création s'adapte selon ton choix.</span>
-            </div>
-
-            <div class="type-cards">
-              <button
-                class="type-card"
-                class:type-card-selected={cloneType === 'posts'}
-                onclick={() => setCloneType('posts')}
-              >
-                <span class="type-card-icon">✍️</span>
-                <strong>Posts LinkedIn</strong>
-                <span>Génère du contenu écrit, hooks, carrousels</span>
-              </button>
-              <button
-                class="type-card"
-                class:type-card-selected={cloneType === 'dm'}
-                onclick={() => setCloneType('dm')}
-              >
-                <span class="type-card-icon">💬</span>
-                <strong>DMs LinkedIn</strong>
-                <span>Répond en prospection et qualification</span>
-              </button>
-              <button
-                class="type-card"
-                class:type-card-selected={cloneType === 'both'}
-                onclick={() => setCloneType('both')}
-              >
-                <span class="type-card-icon">⚡</span>
-                <strong>Les deux</strong>
-                <span>Flow complet, 5 étapes</span>
-              </button>
-            </div>
-
-            <div class="create-actions">
-              <button onclick={nextStep} disabled={!cloneType}>
-                Continuer →
-              </button>
-            </div>
-          </div>
-
-        {:else if step === 'info'}
+        {#if step === 'info'}
           <!-- Step 1: Infos générales -->
           <div class="create-step">
             <div class="step-header">
@@ -397,32 +337,6 @@
 
             <div class="create-actions">
               <button onclick={nextStep} disabled={!personaName.trim() && !profileText.trim()}>
-                Suivant →
-              </button>
-            </div>
-          </div>
-
-        {:else if step === 'posts'}
-          <!-- Step 2: Posts LinkedIn -->
-          <div class="create-step">
-            <div class="step-header">
-              <strong>Posts LinkedIn de référence</strong>
-              <span>Le style d'écriture public du clone</span>
-            </div>
-            <p class="step-desc">
-              Copiez-collez les meilleurs posts. Séparez chaque post par <code>---</code> sur une ligne seule. Minimum 3 posts, idéalement 10-20.
-            </p>
-
-            <textarea rows="14" bind:value={postsText} placeholder="Premier post ici...&#10;---&#10;Deuxième post ici...&#10;---&#10;Troisième post ici..."></textarea>
-
-            <div class="count-badge" class:count-ok={postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length >= 3}>
-              {postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length} post(s) détecté(s)
-              {#if postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length < 3}— minimum 3{/if}
-            </div>
-
-            <div class="create-actions">
-              <button class="btn-secondary" onclick={prevStep}>← Retour</button>
-              <button onclick={nextStep} disabled={postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length < 3}>
                 Suivant →
               </button>
             </div>
@@ -564,18 +478,16 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
                   <span>{clientLabel.trim()}</span>
                 </div>
               {/if}
-              {#if cloneType !== 'dm'}
+              {#if postsText.trim()}
                 <div class="recap-item">
-                  <span class="recap-label">Posts</span>
-                  <span>{postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length} posts</span>
+                  <span class="recap-label">Posts source</span>
+                  <span>{postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length} (échantillons voix)</span>
                 </div>
               {/if}
-              {#if cloneType !== 'posts'}
-                <div class="recap-item">
-                  <span class="recap-label">DMs</span>
-                  <span>{dmsText.trim() ? `${dmsText.trim().split(/\n---\n/).filter(d => d.trim().length > 20).length} conversations` : "non renseigné"}</span>
-                </div>
-              {/if}
+              <div class="recap-item">
+                <span class="recap-label">DMs</span>
+                <span>{dmsText.trim() ? `${dmsText.trim().split(/\n---\n/).filter(d => d.trim().length > 20).length} conversations` : "non renseigné"}</span>
+              </div>
               {#if protocolFile}
                 <div class="recap-item">
                   <span class="recap-label">Protocole</span>
@@ -1024,54 +936,4 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
     .scrape-row { flex-direction: column; }
   }
 
-  .type-cards {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-bottom: 1.5rem;
-  }
-
-  .type-card {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    cursor: pointer;
-    text-align: left;
-    font-family: var(--font);
-    color: var(--text);
-    transition: border-color 0.15s;
-    width: 100%;
-  }
-
-  .type-card:hover {
-    border-color: var(--text-tertiary);
-  }
-
-  .type-card-selected {
-    border-color: var(--text-secondary);
-    background: var(--surface);
-  }
-
-  .type-card-icon {
-    font-size: 1.25rem;
-    flex-shrink: 0;
-  }
-
-  .type-card strong {
-    display: block;
-    font-size: 0.875rem;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-  }
-
-  .type-card span:last-child {
-    display: block;
-    font-size: 0.6875rem;
-    color: var(--text-tertiary);
-    margin-top: 0.125rem;
-  }
 </style>
