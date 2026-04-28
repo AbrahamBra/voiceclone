@@ -17,12 +17,17 @@ function mockRes() {
   });
 }
 
+// initSSE installs a 15s heartbeat setInterval cleared on res "close" / "finish".
+// Tests that don't close the response leak the timer, which keeps node:test
+// alive past assertions. Always emit "close" before the test ends.
+
 test("sets SSE headers", () => {
   const res = mockRes();
   initSSE(res);
   assert.equal(res._headers["Content-Type"], "text/event-stream");
   assert.equal(res._headers["Cache-Control"], "no-cache");
   assert.equal(res._headers["Connection"], "keep-alive");
+  res.emit("close");
 });
 
 test("send writes a data line; back-compat calling form works", () => {
@@ -30,6 +35,7 @@ test("send writes a data line; back-compat calling form works", () => {
   const sse = initSSE(res);
   sse("delta", { text: "hi" });
   assert.equal(res._writes[0], 'data: {"type":"delta","text":"hi"}\n\n');
+  res.emit("close");
 });
 
 test("send drops writes after res.writableEnded", () => {
@@ -38,6 +44,7 @@ test("send drops writes after res.writableEnded", () => {
   res.writableEnded = true;
   sse("delta", { text: "late" });
   assert.equal(res._writes.length, 0);
+  res.emit("close");
 });
 
 test("signal fires when req emits 'close'", () => {
@@ -47,6 +54,7 @@ test("signal fires when req emits 'close'", () => {
   assert.equal(sse.signal.aborted, false);
   req.emit("close");
   assert.equal(sse.signal.aborted, true);
+  res.emit("close");
 });
 
 test("signal fires when res emits 'close'", () => {
@@ -61,4 +69,5 @@ test("signal does not fire without req (legacy call)", () => {
   const res = mockRes();
   const sse = initSSE(res);
   assert.equal(sse.signal.aborted, false);
+  res.emit("close");
 });
