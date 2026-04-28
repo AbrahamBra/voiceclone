@@ -89,3 +89,23 @@ Une nouvelle règle suit ce cycle :
 1. **🌑 Shadow** : `shadow: true`, logge dans `shadowViolations` mais ne contribue pas au `violationScore`. Récolte des stats sur 1-2 semaines de trafic réel.
 2. **✓ Active 🔓** : passage en règle bloquante surchargeable per-persona si les stats valident la pertinence (taux de fire raisonnable, pas de faux positif évident).
 3. **✓ Active 🔒** : promotion en règle absolue si l'audit cross-persona confirme l'invariance (pas de contre-exemple légitime sur l'ensemble des personas actifs).
+
+### Requête de décision
+
+Pour décider du flip 🌑 → 🔓 d'une règle shadow (cas concret : B5), exécuter la
+requête suivante J+14 après merge en master sur la base de données prod :
+
+```sql
+-- Promotion B5 🌑 → 🔓 : exécuter J+14 après merge
+SELECT
+  COUNT(*) AS total_shadow_logs,
+  AVG((signals->>'setter_shadow_count')::int) AS avg_violations_per_msg,
+  COUNT(*) FILTER (WHERE signals @> '{"setter_shadow_ids":["B5"]}'::jsonb) AS b5_fires,
+  ROUND(100.0 * COUNT(*) FILTER (WHERE signals @> '{"setter_shadow_ids":["B5"]}'::jsonb) / NULLIF(COUNT(*), 0), 1) AS b5_fire_rate_pct
+FROM rhythm_shadow
+WHERE created_at > NOW() - INTERVAL '14 days';
+```
+
+**Critère de promotion** : fire rate B5 < 15% sur l'échantillon. Au-delà, la
+règle est trop bruyante en l'état → calibrer la regex (ex : restreindre les
+pronoms, exclure des homonymes courants) avant de flip.
