@@ -50,4 +50,10 @@ describe("B5 vouvoiement par défaut (shadow)", () => {
     );
     assert.ok(r.shadowViolations.find(v => v.id === "B5"));
   });
+
+  it("does not fire on homonyme: 'ton' substantif", () => {
+    // homonyme: 'ton' substantif (et non pronom possessif) ne doit pas déclencher B5
+    const r = evaluateSetterBaseline("Mon ton est plus ferme aujourd'hui");
+    assert.ok(!r.shadowViolations.find(v => v.id === "B5"));
+  });
 });
