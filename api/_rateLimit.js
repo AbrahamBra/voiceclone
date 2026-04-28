@@ -82,10 +82,15 @@ export async function rateLimit(rawIp) {
   }
 }
 
-// Periodic cleanup of in-memory recentBlocks (defensive)
+// Periodic cleanup of in-memory recentBlocks (defensive). `.unref()` so this
+// top-level timer doesn't keep the Node event loop alive — without it,
+// `node --test` cannot exit when any test transitively imports this module
+// (which most do, via lib/supabase.js). In serverless prod the function
+// instance is kept alive by in-flight requests, not this interval, so unref
+// is safe.
 setInterval(() => {
   const now = Date.now();
   for (const [ip, entry] of recentBlocks) {
     if (now >= entry.until) recentBlocks.delete(ip);
   }
-}, 60_000);
+}, 60_000).unref();

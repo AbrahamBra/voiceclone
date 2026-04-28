@@ -158,7 +158,13 @@ describe("POST /api/v2/protocol/publish", () => {
     assert.equal(res._body.document.status, "active");
     assert.equal(res._body.archived_document_id, ARCHIVED_ID);
     assert.equal(res._body.stats_migrated, 3);
-    assert.deepEqual(deps._calls.publishDraft, [{ documentId: DOC_ID }]);
+    // publishDraft now receives a 3-key payload (documentId, publishedBy, and a
+    // bound narrator). Assert the substantive contract without pinning the
+    // narrator's function reference.
+    assert.equal(deps._calls.publishDraft.length, 1);
+    assert.equal(deps._calls.publishDraft[0].documentId, DOC_ID);
+    assert.equal(deps._calls.publishDraft[0].publishedBy, CLIENT_ID);
+    assert.equal(typeof deps._calls.publishDraft[0].generateNarrative, "function");
   });
 
   it("admin bypasses hasPersonaAccess", async () => {
