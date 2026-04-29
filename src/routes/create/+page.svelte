@@ -6,14 +6,18 @@
   import { track } from "$lib/tracking.js";
   import { fly } from "svelte/transition";
 
-  let step = $state('info');
+  let step = $state('maturity');
   let direction = $state(1);
 
-  // DM-only flow: scrape LinkedIn for voice samples, paste DM conversations,
-  // optional protocol + docs. The "Posts LinkedIn" generation mode was
-  // removed (2026-04-28) — scraped posts still feed voice baseline as INPUT.
-  const steps = ['info', 'dm', 'protocol', 'docs'];
+  // DM-only flow: maturity tier first (L1/L2/L3), then scrape LinkedIn for
+  // voice samples, paste DM conversations, optional protocol + docs.
+  // Maturity step added 2026-04-29 per spec
+  // docs/superpowers/specs/2026-04-27-clone-meta-rules-and-maturity.md §1.
+  const steps = ['maturity', 'info', 'dm', 'protocol', 'docs'];
   const TOTAL = steps.length;
+
+  // Step 0: Maturité du document source (L1 / L2 / L3, optionnel)
+  let maturityLevel = $state(/** @type {'L1'|'L2'|'L3'|null} */(null));
 
   // Step 1: Infos générales
   let linkedinUrl = $state("");
@@ -182,11 +186,13 @@
           dms: dms.length > 0 ? dms : undefined,
           name: personaName.trim() || undefined,
           client_label: clientLabel.trim() || undefined,
+          maturity_level: maturityLevel || undefined,
         }),
       });
       persona = data.persona;
       track("clone_created", {
         type: "dm",
+        maturity_level: maturityLevel || "skipped",
         has_docs: pendingFiles.filter(f => f.status === "pending").length > 0,
         has_protocol: !!protocolFile,
       });
@@ -305,7 +311,61 @@
         in:fly={{ x: 100 * direction, duration: 250 }}
         out:fly={{ x: -100 * direction, duration: 200 }}
       >
-        {#if step === 'info'}
+        {#if step === 'maturity'}
+          <!-- Step 0: Maturité du document source (L1 / L2 / L3, optionnel) -->
+          <div class="create-step">
+            <div class="step-header">
+              <strong>Maturité du document source</strong>
+              <span>Quel type de matière vas-tu uploader pour ce clone ?</span>
+            </div>
+
+            <p class="step-desc">
+              Ça nous aide à calibrer l'extraction. Aucun mauvais choix — tu peux changer plus tard ou skip.
+            </p>
+
+            <div class="maturity-options">
+              <button
+                class="maturity-card"
+                class:active={maturityLevel === 'L1'}
+                onclick={() => maturityLevel = 'L1'}
+                type="button"
+              >
+                <div class="maturity-tier">L1 — Positionnement</div>
+                <div class="maturity-desc">Bio + ICP + voix. Pas de scripts DM.</div>
+                <div class="maturity-example">Ex : un doc qui décrit qui le client est, à qui il s'adresse, et comment il s'exprime.</div>
+              </button>
+
+              <button
+                class="maturity-card"
+                class:active={maturityLevel === 'L2'}
+                onclick={() => maturityLevel = 'L2'}
+                type="button"
+              >
+                <div class="maturity-tier">L2 — Mono-scénario</div>
+                <div class="maturity-desc">Playbook DM bien outillé sur 1 scénario (ex: icebreaker outbound).</div>
+                <div class="maturity-example">Ex : un doc avec règles, scoring, templates pour un cas précis.</div>
+              </button>
+
+              <button
+                class="maturity-card"
+                class:active={maturityLevel === 'L3'}
+                onclick={() => maturityLevel = 'L3'}
+                type="button"
+              >
+                <div class="maturity-tier">L3 — Multi-scénario</div>
+                <div class="maturity-desc">Playbook complet : icebreaker × multi-source + creusement + call_proposal + graceful_exit.</div>
+                <div class="maturity-example">Ex : un doc qui couvre tout le pipeline DM end-to-end.</div>
+              </button>
+            </div>
+
+            <div class="create-actions">
+              <button onclick={nextStep}>
+                {maturityLevel ? "Suivant →" : "Skip →"}
+              </button>
+            </div>
+          </div>
+
+        {:else if step === 'info'}
           <!-- Step 1: Infos générales -->
           <div class="create-step">
             <div class="step-header">
@@ -336,6 +396,7 @@
             <textarea rows="4" bind:value={profileText} placeholder="Expertise, thèmes abordés, valeur ajoutée..."></textarea>
 
             <div class="create-actions">
+              <button class="btn-secondary" onclick={prevStep}>← Retour</button>
               <button onclick={nextStep} disabled={!personaName.trim() && !profileText.trim()}>
                 Suivant →
               </button>
@@ -929,6 +990,49 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
   }
   @keyframes gen-spin {
     to { transform: rotate(360deg); }
+  }
+
+  .maturity-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  .maturity-card {
+    text-align: left;
+    width: 100%;
+    padding: 0.75rem 0.875rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--font);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .maturity-card:hover {
+    border-color: var(--text-tertiary);
+  }
+  .maturity-card.active {
+    border-color: var(--vermillon);
+    background: color-mix(in oklab, var(--vermillon) 6%, var(--surface));
+  }
+  .maturity-tier {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+  }
+  .maturity-desc {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+    line-height: 1.4;
+  }
+  .maturity-example {
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+    font-style: italic;
+    line-height: 1.4;
   }
 
   @media (max-width: 480px) {
