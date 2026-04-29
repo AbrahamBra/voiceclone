@@ -57,9 +57,11 @@
 
   // Detect conversations with < 2 distinct speakers (monologue = useless for cloning turn-taking).
   // A "speaker" = a line starting with "Name:" (letters up to 30 chars then colon).
+  // Same tolerant split as createClone : `---` ou triple-newline.
+  const SPLIT_RE = /\n[\s]*---+[\s]*\n|\n\s*\n\s*\n+/;
   let dmIssues = $derived.by(() => {
     if (!dmsText.trim()) return [];
-    const convs = dmsText.trim().split(/\n---\n/);
+    const convs = dmsText.trim().split(SPLIT_RE);
     const issues = [];
     convs.forEach((conv, i) => {
       if (conv.trim().length < 20) return;
@@ -155,10 +157,12 @@
       profileText.trim(),
     ].filter(Boolean).join("\n\n");
 
-    const posts = postsText.trim().split(/\n---\n/).map(p => p.trim()).filter(p => p.length > 30);
+    // SPLIT_RE déclaré au top-level — accepte `---` explicite OU triple
+    // newline (paste brut depuis LinkedIn / Taplio).
+    const posts = postsText.trim().split(SPLIT_RE).map(p => p.trim()).filter(p => p.length > 30);
 
     const dms = dmsText.trim()
-      ? dmsText.trim().split(/\n---\n/).map(d => d.trim()).filter(d => d.length > 20)
+      ? dmsText.trim().split(SPLIT_RE).map(d => d.trim()).filter(d => d.length > 20)
       : [];
 
     generating = true;
@@ -411,7 +415,7 @@
               <span>Le style de conversation 1:1 du clone</span>
             </div>
             <p class="step-desc">
-              Colle des conversations <strong>complètes</strong> — les deux côtés, du premier message au dernier. Un monologue unilatéral ne sert à rien : le clone apprend comment tu <em>relances</em>, <em>réponds</em>, <em>clôtures</em>. Sépare chaque conversation par <code>---</code>.
+              Colle des conversations <strong>complètes</strong> — les deux côtés, du premier message au dernier. Un monologue unilatéral ne sert à rien : le clone apprend comment tu <em>relances</em>, <em>réponds</em>, <em>clôtures</em>. Sépare chaque conversation par <code>---</code> ou par une ligne vide entre deux blocs (paste depuis LinkedIn fonctionne).
             </p>
 
             <details class="dm-example">
@@ -427,7 +431,7 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
 
             {#if dmsText.trim()}
               <div class="count-badge count-ok">
-                {dmsText.trim().split(/\n---\n/).filter(d => d.trim().length > 20).length} conversation(s) détectée(s)
+                {dmsText.trim().split(SPLIT_RE).filter(d => d.trim().length > 20).length} conversation(s) détectée(s)
               </div>
             {/if}
 
@@ -453,12 +457,15 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
           <!-- Step: Protocole opérationnel (optionnel) -->
           <div class="create-step">
             <div class="step-header">
-              <strong>Protocole opérationnel</strong>
-              <span>Le doc de cadrage prospection co-créé avec le client — optionnel</span>
+              <strong>Protocole — le mode opératoire</strong>
+              <span>Le squelette du cerveau du clone — optionnel mais hautement recommandé</span>
             </div>
 
             <p class="step-desc">
-              Le <strong>protocole</strong>, c'est le document de cadrage que vous construisez avec votre client sur sa façon de prospecter : son playbook opérationnel. Qui cibler, comment ouvrir, combien de questions par message, ce qu'il ne dit <em>jamais</em>, quand pitcher, quand reculer. Uploadez-le ici et le clone <strong>appliquera ces règles en dur</strong> à chaque message — il réécrira automatiquement tout draft qui les viole. Sans protocole, le clone reste stylistiquement fidèle mais ne bloque rien.
+              Le <strong>protocole</strong>, c'est <em>comment</em> ton client prospecte : qui cibler, comment ouvrir, combien de questions par message, ce qu'il ne dit <em>jamais</em>, quand pitcher, quand reculer. Le clone <strong>applique ces règles en dur</strong> à chaque message — il réécrit automatiquement tout draft qui les viole. C'est ce qui sépare un clone-perroquet d'un clone-opérationnel.
+            </p>
+            <p class="step-desc step-desc-aside">
+              ≠ des docs de la prochaine étape, qui apportent <em>la matière</em> (offre, témoignages, articles) — pas le mode opératoire.
             </p>
 
             <div class="protocol-zone">
@@ -491,8 +498,8 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
           <!-- Step 4: Documents + Génération -->
           <div class="create-step">
             <div class="step-header">
-              <strong>Documents & Génération</strong>
-              <span>Enrichissez la base de connaissances (optionnel)</span>
+              <strong>Docs — la matière</strong>
+              <span>Articles, témoignages, offre, bio longue. Le clone pioche dedans pour répondre — optionnel</span>
             </div>
 
             <button class="btn-link" onclick={() => showDocs = !showDocs}>
@@ -542,12 +549,12 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
               {#if postsText.trim()}
                 <div class="recap-item">
                   <span class="recap-label">Posts source</span>
-                  <span>{postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length} (échantillons voix)</span>
+                  <span>{postsText.trim().split(SPLIT_RE).filter(p => p.trim().length > 30).length} (échantillons voix)</span>
                 </div>
               {/if}
               <div class="recap-item">
                 <span class="recap-label">DMs</span>
-                <span>{dmsText.trim() ? `${dmsText.trim().split(/\n---\n/).filter(d => d.trim().length > 20).length} conversations` : "non renseigné"}</span>
+                <span>{dmsText.trim() ? `${dmsText.trim().split(SPLIT_RE).filter(d => d.trim().length > 20).length} conversations` : "non renseigné"}</span>
               </div>
               {#if protocolFile}
                 <div class="recap-item">
@@ -761,6 +768,12 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
 
   .step-desc strong { color: var(--text); font-weight: 600; }
   .step-desc em { font-style: italic; color: var(--text-secondary); }
+  .step-desc-aside {
+    color: var(--text-tertiary);
+    border-left: 2px solid var(--border);
+    padding-left: 0.5rem;
+    margin-top: -0.25rem;
+  }
 
   .dm-example {
     margin-bottom: 0.5rem;
