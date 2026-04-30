@@ -254,6 +254,53 @@ describe("protocol-v2-db", () => {
       assert.deepEqual(ids, ["aGlobal"]);
     });
 
+    it("getActiveArtifactsForPersona INHERITS artifacts from parent_template_id when set on the playbook", async () => {
+      // Realistic seed scenario : Nicolas's fork carries voice overrides only,
+      // and inherits strategy/cadence/mirror questions from the universal
+      // template via parent_template_id. Without inheritance walking, the chat
+      // would silently drop the operational content.
+      const sb = makeStub({
+        protocol_document: [
+          { id: "dGlobal", owner_kind: "persona", owner_id: "p1", status: "active", source_core: null, parent_template_id: null, version: 1 },
+          { id: "dFork", owner_kind: "persona", owner_id: "p1", status: "active", source_core: "visite_profil", parent_template_id: "dTemplate", version: 1 },
+          { id: "dTemplate", owner_kind: "template", owner_id: "system", status: "active", source_core: "visite_profil", parent_template_id: null, version: 1 },
+        ],
+        protocol_section: [
+          { id: "sG", document_id: "dGlobal" },
+          { id: "sF", document_id: "dFork" },
+          { id: "sT", document_id: "dTemplate" },
+        ],
+        protocol_artifact: [
+          { id: "aGlobal", source_section_id: "sG", is_active: true, kind: "hard_check", content: { text: "voice rule" }, severity: "hard" },
+          { id: "aFork", source_section_id: "sF", is_active: true, kind: "soft_check", content: { text: "voix Nicolas: tutoiement" }, severity: "strong" },
+          { id: "aTemplate", source_section_id: "sT", is_active: true, kind: "pattern", content: { text: "stratégie curiosité-symétrique" }, severity: "strong" },
+        ],
+      });
+      const arts = await getActiveArtifactsForPersona(sb, "p1", { sourceCore: "visite_profil" });
+      const ids = arts.map(a => a.id).sort();
+      assert.deepEqual(ids, ["aFork", "aGlobal", "aTemplate"]);
+    });
+
+    it("getActiveArtifactsForPersona INHERITS artifacts from parent_template_id on the GLOBAL doc too (agency-template flow)", async () => {
+      const sb = makeStub({
+        protocol_document: [
+          { id: "dGlobal", owner_kind: "persona", owner_id: "p1", status: "active", source_core: null, parent_template_id: "dAgencyTemplate", version: 1 },
+          { id: "dAgencyTemplate", owner_kind: "template", owner_id: "agency", status: "active", source_core: null, parent_template_id: null, version: 1 },
+        ],
+        protocol_section: [
+          { id: "sG", document_id: "dGlobal" },
+          { id: "sA", document_id: "dAgencyTemplate" },
+        ],
+        protocol_artifact: [
+          { id: "aGlobal", source_section_id: "sG", is_active: true, kind: "soft_check", content: { text: "persona override" }, severity: "light" },
+          { id: "aAgency", source_section_id: "sA", is_active: true, kind: "hard_check", content: { text: "agency baseline rule" }, severity: "hard" },
+        ],
+      });
+      const arts = await getActiveArtifactsForPersona(sb, "p1");
+      const ids = arts.map(a => a.id).sort();
+      assert.deepEqual(ids, ["aAgency", "aGlobal"]);
+    });
+
     it("getActiveArtifactsForPersona with sourceCore but no global doc returns playbook only", async () => {
       const sb = makeStub({
         protocol_document: [
