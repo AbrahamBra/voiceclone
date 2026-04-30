@@ -66,7 +66,7 @@
     {
       tag: "03 · MANAGEMENT",
       title: "Vous relisez tout, vous recadrez tout",
-      promise: "Vous arbitrez les propositions du système. Le copier-coller, c'est lui qui s'en charge."
+      promise: "Vous arbitrez les propositions du système. Le copier-coller, c'est plus votre problème."
     },
     {
       tag: "04 · DRIFT",
@@ -345,7 +345,7 @@
 
       <article class="offre-card offre-highlight">
         <header class="offre-head">
-          <h3 class="offre-name">Cell</h3>
+          <h3 class="offre-name">Cellule</h3>
           <span class="offre-meta mono">3-5 setters · 5-15 clones</span>
         </header>
         <p class="offre-body">Pour les agences qui scalent. Vos setters montent en autonomie, vous reprenez la main sur le pilotage.</p>

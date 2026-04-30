@@ -15,14 +15,14 @@
       id: "tab-connaissance",
       title: "Connaissance",
       role: "La matière brute",
-      content: "Les docs uploadés : offre, audience, background, témoignages, articles. Stockés en chunks sémantiques. Quand le setter drafte, le clone retrouve les passages utiles par similarité et les utilise comme contexte. Plus tu enrichis, plus le clone a de matière à citer.",
+      content: "Les docs uploadés : offre, audience, background, témoignages, articles. Stockés en chunks sémantiques. Quand le setter drafte, le clone retrouve les passages utiles par similarité et les utilise comme contexte. Plus vous enrichissez, plus le clone a de matière à citer.",
       example: "Doc 'Background Nicolas' (3 chunks, extraction OK), 'Audience cible' (4 chunks), 'Positionnement' (3 chunks). Type = Générique. Le clone pioche dedans.",
     },
     {
       id: "tab-protocole",
       title: "Protocole",
       role: "Les règles dures",
-      content: "Le playbook DM de ton client : qui cibler, comment ouvrir, max N questions, ce qu'il ne dit jamais, quand pitcher, quand reculer. Stocké en 6 sections (hard_rules, errors, process, icp_patterns, scoring, templates) plus des artefacts compilés. Si un draft viole une règle, le clone le réécrit automatiquement.",
+      content: "Le playbook DM de votre client : qui cibler, comment ouvrir, max N questions, ce qu'il ne dit jamais, quand pitcher, quand reculer. Stocké en 6 sections (hard_rules, errors, process, icp_patterns, scoring, templates) plus des artefacts compilés. Si un draft viole une règle, le clone le réécrit automatiquement.",
       example: "Hard rule : 'Jamais 2 questions dans un même message'. Si le draft en met 2, le clone le réécrit avant de l'afficher au setter.",
     },
     {
@@ -46,25 +46,25 @@
     {
       num: "01",
       title: "Maturité",
-      desc: "Tu choisis L1, L2 ou L3 selon le doc source que tu as. L1 = positionnement seul. L2 = playbook DM sur un seul scénario (par exemple icebreaker outbound). L3 = playbook multi-scénario (icebreaker × multi-source, creusement, call_proposal, graceful_exit). Skippable si tu n'es pas sûr.",
+      desc: "Vous choisissez L1, L2 ou L3 selon le doc source que vous avez. L1 = positionnement seul. L2 = playbook DM sur un seul scénario (par exemple icebreaker outbound). L3 = playbook multi-scénario (icebreaker × multi-source, creusement, call_proposal, graceful_exit). Skippable si vous n'êtes pas sûr.",
       time: "30 sec"
     },
     {
       num: "02",
       title: "Infos générales",
-      desc: "URL LinkedIn de ton client (auto-remplit nom, titre, bio, posts publics) ou saisie manuelle. Les posts publics récupérés servent de baseline de voix. Ils sont lus, pas régénérés.",
+      desc: "URL LinkedIn de votre client (auto-remplit nom, titre, bio, posts publics) ou saisie manuelle. Les posts publics récupérés servent de baseline de voix. Ils sont lus, pas régénérés.",
       time: "1 min"
     },
     {
       num: "03",
       title: "DMs de référence",
-      desc: "Colle 5 à 15 conversations DM réelles de ton client. Format : 'Prénom: message' ligne par ligne, conversations séparées par --- ou par une ligne vide. Le clone apprend la dynamique 1:1 : relances, clôtures, ton.",
+      desc: "Colle 5 à 15 conversations DM réelles de votre client. Format : 'Prénom: message' ligne par ligne, conversations séparées par --- ou par une ligne vide. Le clone apprend la dynamique 1:1 : relances, clôtures, ton.",
       time: "5 à 10 min"
     },
     {
       num: "04",
       title: "Protocole opérationnel",
-      desc: "Optionnel, mais c'est ce qui change tout. Uploade le doc de cadrage prospection co-construit avec ton client (.txt .md .pdf .docx). Le parsing tourne en arrière-plan environ 10 min après création. Tu valideras les règles extraites avant activation depuis Cerveau → Protocole.",
+      desc: "Optionnel, mais c'est ce qui change tout. Uploade le doc de cadrage prospection co-construit avec votre client (.txt .md .pdf .docx). Le parsing tourne en arrière-plan environ 10 min après création. Vous validerez les règles extraites avant activation depuis Cerveau → Protocole.",
       time: "1 min upload + 10 min parsing"
     },
     {
@@ -75,12 +75,12 @@
     },
   ];
 
-  // Ce que tu peux uploader (avec direction : ça part dans Protocole ou dans Connaissance)
+  // Ce que vous pouvez uploader (avec direction : ça part dans Protocole ou dans Connaissance)
   const knowledgeItems = [
     {
       id: "background",
       title: "Background et parcours",
-      desc: "Qui est ton client",
+      desc: "Qui est votre client",
       target: "Connaissance",
       content: "Parcours pro, expériences clés, formation, réalisations. Le clone s'en sert pour répondre quand un prospect demande 'tu as fait quoi avant' ou 'pourquoi je devrais te croire'.",
       example: "Ex : '15 ans en B2B SaaS, ex-VP Sales chez X, scale 0 → 50M ARR. Aujourd'hui CEO de Y, accompagne les founders sur le GTM LinkedIn.'",
@@ -89,16 +89,16 @@
     {
       id: "positioning",
       title: "Positionnement et expertise",
-      desc: "Sur quoi ton client est expert",
+      desc: "Sur quoi votre client est expert",
       target: "Connaissance",
-      content: "Thèmes principaux, angle, ce qui le différencie. Le clone l'utilise pour cadrer les réponses et orienter vers les sujets où ton client est solide.",
+      content: "Thèmes principaux, angle, ce qui le différencie. Le clone l'utilise pour cadrer les réponses et orienter vers les sujets où votre client est solide.",
       example: "Ex : 'Expert LinkedIn B2B. Angle : pas de growth hacks, que du fond. Anti-bullshit, pro-valeur.'",
       priority: "à avoir"
     },
     {
       id: "audience",
       title: "Audience cible (ICP)",
-      desc: "À qui ton client s'adresse",
+      desc: "À qui votre client s'adresse",
       target: "Connaissance",
       content: "Profil prospect idéal, niveau de maturité, vocabulaire, références. Le clone reconnaît un prospect ICP par rapport à un hors-cible et ajuste le niveau du discours.",
       example: "Ex : 'CEOs et VP Sales de startups B2B SaaS Series A-C. Ils connaissent LinkedIn mais n'ont pas de stratégie structurée. Budget 5 à 20k par mois sur l'acquisition.'",
@@ -107,7 +107,7 @@
     {
       id: "product",
       title: "Offre et pricing",
-      desc: "Ce que ton client vend",
+      desc: "Ce que votre client vend",
       target: "Connaissance",
       content: "Description offre, pricing, process de vente, objections courantes, arguments. Le clone pioche dedans pour qualifier et closer.",
       example: "Ex : 'Accompagnement LinkedIn 3 mois. 3 paliers : Starter 1.5k, Growth 3k, Scale 6k. Objection numéro 1 : \"j'ai pas le temps de poster\".'",
@@ -118,7 +118,7 @@
       title: "Méthode et frameworks",
       desc: "Concepts propriétaires",
       target: "Connaissance",
-      content: "Frameworks maison, méthodologies, acronymes signature. Ce qui fait la patte intellectuelle de ton client. Le clone les nomme et les utilise comme un porte-parole.",
+      content: "Frameworks maison, méthodologies, acronymes signature. Ce qui fait la patte intellectuelle de votre client. Le clone les nomme et les utilise comme un porte-parole.",
       example: "Ex : 'Méthode SCALE : Stratégie / Contenu / Audience / Leads / Engagement. Utilisée dans chaque accompagnement.'",
       priority: "en plus"
     },
@@ -166,12 +166,12 @@
     {
       num: "3",
       title: "Le système propose",
-      desc: "Les corrections récurrentes sont clusterisées et transformées en propositions de règles. Tu retrouves la queue dans Cerveau → Protocole → Propositions.",
+      desc: "Les corrections récurrentes sont clusterisées et transformées en propositions de règles. Vous retrouvez la queue dans Cerveau → Protocole → Propositions.",
     },
     {
       num: "4",
-      title: "Tu arbitres",
-      desc: "Pour chaque proposition tu choisis : Accepter (la règle entre dans le protocole), Modifier (tu reformules), Rejeter (signal noté, pas de règle). C'est ce qui fait évoluer le clone dans le temps.",
+      title: "Vous arbitrez",
+      desc: "Pour chaque proposition vous choisissez : Accepter (la règle entre dans le protocole), Modifier (vous reformulez), Rejeter (signal noté, pas de règle). C'est ce qui fait évoluer le clone dans le temps.",
     },
   ];
 </script>
@@ -201,7 +201,7 @@
           <div class="brain-tag">PROTOCOLE</div>
           <div class="brain-headline">Les règles dures</div>
           <p class="brain-body">
-            <em>Comment</em> ton client prospecte. Vouvoie ou tutoie. Max 2 questions par message. Jamais "n'hésitez pas". Pitche après 3 échanges, pas avant.
+            <em>Comment</em> votre client prospecte. Vouvoie ou tutoie. Max 2 questions par message. Jamais "n'hésitez pas". Pitche après 3 échanges, pas avant.
           </p>
           <div class="brain-runtime">
             <strong>Au runtime :</strong> les règles sont injectées dans le prompt, et re-vérifiées après génération. Si un draft viole une règle, le clone le <strong>réécrit automatiquement</strong>.
@@ -214,7 +214,7 @@
           <div class="brain-tag tag-alt">CONNAISSANCE</div>
           <div class="brain-headline">La matière brute</div>
           <p class="brain-body">
-            <em>Ce que</em> ton client sait. Son ICP, son histoire, son offre, ses cas, ses anecdotes, ses verbatims.
+            <em>Ce que</em> votre client sait. Son ICP, son histoire, son offre, ses cas, ses anecdotes, ses verbatims.
           </p>
           <div class="brain-runtime">
             <strong>Au runtime :</strong> la question du prospect est embeddée, et on cherche les passages proches. Le clone reçoit ces passages comme <strong>contexte</strong>. Il s'en sert s'il en a besoin, sans y être forcé.
@@ -334,7 +334,7 @@
         La boucle d'apprentissage
       </h2>
       <p class="section-desc">
-        Le clone n'est pas figé après création. Chaque correction setter peut devenir une règle. Tu arbitres.
+        Le clone n'est pas figé après création. Chaque correction setter peut devenir une règle. Vous arbitrez.
       </p>
 
       <div class="feedback-flow">
@@ -355,11 +355,11 @@
       <div class="feedback-tips">
         <h3>Quelques principes opérationnels</h3>
         <ul>
-          <li><strong>Sois spécifique.</strong> "Trop long" passe. "Trop long, max 3 lignes par paragraphe" donne une règle exploitable.</li>
-          <li><strong>Corrige tôt, corrige souvent.</strong> Les 15 premières corrections sont les plus impactantes. C'est là que le clone calibre.</li>
-          <li><strong>Valide aussi les bonnes réponses.</strong> Le bouton "validé" compte autant qu'une correction. Le clone renforce ce qui marche.</li>
-          <li><strong>Sépare règle dure et préférence.</strong> Une règle dure ("jamais d'emoji") va au protocole. Une préférence ("plutôt court") nourrit le style mais ne bloque rien.</li>
-          <li><strong>Enrichis la connaissance régulièrement.</strong> Nouveau cas client, nouvelle offre, nouveau verbatim : upload depuis Cerveau → Connaissance. Le clone élargit son contexte sans changer ses règles.</li>
+          <li><strong>Soyez spécifique.</strong> "Trop long" passe. "Trop long, max 3 lignes par paragraphe" donne une règle exploitable.</li>
+          <li><strong>Corrigez tôt, corrigez souvent.</strong> Les 15 premières corrections sont les plus impactantes. C'est là que le clone calibre.</li>
+          <li><strong>Validez aussi les bonnes réponses.</strong> Le bouton "validé" compte autant qu'une correction. Le clone renforce ce qui marche.</li>
+          <li><strong>Séparez règle dure et préférence.</strong> Une règle dure ("jamais d'emoji") va au protocole. Une préférence ("plutôt court") nourrit le style mais ne bloque rien.</li>
+          <li><strong>Enrichissez la connaissance régulièrement.</strong> Nouveau cas client, nouvelle offre, nouveau verbatim : upload depuis Cerveau → Connaissance. Le clone élargit son contexte sans changer ses règles.</li>
         </ul>
       </div>
     </section>
@@ -371,7 +371,7 @@
           Commencer &rarr;
         </button>
       {:else}
-        <p class="cta-text">Connecte-toi pour créer ton premier clone.</p>
+        <p class="cta-text">Connectez-vous pour créer votre premier clone.</p>
         <button class="cta-btn" onclick={() => goto("/")}>
           Se connecter &rarr;
         </button>
