@@ -138,8 +138,19 @@ export function correctionToSignal(correction) {
 }
 
 /**
- * Find the active protocol_document for a persona.
+ * Find the active GLOBAL protocol_document for a persona.
  * Returns null if none.
+ *
+ * V1 routing convention (post-migration 055) : ALL corrections route to the
+ * global doc (source_core IS NULL), preserving pre-055 behavior. Routing to
+ * source-specific playbooks (source_core != NULL) is deferred to V1.5 — will
+ * require resolving conversation_id → source_core → playbook doc before
+ * picking a document_id here.
+ *
+ * Without the source_core IS NULL filter, after seeding source-specific
+ * playbooks a persona has multiple active docs and .maybeSingle() throws
+ * "multiple rows returned" → returns null silently → propositions stop being
+ * created. Fix applied as part of migration 055.
  */
 async function getActiveDocumentId(supabase, personaId) {
   if (!personaId) return null;
@@ -149,6 +160,7 @@ async function getActiveDocumentId(supabase, personaId) {
     .eq("owner_kind", "persona")
     .eq("owner_id", personaId)
     .eq("status", "active")
+    .is("source_core", null)
     .limit(1)
     .maybeSingle();
   if (error || !data) return null;

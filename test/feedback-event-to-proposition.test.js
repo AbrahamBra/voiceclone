@@ -87,6 +87,11 @@ function makeProtocolDocumentBuilder(map) {
       if (col === "owner_id") personaId = val;
       return this;
     },
+    // Migration 055 — getActiveDocumentId now filters source_core IS NULL to
+    // pin the global doc when source-specific playbooks coexist. Stub no-ops.
+    is() {
+      return this;
+    },
     limit() {
       return this;
     },

@@ -130,6 +130,8 @@ describe("Chunk 2 wiring — full pipeline composed with in-process stubs", () =
           return {
             select() { return this; },
             eq() { return this; },
+            // Migration 055 — getActiveDocumentId now filters source_core IS NULL.
+            is() { return this; },
             limit() { return this; },
             maybeSingle: () => Promise.resolve({ data: { id: "doc-e2e" }, error: null }),
           };

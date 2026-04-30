@@ -11,6 +11,7 @@
     conversations,
     currentScenario,
     currentScenarioType,
+    currentSourceCore,
     sending,
   } from "$lib/stores/chat.js";
   import { showToast } from "$lib/stores/ui.js";
@@ -23,8 +24,10 @@
   import { track } from "$lib/tracking.js";
   import { streamChat } from "$lib/sse.js";
   import { isScenarioId } from "$lib/scenarios.js";
+  import { isSourceCoreId } from "$lib/source-core.js";
   import ChatMessage from "$lib/components/ChatMessage.svelte";
   import ChatComposer from "$lib/components/ChatComposer.svelte";
+  import SourceCorePicker from "$lib/components/SourceCorePicker.svelte";
   import FeedbackRail from "$lib/components/FeedbackRail.svelte";
   import ConversationSidebar from "$lib/components/ConversationSidebar.svelte";
   import ChatTopBar from "$lib/components/ChatTopBar.svelte";
@@ -37,6 +40,9 @@
   let personaId = $derived($page.data.personaId);
   let scenario = $derived($page.data.scenario);
   let scenarioTypeFromUrl = $derived($page.data.scenarioType);
+  // Migration 055 — source_core from URL on cold-start (cleared once a conv
+  // is loaded, which carries its own source_core from the DB).
+  let sourceCoreFromUrl = $derived($page.data.sourceCore);
 
   let lastTurnKind = $derived.by(() => {
     const narrative = $messages.filter(m =>
@@ -243,6 +249,7 @@
       prevPid,
       untrack(() => scenario),
       untrack(() => scenarioTypeFromUrl),
+      untrack(() => sourceCoreFromUrl),
     );
   });
 
@@ -265,12 +272,13 @@
             messages: get(messages).slice(),
             scenario: get(currentScenario),
             scenarioType: get(currentScenarioType),
+            sourceCore: get(currentSourceCore),
           }
         : null,
     });
   }
 
-  async function init(pid, prevPid, scn, scnType) {
+  async function init(pid, prevPid, scn, scnType, srcCore) {
     currentPersonaId.set(pid);
 
     try { localStorage.setItem("vc_last_persona", pid); } catch {}
@@ -302,11 +310,13 @@
         currentConversationId.set(cached.lastConv.id);
         currentScenario.set(cached.lastConv.scenario || scn || "");
         currentScenarioType.set(cached.lastConv.scenarioType ?? scnType ?? null);
+        currentSourceCore.set(cached.lastConv.sourceCore ?? srcCore ?? null);
         messages.set(cached.lastConv.messages);
       } else {
         currentConversationId.set(null);
         currentScenario.set(scn || "");
         currentScenarioType.set(scnType || null);
+        currentSourceCore.set(srcCore || null);
         showWelcome();
       }
       loading = false;
@@ -316,11 +326,13 @@
       loading = true;
       currentScenario.set(scn || "");
       currentScenarioType.set(scnType || null);
+      currentSourceCore.set(srcCore || null);
     } else {
       // Cache miss pendant un switch : on garde l'UI du clone précédent
       // visible, et on swappera quand les données arrivent.
       currentScenario.set(scn || "");
       currentScenarioType.set(scnType || null);
+      currentSourceCore.set(srcCore || null);
     }
 
     refreshFidelity();
@@ -378,6 +390,7 @@
           messages: get(messages).slice(),
           scenario: get(currentScenario),
           scenarioType: get(currentScenarioType),
+          sourceCore: get(currentSourceCore),
         };
       } else if (!canPaintFromCache) {
         if (convList[0]?.id) {
@@ -387,6 +400,7 @@
             messages: get(messages).slice(),
             scenario: get(currentScenario),
             scenarioType: get(currentScenarioType),
+            sourceCore: get(currentSourceCore),
           };
         } else {
           showWelcome();
@@ -442,6 +456,11 @@
       // Canonical enum wins; legacy text is dual-written.
       if (isScenarioId(conv.scenario_type)) currentScenarioType.set(conv.scenario_type);
       if (conv.scenario) currentScenario.set(conv.scenario);
+      // Migration 055 — restore the source_core tag (drives source-specific
+      // playbook assembly at chat time). Only override when DB has a value;
+      // otherwise keep whatever was set from URL/cache so picking a source
+      // before the first send isn't reset on conv load.
+      if (isSourceCoreId(conv.source_core)) currentSourceCore.set(conv.source_core);
 
       const config = $personaConfig;
       const sc = config?.scenarios?.[conv.scenario || scenario] || config?.scenarios?.default;
@@ -483,6 +502,21 @@
     history.replaceState(history.state, "", newPath);
   }
 
+  function handleSourceCoreChange(value) {
+    // Migration 055 — accept null (clear) or a valid id. Picker already
+    // restricts to the 6 core values + null. URL is updated in place ; the
+    // backend persists the new source_core on the conv on the next /api/chat
+    // call, so the playbook is included starting with the next message.
+    const next = isSourceCoreId(value) ? value : null;
+    if (next === $currentSourceCore) return;
+    currentSourceCore.set(next);
+    const url = new URL(window.location.href);
+    if (next) url.searchParams.set("source_core", next);
+    else url.searchParams.delete("source_core");
+    const newPath = url.pathname + (url.searchParams.toString() ? "?" + url.searchParams.toString() : "");
+    history.replaceState(history.state, "", newPath);
+  }
+
   async function handleSend(text) {
     if ($sending) return;
     sending.set(true);
@@ -515,6 +549,7 @@
         message: text,
         scenario: $currentScenario,
         scenarioType: $currentScenarioType || undefined,
+        sourceCore: $currentSourceCore || undefined,
         personaId,
         conversationId: $currentConversationId || undefined,
       },
@@ -1185,6 +1220,17 @@
         bind:switcherOpen
       />
 
+      <!-- Migration 055 — Source-core picker. Tags the lead origin so the
+           backend assembles the right source-specific playbook on top of the
+           global protocol. Lives outside the composer to stay visible at all
+           times, not just when starting a new conv. -->
+      <div class="source-core-bar">
+        <SourceCorePicker
+          value={$currentSourceCore}
+          onchange={handleSourceCoreChange}
+        />
+      </div>
+
       <div class="chat-body" class:rail-open={railOpen}>
         <div class="chat-messages-col">
           <div class="chat-messages" bind:this={messagesEl}>
@@ -1309,6 +1355,14 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
+  }
+
+  .source-core-bar {
+    display: flex;
+    align-items: center;
+    padding: 6px 16px;
+    border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.06));
+    flex-shrink: 0;
   }
 
   .chat-body {
