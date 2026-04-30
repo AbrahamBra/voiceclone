@@ -13,10 +13,10 @@
   let personaId = $derived(data.personaId);
 
   const TABS = [
-    { id: "connaissance", label: "connaissance" },
-    { id: "protocole",    label: "protocole" },
-    { id: "intelligence", label: "intelligence" },
-    { id: "reglages",     label: "réglages" },
+    { id: "connaissance", label: "connaissance", hint: "matière sémantique (RAG)" },
+    { id: "protocole",    label: "protocole",    hint: "règles dures appliquées" },
+    { id: "intelligence", label: "intelligence", hint: "apprentissage continu" },
+    { id: "reglages",     label: "réglages",     hint: "paramètres persona" },
   ];
 
   // Read the tab from the URL hash (#connaissance / #intelligence / #reglages),
@@ -94,6 +94,13 @@
     {/each}
   </div>
 
+  {#if TABS.find(t => t.id === activeTab)?.hint}
+    <div class="tab-hint">
+      {TABS.find(t => t.id === activeTab).hint}
+      · <a href="/guide#cerveau" class="tab-hint-link">qu'est-ce que c'est ?</a>
+    </div>
+  {/if}
+
   <div class="tab-body" role="tabpanel">
     {#if activeTab === "connaissance"}
       <KnowledgePanel {personaId} onupload={handleKnowledgeUpload} />
@@ -137,8 +144,21 @@
   .tabs {
     display: flex;
     border-bottom: 1px solid var(--rule-strong);
-    margin-bottom: 16px;
+    margin-bottom: 8px;
   }
+  .tab-hint {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--ink-40);
+    margin: 0 0 16px 0;
+    letter-spacing: 0.04em;
+  }
+  .tab-hint-link {
+    color: var(--ink-60);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .tab-hint-link:hover { color: var(--ink); }
   .tab {
     background: transparent;
     border: none;
