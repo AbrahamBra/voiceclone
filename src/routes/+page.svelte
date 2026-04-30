@@ -56,7 +56,7 @@
     {
       tag: "01 · FORMATION",
       title: "Trop de docs pour former un setter",
-      promise: "Le clone EST la doc. Setter productif en 3 jours."
+      promise: "Le clone retient ce qui est dans la doc. Plus de manuel à lire avant de drafter."
     },
     {
       tag: "02 · COPIER-COLLER",
@@ -71,7 +71,7 @@
     {
       tag: "04 · DRIFT",
       title: "Vos setters sortent des règles sans que vous le voyiez",
-      promise: "Règles client + agence opposables, traçables, dans le marbre."
+      promise: "Règles client et agence écrites une fois, vérifiables, qui ne bougent qu'avec votre accord."
     }
   ];
 
@@ -89,12 +89,12 @@
       a: "Trois garde-fous bloquent en amont : score shadow sur chaque draft, alerte soft sur dérive douce, blocage hard si une règle agence est violée. Aucun message ne sort sans avoir passé les 3 filtres."
     },
     {
-      q: "ROI à combien de semaines ?",
-      a: "Onboarding clone en 3 à 5 jours. Premiers gains de productivité visibles à 2 semaines (corrections capturées, plus jamais à réexpliquer). ROI complet sur le temps de management entre 4 et 8 semaines selon la taille de l'équipe."
+      q: "À partir de quand on voit l'effet ?",
+      a: "Dès les premières corrections. Chaque règle ajoutée par un setter s'applique au draft suivant — c'est l'effet immédiat. Pour le ROI sur le temps de management, on publiera les chiffres quand la cohorte bêta sera assez large pour être représentative."
     },
     {
       q: "Confidentialité des conversations client ?",
-      a: "Les données restent par client, isolées dans une base européenne. Les corrections de votre agence ne fuitent jamais vers les clones d'autres agences. RGPD compliant."
+      a: "Les données sont stockées sur Supabase (région EU) et hébergées sur Vercel (région EU). Les corrections de votre agence restent isolées : elles ne fuitent jamais vers les clones d'autres agences."
     }
   ];
 </script>
@@ -137,7 +137,7 @@
     <ul class="lede-list">
       <li>la doc qui s'empile</li>
       <li>le copier-coller qui se répète</li>
-      <li>les incohérences qui passent en prod</li>
+      <li>les incohérences qui partent au prospect</li>
     </ul>
 
     <p class="sub">
@@ -285,7 +285,7 @@
         <span class="layer-num mono">2</span>
         <div class="layer-body">
           <h3 class="layer-title">Les playbooks de l'<span class="layer-actor">AGENCE</span></h3>
-          <p>Par <strong>type d'action outbound</strong> : DM, ajout de contact, interaction de contenu, listes outbound, spy, visite de profil. Construits par <strong>vous</strong>, à <strong>vous</strong>. La sophistication accumulée chez l'agence, pas chez le client.</p>
+          <p>Par <strong>type d'action outbound</strong> : DM, ajout de contact, interaction de contenu, listes outbound, spy, visite de profil. Construits par <strong>vous</strong>, à <strong>vous</strong>. Le savoir-faire que vous accumulez reste à l'agence, pas chez le client.</p>
         </div>
       </div>
 
