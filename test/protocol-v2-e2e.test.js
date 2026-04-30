@@ -136,6 +136,17 @@ describe("Chunk 2 wiring — full pipeline composed with in-process stubs", () =
             maybeSingle: () => Promise.resolve({ data: { id: "doc-e2e" }, error: null }),
           };
         }
+        // V1.5 — resolveTargetDocumentId queries conversations.source_core first
+        // when conversation_id is set. The e2e event has conversation_id="conv-e2e",
+        // so we must register a stub. Returns null source_core → falls through to
+        // the global doc-e2e (the e2e test's expected behavior).
+        if (table === "conversations") {
+          return {
+            select() { return this; },
+            eq() { return this; },
+            maybeSingle: () => Promise.resolve({ data: null, error: null }),
+          };
+        }
         if (table === "proposition") {
           return {
             insert: (row) => {

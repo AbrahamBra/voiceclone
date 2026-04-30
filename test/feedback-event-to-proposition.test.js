@@ -17,6 +17,13 @@ import {
 function makeSupabase({
   events = [],
   documentIdByPersona = {},
+  // V1.5 — sourceByConv: { [conversationId]: 'visite_profil' | … } drives the
+  // conversations.source_core lookup in resolveTargetDocumentId. Empty by
+  // default → all routing falls through to global doc (legacy behavior).
+  sourceByConv = {},
+  // V1.5 — playbookIdBySource: { [personaId]: { [source_core]: playbookDocId } }
+  // resolves the source-specific playbook doc when sourceByConv hits.
+  playbookIdBySource = {},
   insertResult = { id: "p-new", count: 1 },
   mergeResult = { id: "p-existing", count: 2 },
 } = {}) {
@@ -33,7 +40,10 @@ function makeSupabase({
         return makeFeedbackEventsBuilder(events, updatesCalled);
       }
       if (table === "protocol_document") {
-        return makeProtocolDocumentBuilder(documentIdByPersona);
+        return makeProtocolDocumentBuilder(documentIdByPersona, playbookIdBySource);
+      }
+      if (table === "conversations") {
+        return makeConversationsBuilder(sourceByConv);
       }
       if (table === "proposition") {
         return makePropositionBuilder({ insertResult, mergeResult, insertsCalled, merges });
@@ -77,27 +87,57 @@ function makeFeedbackEventsBuilder(events, updatesCalled) {
   return builder;
 }
 
-function makeProtocolDocumentBuilder(map) {
+function makeProtocolDocumentBuilder(globalMap, playbookMap = {}) {
   let personaId = null;
+  let sourceCore = null;     // .eq('source_core', X) sets this
+  let isSourceCoreNull = false; // .is('source_core', null) sets this
   return {
     select() {
       return this;
     },
     eq(col, val) {
       if (col === "owner_id") personaId = val;
+      if (col === "source_core") sourceCore = val;
       return this;
     },
-    // Migration 055 — getActiveDocumentId now filters source_core IS NULL to
-    // pin the global doc when source-specific playbooks coexist. Stub no-ops.
-    is() {
+    is(col, val) {
+      // Migration 055 / V1.5 — getGlobalDocumentId filters source_core IS NULL
+      // to pin the global doc when source-specific playbooks coexist.
+      if (col === "source_core" && val === null) isSourceCoreNull = true;
       return this;
     },
     limit() {
       return this;
     },
     maybeSingle() {
-      const id = map[personaId];
+      // Source-specific playbook query (V1.5) : .eq('source_core', X)
+      if (sourceCore) {
+        const id = playbookMap[personaId]?.[sourceCore];
+        if (id) return Promise.resolve({ data: { id }, error: null });
+        return Promise.resolve({ data: null, error: null });
+      }
+      // Global doc query : .is('source_core', null) — falls through if either
+      // explicit (post-055) or omitted (legacy tests don't set the filter).
+      const id = globalMap[personaId];
       if (id) return Promise.resolve({ data: { id }, error: null });
+      return Promise.resolve({ data: null, error: null });
+    },
+  };
+}
+
+function makeConversationsBuilder(sourceByConv) {
+  let convId = null;
+  return {
+    select() { return this; },
+    eq(col, val) {
+      if (col === "id") convId = val;
+      return this;
+    },
+    maybeSingle() {
+      const sc = sourceByConv[convId];
+      if (sc) return Promise.resolve({ data: { source_core: sc }, error: null });
+      // No row OR row with source_core null — same effect : routing falls
+      // through to global doc.
       return Promise.resolve({ data: null, error: null });
     },
   };
@@ -407,5 +447,78 @@ describe("drainEventsToProposition — empty input", () => {
 describe("MIN_CONFIDENCE_INSERT exposed", () => {
   it("matches spec value 0.75", () => {
     assert.equal(MIN_CONFIDENCE_INSERT, 0.75);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// V1.5 — source-aware routing of corrections (migration 055 + #160).
+// ─────────────────────────────────────────────────────────────
+describe("drainEventsToProposition — V1.5 source-aware routing", () => {
+  it("routes the proposition to the SOURCE-SPECIFIC playbook when conv has source_core and a matching playbook exists", async () => {
+    const supabase = makeSupabase({
+      events: [baseEvent], // conversation_id = "c-1", persona_id = "persona-1"
+      documentIdByPersona: { "persona-1": "global-doc" },
+      sourceByConv: { "c-1": "visite_profil" },
+      playbookIdBySource: { "persona-1": { visite_profil: "playbook-vp-doc" } },
+    });
+    await drainEventsToProposition({
+      supabase,
+      embed: FAKE_EMBED,
+      findSimilar: NO_SIMILAR,
+      runRouteAndExtract: () => Promise.resolve([HIGH_CONF_CANDIDATE]),
+    });
+    assert.equal(supabase.insertsCalled.length, 1);
+    assert.equal(
+      supabase.insertsCalled[0].document_id,
+      "playbook-vp-doc",
+      "proposition should land on the visite_profil playbook, not the global doc"
+    );
+  });
+
+  it("falls back to the GLOBAL doc when conv has source_core but no matching playbook is seeded yet", async () => {
+    const supabase = makeSupabase({
+      events: [baseEvent],
+      documentIdByPersona: { "persona-1": "global-doc" },
+      sourceByConv: { "c-1": "spyer" },
+      // no playbook for persona-1.spyer
+    });
+    await drainEventsToProposition({
+      supabase,
+      embed: FAKE_EMBED,
+      findSimilar: NO_SIMILAR,
+      runRouteAndExtract: () => Promise.resolve([HIGH_CONF_CANDIDATE]),
+    });
+    assert.equal(supabase.insertsCalled[0].document_id, "global-doc");
+  });
+
+  it("uses the GLOBAL doc when the conv has no source_core (legacy behavior preserved)", async () => {
+    const supabase = makeSupabase({
+      events: [baseEvent],
+      documentIdByPersona: { "persona-1": "global-doc" },
+      // no sourceByConv entry → routing returns null source_core → global
+    });
+    await drainEventsToProposition({
+      supabase,
+      embed: FAKE_EMBED,
+      findSimilar: NO_SIMILAR,
+      runRouteAndExtract: () => Promise.resolve([HIGH_CONF_CANDIDATE]),
+    });
+    assert.equal(supabase.insertsCalled[0].document_id, "global-doc");
+  });
+
+  it("uses the GLOBAL doc when the event has no conversation_id at all (cron-derived signals)", async () => {
+    const eventNoConv = { ...baseEvent, conversation_id: null };
+    const supabase = makeSupabase({
+      events: [eventNoConv],
+      documentIdByPersona: { "persona-1": "global-doc" },
+      sourceByConv: { "c-1": "visite_profil" }, // exists but irrelevant — event has no conv id
+    });
+    await drainEventsToProposition({
+      supabase,
+      embed: FAKE_EMBED,
+      findSimilar: NO_SIMILAR,
+      runRouteAndExtract: () => Promise.resolve([HIGH_CONF_CANDIDATE]),
+    });
+    assert.equal(supabase.insertsCalled[0].document_id, "global-doc");
   });
 });
