@@ -66,7 +66,7 @@
     {
       tag: "03 · MANAGEMENT",
       title: "Vous relisez tout, vous recadrez tout",
-      promise: "Vous pilotez 30 min/jour. Le système propose, vous arbitrez."
+      promise: "Vous arbitrez les propositions du système. Le copier-coller, c'est lui qui s'en charge."
     },
     {
       tag: "04 · DRIFT",
@@ -151,14 +151,7 @@
     </div>
 
     <div class="trust-band">
-      <span class="trust-label mono">— premiers utilisateurs · NDA —</span>
-      <div class="trust-logos" aria-hidden="true">
-        <span class="logo-blank"></span>
-        <span class="logo-blank"></span>
-        <span class="logo-blank"></span>
-        <span class="logo-blank"></span>
-        <span class="logo-blank"></span>
-      </div>
+      <span class="trust-label mono">— bêta privée · agences partenaires sous NDA · logos affichés à la sortie de bêta —</span>
     </div>
   </section>
 
@@ -277,7 +270,7 @@
         <span class="layer-num mono">1</span>
         <div class="layer-body">
           <h3 class="layer-title">La voix du <span class="layer-actor">CLIENT</span></h3>
-          <p>Captée à l'onboarding (90 min). Règles, ouvertures, cadence, signature, ton. N'évolue qu'avec son accord. Reste son bien — pas le vôtre, pas le nôtre.</p>
+          <p>Captée à l'onboarding (90 min). Règles, ouvertures, cadence, signature, ton. N'évolue qu'avec son accord. C'est son bien, pas le vôtre.</p>
         </div>
       </div>
 
@@ -322,12 +315,12 @@
 
   <!-- ═══════ TESTIMONIAL ═══════ -->
   <section class="testimonial" aria-labelledby="testimonial-title">
-    <div class="section-kicker mono">◇ retour terrain</div>
+    <div class="section-kicker mono">◇ ce qu'on entend en discovery</div>
     <blockquote class="testimonial-quote">
       <p>« Avant, je relisais tout. Six setters, six voix, je passais mes journées à recadrer. Maintenant je pilote au lieu de corriger. Mes setters apprennent plus vite, mes clients ne sentent plus la différence entre eux. »</p>
       <footer>
-        <span class="testimonial-who">Head of Setter</span>
-        <span class="testimonial-where mono">— agence ghostwriting + setting LinkedIn, Paris</span>
+        <span class="testimonial-who">Scénario type</span>
+        <span class="testimonial-where mono">synthèse de plusieurs discoveries — vrais témoignages affichés en sortie de bêta</span>
       </footer>
     </blockquote>
   </section>
@@ -598,18 +591,6 @@
     letter-spacing: 0.12em;
     text-transform: uppercase;
   }
-  .trust-logos {
-    display: flex;
-    gap: 18px;
-    flex-wrap: wrap;
-  }
-  .logo-blank {
-    width: 96px;
-    height: 28px;
-    background: var(--paper-subtle, #f6f5f1);
-    border: 1px dashed var(--rule);
-  }
-
   /* ───────── PAINS ───────── */
   .pains {
     padding: 56px 28px;
