@@ -138,21 +138,15 @@ export function correctionToSignal(correction) {
 }
 
 /**
- * Find the active GLOBAL protocol_document for a persona.
+ * Find the active GLOBAL protocol_document for a persona (source_core IS NULL).
  * Returns null if none.
  *
- * V1 routing convention (post-migration 055) : ALL corrections route to the
- * global doc (source_core IS NULL), preserving pre-055 behavior. Routing to
- * source-specific playbooks (source_core != NULL) is deferred to V1.5 — will
- * require resolving conversation_id → source_core → playbook doc before
- * picking a document_id here.
- *
- * Without the source_core IS NULL filter, after seeding source-specific
- * playbooks a persona has multiple active docs and .maybeSingle() throws
- * "multiple rows returned" → returns null silently → propositions stop being
- * created. Fix applied as part of migration 055.
+ * The global doc carries voice/values/persona/offer rules — the cross-cutting
+ * stuff that applies regardless of where the lead came from. It's the fallback
+ * target when a feedback event has no conversation context (e.g. cron-derived
+ * signals, manual corrections without a conv id).
  */
-async function getActiveDocumentId(supabase, personaId) {
+async function getGlobalDocumentId(supabase, personaId) {
   if (!personaId) return null;
   const { data, error } = await supabase
     .from("protocol_document")
@@ -165,6 +159,57 @@ async function getActiveDocumentId(supabase, personaId) {
     .maybeSingle();
   if (error || !data) return null;
   return data.id;
+}
+
+/**
+ * V1.5 — resolve which protocol_document a feedback signal should enrich.
+ *
+ * Routing rule:
+ *   - If the signal comes from a conversation tagged with a source_core, AND
+ *     the persona has an active source-specific playbook for that source, the
+ *     signal lands on that PLAYBOOK doc → enriches a source-specific learning.
+ *   - Otherwise, the signal lands on the GLOBAL doc → enriches voice/values
+ *     (pre-055 behavior, unchanged for untagged convs).
+ *
+ * Why this matters: a setter correcting a "saalut PRÉNOM" formulation on a
+ * visite_profil DM is teaching something visite_profil-specific (icebreaker
+ * tone for that source). Routing it to the global doc would dilute it across
+ * unrelated sources. Routing to the source-specific playbook keeps each
+ * playbook's learning loop isolated, which is the whole point of having
+ * playbooks per source.
+ *
+ * Fallback chain on missing data:
+ *   conv.source_core set + playbook exists → playbook id
+ *   conv.source_core set + no playbook    → global id (graceful)
+ *   conv.source_core null                 → global id
+ *   conversationId null                   → global id
+ *   no global doc either                  → null (caller skips)
+ */
+async function resolveTargetDocumentId(supabase, personaId, conversationId) {
+  if (!personaId) return null;
+
+  if (conversationId) {
+    const { data: conv } = await supabase
+      .from("conversations")
+      .select("source_core")
+      .eq("id", conversationId)
+      .maybeSingle();
+    if (conv?.source_core) {
+      const { data: playbook } = await supabase
+        .from("protocol_document")
+        .select("id")
+        .eq("owner_kind", "persona")
+        .eq("owner_id", personaId)
+        .eq("status", "active")
+        .eq("source_core", conv.source_core)
+        .limit(1)
+        .maybeSingle();
+      if (playbook?.id) return playbook.id;
+      // No playbook for this source yet → fall through to global.
+    }
+  }
+
+  return getGlobalDocumentId(supabase, personaId);
 }
 
 /**
@@ -310,7 +355,8 @@ export async function drainEventsToProposition(args) {
       continue;
     }
 
-    const documentId = await getActiveDocumentId(supabase, event.persona_id);
+    // V1.5 — route to source-specific playbook when the conv is tagged.
+    const documentId = await resolveTargetDocumentId(supabase, event.persona_id, event.conversation_id);
     if (!documentId) {
       summary.skipped++;
       eventResult.outcomes.push({ action: "skipped", reason: "no_active_document" });
@@ -457,7 +503,8 @@ export async function drainCorrectionsToProposition(args) {
       continue;
     }
 
-    const documentId = await getActiveDocumentId(supabase, row.persona_id);
+    // V1.5 — route to source-specific playbook when the conv is tagged.
+    const documentId = await resolveTargetDocumentId(supabase, row.persona_id, row.conversation_id);
     if (!documentId) {
       summary.skipped++;
       rowResult.outcomes.push({ action: "skipped", reason: "no_active_document" });

@@ -14,6 +14,10 @@ import {
 function makeSupabase({
   rows = [],
   documentIdByPersona = {},
+  // V1.5 — routing toward source-specific playbooks. See
+  // test/feedback-event-to-proposition.test.js for full doc.
+  sourceByConv = {},
+  playbookIdBySource = {},
   insertResult = { id: "p-new", count: 1 },
   mergeResult = { id: "p-existing", count: 2 },
 } = {}) {
@@ -30,7 +34,10 @@ function makeSupabase({
         return makeCorrectionsBuilder(rows, updatesCalled);
       }
       if (table === "protocol_document") {
-        return makeProtocolDocumentBuilder(documentIdByPersona);
+        return makeProtocolDocumentBuilder(documentIdByPersona, playbookIdBySource);
+      }
+      if (table === "conversations") {
+        return makeConversationsBuilder(sourceByConv);
       }
       if (table === "proposition") {
         return makePropositionBuilder({ insertResult, mergeResult, insertsCalled, merges });
@@ -61,22 +68,44 @@ function makeCorrectionsBuilder(rows, updatesCalled) {
   };
 }
 
-function makeProtocolDocumentBuilder(map) {
+function makeProtocolDocumentBuilder(globalMap, playbookMap = {}) {
   let personaId = null;
+  let sourceCore = null;
   return {
     select() { return this; },
     eq(col, val) {
       if (col === "owner_id") personaId = val;
+      if (col === "source_core") sourceCore = val;
       return this;
     },
-    // Migration 055 — getActiveDocumentId now filters source_core IS NULL to
-    // pin the global doc when source-specific playbooks coexist. Stub no-ops
-    // since the map maps personaId → globalDocId 1-to-1.
     is() { return this; },
     limit() { return this; },
     maybeSingle() {
-      const id = map[personaId];
+      // V1.5 source-specific playbook lookup
+      if (sourceCore) {
+        const id = playbookMap[personaId]?.[sourceCore];
+        if (id) return Promise.resolve({ data: { id }, error: null });
+        return Promise.resolve({ data: null, error: null });
+      }
+      // Global doc fallback
+      const id = globalMap[personaId];
       if (id) return Promise.resolve({ data: { id }, error: null });
+      return Promise.resolve({ data: null, error: null });
+    },
+  };
+}
+
+function makeConversationsBuilder(sourceByConv) {
+  let convId = null;
+  return {
+    select() { return this; },
+    eq(col, val) {
+      if (col === "id") convId = val;
+      return this;
+    },
+    maybeSingle() {
+      const sc = sourceByConv[convId];
+      if (sc) return Promise.resolve({ data: { source_core: sc }, error: null });
       return Promise.resolve({ data: null, error: null });
     },
   };
