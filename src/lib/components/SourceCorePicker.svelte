@@ -83,9 +83,13 @@
 </div>
 
 <style>
+  /* Aligné sur le design system Laboratoire/Observatoire (paper / ink / vermillon).
+     Cf src/app.css. */
   .source-core-picker {
     position: relative;
+    font-family: var(--font-ui);
     font-size: 13px;
+    color: var(--ink);
   }
   .source-core-picker.disabled .trigger {
     cursor: not-allowed;
@@ -96,54 +100,54 @@
     align-items: center;
     gap: 8px;
     padding: 6px 10px;
-    border-radius: 8px;
-    border: 1px solid var(--border, rgba(255,255,255,0.12));
-    background: var(--surface, rgba(255,255,255,0.04));
-    color: var(--text, inherit);
+    border: 1px solid var(--rule-strong);
+    background: var(--paper);
+    color: var(--ink);
+    font: inherit;
     cursor: pointer;
-    transition: background 120ms ease, border-color 120ms ease;
+    transition: background 0.08s linear;
   }
   .trigger:hover:not(:disabled) {
-    background: var(--surface-hover, rgba(255,255,255,0.08));
-    border-color: var(--border-strong, rgba(255,255,255,0.2));
+    background: var(--paper-subtle);
   }
   .dot {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
-    background: var(--muted, rgba(255,255,255,0.25));
+    background: var(--ink-20);
     flex-shrink: 0;
   }
   .dot.active {
-    background: var(--accent, #6ee7b7);
-    box-shadow: 0 0 6px var(--accent, #6ee7b7);
+    background: var(--vermillon);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--vermillon) 20%, transparent);
   }
   .label {
     white-space: nowrap;
   }
   .caret {
-    opacity: 0.6;
+    color: var(--ink-40);
     font-size: 10px;
   }
   .backdrop {
     position: fixed;
     inset: 0;
     background: transparent;
-    z-index: 10;
+    z-index: 49;
   }
   .menu {
     position: absolute;
     top: calc(100% + 4px);
     left: 0;
-    z-index: 11;
-    min-width: 280px;
+    z-index: 50;
+    min-width: 320px;
+    max-height: 60vh;
+    overflow-y: auto;
     margin: 0;
-    padding: 4px;
+    padding: 0;
     list-style: none;
-    background: var(--surface-raised, #1a1a1a);
-    border: 1px solid var(--border, rgba(255,255,255,0.12));
-    border-radius: 10px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+    background: var(--paper);
+    border: 1px solid var(--rule-strong);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   }
   .menu li {
     display: block;
@@ -154,26 +158,33 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 2px;
-    padding: 8px 10px;
+    padding: 8px 12px;
     background: transparent;
     border: 0;
-    border-radius: 6px;
-    color: inherit;
+    border-bottom: 1px dashed var(--rule);
+    color: var(--ink);
+    font: inherit;
     text-align: left;
     cursor: pointer;
-    transition: background 100ms ease;
+    transition: background 0.08s linear;
+  }
+  .menu li:last-child .item {
+    border-bottom: none;
   }
   .item:hover {
-    background: var(--surface-hover, rgba(255,255,255,0.06));
+    background: var(--paper-subtle);
   }
   .item.selected {
-    background: var(--surface-active, rgba(110, 231, 183, 0.12));
+    background: var(--paper-subtle);
+    box-shadow: inset 2px 0 0 var(--vermillon);
   }
   .item-label {
-    font-weight: 500;
+    font-weight: var(--fw-medium);
+    color: var(--ink);
   }
   .item-hint {
     font-size: 11px;
-    opacity: 0.65;
+    color: var(--ink-40);
+    line-height: var(--lh-snug);
   }
 </style>
