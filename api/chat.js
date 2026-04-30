@@ -311,6 +311,18 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
     ? (override + "\n\n" + (baseScenarioContent || ""))
     : baseScenarioContent;
 
+  // Kick off intent classification in parallel with the DB loaders below.
+  // classifyMessage is regex fast-path → Haiku fallback for ambiguous messages
+  // (~200ms when Haiku fires). It only depends on `message`, `lastBotMsg`,
+  // `client` — none of which need the persona stack. Awaiting it after the
+  // DB Promise.all means its latency overlaps the loaders instead of stacking
+  // on top. `.catch` guards against unhandled rejection on early-error paths.
+  const lastBotMsg = [...messages].reverse().find((m) => m.role === "assistant")?.content;
+  const msgIntentPromise = classifyMessage(message, lastBotMsg, client).catch((err) => {
+    console.log(JSON.stringify({ event: "classify_error", ts: new Date().toISOString(), error: err?.message || "Unknown" }));
+    return null;
+  });
+
   // Entities + corrections + protocol rules + protocol_v2 artifacts in parallel.
   // ALL pre-stream loaders must fail silently: an upstream blip (Voyage 5xx,
   // Supabase timeout) must never bubble up and 500 the request — that path
@@ -378,9 +390,10 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
   const sse = initSSE(res, req);
   const apiKey = getApiKey(client);
 
-  // Unified classifier: regex fast-path + Haiku fallback for ambiguous messages
-  const lastBotMsg = [...messages].reverse().find(m => m.role === "assistant")?.content;
-  const msgIntent = await classifyMessage(message, lastBotMsg, client);
+  // Unified classifier: regex fast-path + Haiku fallback for ambiguous messages.
+  // Promise was kicked off in parallel with the DB loaders above to overlap
+  // the ~200ms Haiku latency with the DB roundtrips.
+  const msgIntent = await msgIntentPromise;
   console.log(JSON.stringify({ event: "msg_classified", ts: new Date().toISOString(), intent: msgIntent, msg: message.slice(0, 50) }));
 
   // Short-circuit: negative feedback — user wants to undo/weaken a rule
