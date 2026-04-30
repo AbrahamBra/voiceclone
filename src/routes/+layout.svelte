@@ -12,9 +12,11 @@
     const pub =
       $page.url.pathname === "/" ||
       $page.url.pathname === "/guide" ||
-      $page.url.pathname === "/demo";
+      $page.url.pathname === "/demo" ||
+      $page.url.pathname === "/login" ||
+      $page.url.pathname === "/lab";
     if (!pub && !$accessCode && !$sessionToken) {
-      goto("/");
+      goto("/login");
     }
   });
 </script>
