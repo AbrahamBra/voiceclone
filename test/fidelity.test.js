@@ -10,6 +10,57 @@ import {
   kmeansSelectRepresentatives,
   extractLocalThemeLabel,
 } from "../lib/fidelity.js";
+import {
+  resolveFidelityThreshold,
+  DEFAULT_FIDELITY_THRESHOLD,
+} from "../lib/fidelity.js";
+
+describe("resolveFidelityThreshold", () => {
+  it("returns default when no override or voice", () => {
+    assert.equal(resolveFidelityThreshold(), DEFAULT_FIDELITY_THRESHOLD);
+    assert.equal(resolveFidelityThreshold({}), DEFAULT_FIDELITY_THRESHOLD);
+  });
+
+  it("uses caller override when valid", () => {
+    assert.equal(resolveFidelityThreshold({ override: 0.55 }), 0.55);
+  });
+
+  it("uses voice.fidelity_threshold when present", () => {
+    assert.equal(resolveFidelityThreshold({ voice: { fidelity_threshold: 0.62 } }), 0.62);
+  });
+
+  it("override wins over voice", () => {
+    assert.equal(
+      resolveFidelityThreshold({ override: 0.7, voice: { fidelity_threshold: 0.5 } }),
+      0.7,
+    );
+  });
+
+  it("falls back to default on out-of-range values (typo guard)", () => {
+    assert.equal(resolveFidelityThreshold({ override: 4.0 }), DEFAULT_FIDELITY_THRESHOLD);
+    assert.equal(resolveFidelityThreshold({ override: -1 }), DEFAULT_FIDELITY_THRESHOLD);
+    assert.equal(
+      resolveFidelityThreshold({ voice: { fidelity_threshold: 99 } }),
+      DEFAULT_FIDELITY_THRESHOLD,
+    );
+  });
+
+  it("ignores non-numeric voice values", () => {
+    assert.equal(
+      resolveFidelityThreshold({ voice: { fidelity_threshold: "0.5" } }),
+      DEFAULT_FIDELITY_THRESHOLD,
+    );
+    assert.equal(
+      resolveFidelityThreshold({ voice: { fidelity_threshold: null } }),
+      DEFAULT_FIDELITY_THRESHOLD,
+    );
+  });
+
+  it("accepts the boundary values 0.10 and 0.95", () => {
+    assert.equal(resolveFidelityThreshold({ override: 0.10 }), 0.10);
+    assert.equal(resolveFidelityThreshold({ override: 0.95 }), 0.95);
+  });
+});
 
 // --- cosineSim ---
 
