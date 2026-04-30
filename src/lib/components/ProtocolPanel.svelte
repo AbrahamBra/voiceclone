@@ -16,6 +16,7 @@
   import ProtocolDoctrine from "./protocol-v2/ProtocolDoctrine.svelte";
   import ProtocolRegistry from "./protocol-v2/ProtocolRegistry.svelte";
   import ProtocolPropositionsQueue from "./protocol-v2/ProtocolPropositionsQueue.svelte";
+  import SourcePlaybooksPanel from "./protocol-v2/SourcePlaybooksPanel.svelte";
   import { api } from "$lib/api.js";
 
   /** @type {{ personaId: string, useNewProtocolUi?: boolean }} */
@@ -98,12 +99,20 @@
           <span class="ppv2-tab-count">{docMeta.pendingPropositionsCount}</span>
         {/if}
       </button>
+      <button
+        type="button"
+        class="ppv2-tab"
+        class:active={activeView === "playbooks"}
+        onclick={() => (activeView = "playbooks")}
+      >Playbooks</button>
       <span class="ppv2-flag" title="Nouveau Protocole — rollout flaggé">v2</span>
     </nav>
 
     <div class="ppv2-body">
       {#if activeView === "doctrine"}
         <ProtocolDoctrine {personaId} />
+      {:else if activeView === "playbooks"}
+        <SourcePlaybooksPanel {personaId} />
       {:else if metaLoading}
         <div class="ppv2-loading">Chargement…</div>
       {:else if metaError}
