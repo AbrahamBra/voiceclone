@@ -101,7 +101,7 @@
 
 <svelte:head>
   <title>Setclone — capitalisez le travail de vos setters dans des clones qui apprennent</title>
-  <meta name="description" content="Setclone transforme l'expertise de vos setters en clones qui retiennent vos playbooks, portent la voix du client, et s'ajustent à chaque cible. Pour les agences ghostwriting + setting LinkedIn." />
+  <meta name="description" content="Setclone transforme l'expertise de vos setters en clones qui retiennent vos playbooks, portent la voix du client, et s'ajustent à chaque cible. Pour les agences (ghostwriting, branding, growth) qui font aussi du setting LinkedIn." />
 </svelte:head>
 
 <a href="#hero" class="skip-link">Aller au contenu</a>
@@ -123,15 +123,16 @@
   <!-- ═══════ HERO ═══════ -->
   <section class="hero" id="hero">
     <div class="overline mono">
-      ◇ pour les Heads of Setter d'agences ghostwriting + setting LinkedIn
+      ◇ pour les agences ghostwriting · branding · growth — quand vous faites aussi du setting LinkedIn
     </div>
 
     <h1 class="headline">
-      Vos setters sont vos meilleurs éléments.
+      Vos setters ont l'envie.<br />
+      Ils ont l'ambition.
     </h1>
 
     <p class="lede">
-      Mais leur temps se perd dans :
+      Mais leur journée part en :
     </p>
     <ul class="lede-list">
       <li>la doc qui s'empile</li>
@@ -166,7 +167,7 @@
   <section class="pains" aria-labelledby="pains-title">
     <div class="section-kicker mono">◇ ce qu'on résout</div>
     <h2 class="section-title" id="pains-title">
-      Les 4 douleurs d'un Head of Setter, nommées.
+      Les 4 douleurs de quiconque pilote des setters.
     </h2>
 
     <div class="pains-grid">
@@ -377,7 +378,7 @@
   <section class="faq" aria-labelledby="faq-title">
     <div class="section-kicker mono">◇ objections fréquentes</div>
     <h2 class="section-title" id="faq-title">
-      Les questions qu'un Head of Setter pose, en vrai.
+      Les questions qu'on nous pose, en vrai.
     </h2>
 
     <ul class="faq-list">
