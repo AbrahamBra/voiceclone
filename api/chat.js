@@ -277,16 +277,29 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
     : baseScenarioContent;
 
   // Entities + corrections + protocol rules + protocol_v2 artifacts in parallel.
-  // Protocol layers fail silently: an opt-in layer must never block the chat.
+  // ALL pre-stream loaders must fail silently: an upstream blip (Voyage 5xx,
+  // Supabase timeout) must never bubble up and 500 the request — that path
+  // returns 5xx to the client before initSSE, the SSE client retries 5×, and
+  // the user sees "Connexion perdue. Reessayez." Graceful degradation = chat
+  // without RAG/entities/corrections this turn, instead of no chat at all.
   const [ontology, corrections, protocolRules, protocolArtifacts] = await Promise.all([
-    findRelevantEntities(personaId, messages),
-    getCorrectionsFromDb(personaId),
+    findRelevantEntities(personaId, messages).catch((err) => {
+      console.log(JSON.stringify({ event: "entities_load_error", ts: new Date().toISOString(), persona: personaId, error: err?.message || "Unknown" }));
+      return { entities: [], relations: [], boostTerms: [] };
+    }),
+    getCorrectionsFromDb(personaId).catch((err) => {
+      console.log(JSON.stringify({ event: "corrections_load_error", ts: new Date().toISOString(), persona: personaId, error: err?.message || "Unknown" }));
+      return [];
+    }),
     getActiveHardRules(personaId, scenario).catch(() => []),
     getActiveArtifactsForPersona(supabase, personaId).catch(() => []),
   ]);
 
   // Knowledge uses boost terms from graph — must wait for ontology
-  const knowledgeMatches = await findRelevantKnowledgeFromDb(personaId, messages, ontology.boostTerms);
+  const knowledgeMatches = await findRelevantKnowledgeFromDb(personaId, messages, ontology.boostTerms).catch((err) => {
+    console.log(JSON.stringify({ event: "knowledge_load_error", ts: new Date().toISOString(), persona: personaId, error: err?.message || "Unknown" }));
+    return [];
+  });
 
   // Enrich ontology with entity names for prompt display
   if (ontology.relations) {
