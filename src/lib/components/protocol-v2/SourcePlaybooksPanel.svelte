@@ -16,12 +16,20 @@
   let listError = $state(null);
 
   let formOpen = $state(false);
+  /** @type {'create' | 'edit'} */
+  let formMode = $state("create");
+  /** @type {string | null} — id of the playbook being edited */
+  let formDocId = $state(null);
   let formSourceCore = $state("");
   let formHeading = $state("");
   let formProse = $state("");
   let formSubmitting = $state(false);
   let formError = $state(null);
-  let formResult = $state(/** @type {null | { document_id, artifacts_created, candidates_total, low_confidence_dropped, extraction_error?, extraction_skipped? }} */ (null));
+  let formResult = $state(/** @type {null | { document_id, artifacts_created, candidates_total, low_confidence_dropped, artifacts_dedup_skipped?, extraction_error?, extraction_skipped? }} */ (null));
+
+  // Per-row archive state — tracks which row is currently being archived so
+  // we can disable just that row's button instead of locking the whole panel.
+  let archivingId = $state(/** @type {string | null} */ (null));
 
   $effect(() => {
     if (!personaId) return;
@@ -49,13 +57,45 @@
     }
   }
 
-  function openForm() {
+  function openCreateForm() {
     formOpen = true;
+    formMode = "create";
+    formDocId = null;
     formSourceCore = "";
     formHeading = "";
     formProse = "";
     formError = null;
     formResult = null;
+  }
+
+  async function openEditForm(playbookId) {
+    formOpen = true;
+    formMode = "edit";
+    formDocId = playbookId;
+    formSourceCore = "";
+    formHeading = "";
+    formProse = "";
+    formError = null;
+    formResult = null;
+    formSubmitting = true;
+    // Fetch detail to pre-fill prose + heading.
+    try {
+      const resp = await fetch(`/api/v2/protocol/source-playbooks?id=${playbookId}`, {
+        headers: authHeaders(),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok || !body.playbook) {
+        formError = body.error || `HTTP ${resp.status}`;
+        return;
+      }
+      formSourceCore = body.playbook.source_core;
+      formHeading = body.playbook.section?.heading || "";
+      formProse = body.playbook.section?.prose || "";
+    } catch (e) {
+      formError = e?.message || String(e);
+    } finally {
+      formSubmitting = false;
+    }
   }
 
   function closeForm() {
@@ -67,7 +107,7 @@
   async function submitForm() {
     formError = null;
     formResult = null;
-    if (!formSourceCore) {
+    if (formMode === "create" && !formSourceCore) {
       formError = "Choisis une source.";
       return;
     }
@@ -77,16 +117,28 @@
     }
     formSubmitting = true;
     try {
-      const resp = await fetch("/api/v2/protocol/source-playbooks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({
-          persona_id: personaId,
-          source_core: formSourceCore,
-          heading: formHeading || undefined,
-          prose: formProse,
-        }),
-      });
+      let resp;
+      if (formMode === "edit" && formDocId) {
+        resp = await fetch(`/api/v2/protocol/source-playbooks?id=${formDocId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({
+            heading: formHeading || undefined,
+            prose: formProse,
+          }),
+        });
+      } else {
+        resp = await fetch("/api/v2/protocol/source-playbooks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({
+            persona_id: personaId,
+            source_core: formSourceCore,
+            heading: formHeading || undefined,
+            prose: formProse,
+          }),
+        });
+      }
       const body = await resp.json().catch(() => ({}));
       if (!resp.ok) {
         formError = body.error || `HTTP ${resp.status}`;
@@ -96,12 +148,38 @@
         return;
       }
       formResult = body;
-      // Refresh the list so the new playbook appears.
       await loadPlaybooks();
     } catch (e) {
       formError = e?.message || String(e);
     } finally {
       formSubmitting = false;
+    }
+  }
+
+  async function archivePlaybook(playbook) {
+    const label = sourceLabel(playbook.source_core);
+    const ok = typeof window !== "undefined" && window.confirm(
+      `Archiver le playbook « ${label} » ?\n\n` +
+      `Le doc reste en DB pour l'historique mais devient inactif. ` +
+      `Tu pourras créer un nouveau playbook pour cette source juste après.`
+    );
+    if (!ok) return;
+    archivingId = playbook.id;
+    try {
+      const resp = await fetch(`/api/v2/protocol/source-playbooks?id=${playbook.id}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        listError = body.error || `HTTP ${resp.status}`;
+        return;
+      }
+      await loadPlaybooks();
+    } catch (e) {
+      listError = e?.message || String(e);
+    } finally {
+      archivingId = null;
     }
   }
 
@@ -129,25 +207,30 @@
   </header>
 
   {#if !formOpen}
-    <button type="button" class="cta" onclick={openForm} disabled={loading}>
+    <button type="button" class="cta" onclick={openCreateForm} disabled={loading}>
       + Ajouter un playbook
     </button>
   {/if}
 
   {#if formOpen}
-    <section class="form" aria-label="Nouveau playbook">
-      <h3 class="form-h">Nouveau playbook</h3>
+    <section class="form" aria-label={formMode === "edit" ? "Édition playbook" : "Nouveau playbook"}>
+      <h3 class="form-h">
+        {formMode === "edit" ? `Éditer le playbook ${sourceLabel(formSourceCore)}` : "Nouveau playbook"}
+      </h3>
 
       <label class="field">
         <span class="field-label">Source</span>
-        <select bind:value={formSourceCore} disabled={formSubmitting}>
+        <select bind:value={formSourceCore} disabled={formSubmitting || formMode === "edit"}>
           <option value="" disabled>— choisis une source —</option>
           {#each SOURCE_CORES as sc (sc.id)}
             <option value={sc.id}>{sc.label}</option>
           {/each}
         </select>
         {#if formSourceCore}
-          <span class="field-hint">{sourceHint(formSourceCore)}</span>
+          <span class="field-hint">
+            {sourceHint(formSourceCore)}
+            {#if formMode === "edit"} · La source ne peut pas être changée — archive et recrée.{/if}
+          </span>
         {/if}
       </label>
 
@@ -179,9 +262,12 @@
 
       {#if formResult}
         <div class="form-ok">
-          <strong>Playbook créé.</strong>
+          <strong>{formMode === "edit" ? "Playbook mis à jour." : "Playbook créé."}</strong>
           {formResult.candidates_total} candidats extraits,
-          <strong>{formResult.artifacts_created}</strong> artifacts persistés (confiance ≥ 0.75),
+          <strong>{formResult.artifacts_created}</strong> nouveaux artifacts persistés (confiance ≥ 0.75),
+          {#if formResult.artifacts_dedup_skipped !== undefined}
+            {formResult.artifacts_dedup_skipped} déjà présents (dedup hash, conservés tels quels — stats préservées),
+          {/if}
           {formResult.low_confidence_dropped} ignorés (confiance &lt; 0.75).
           {#if formResult.extraction_error}
             <br><span class="warn">⚠ Erreur extraction : {formResult.extraction_error} — le doc + le texte ont été sauvegardés. Tu peux ré-éditer plus tard.</span>
@@ -198,7 +284,11 @@
         </button>
         {#if !formResult}
           <button type="button" class="btn-primary" onclick={submitForm} disabled={formSubmitting}>
-            {formSubmitting ? "Création + extraction…" : "Créer le playbook"}
+            {#if formSubmitting}
+              {formMode === "edit" ? "Mise à jour…" : "Création + extraction…"}
+            {:else}
+              {formMode === "edit" ? "Mettre à jour le playbook" : "Créer le playbook"}
+            {/if}
           </button>
         {/if}
       </div>
@@ -229,6 +319,22 @@
                 <span class="meta meta-warn">{pb.pending_propositions_count} en attente</span>
               {/if}
               <span class="meta meta-date">{fmtDate(pb.created_at)}</span>
+            </div>
+            <div class="row-actions">
+              <button
+                type="button"
+                class="row-btn"
+                onclick={() => openEditForm(pb.id)}
+                disabled={formOpen || archivingId !== null}
+                title="Modifier le prose et re-extraire les artifacts"
+              >Éditer</button>
+              <button
+                type="button"
+                class="row-btn row-btn-danger"
+                onclick={() => archivePlaybook(pb)}
+                disabled={archivingId !== null || formOpen}
+                title="Archiver ce playbook (soft delete) pour libérer le slot"
+              >{archivingId === pb.id ? "…" : "Archiver"}</button>
             </div>
           </li>
         {/each}
@@ -438,5 +544,32 @@
   }
   .meta-date {
     color: var(--ink-40);
+  }
+  .row-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .row-btn {
+    padding: 4px 10px;
+    font: inherit;
+    font-size: var(--fs-tiny);
+    border: 1px solid var(--rule-strong);
+    background: var(--paper);
+    color: var(--ink);
+    cursor: pointer;
+    transition: background 0.08s linear;
+  }
+  .row-btn:hover:not(:disabled) {
+    background: var(--paper-subtle);
+  }
+  .row-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .row-btn-danger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--vermillon) 8%, var(--paper));
+    border-color: var(--vermillon);
+    color: var(--vermillon);
   }
 </style>
