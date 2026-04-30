@@ -47,10 +47,18 @@ export default async function handler(req, res) {
     return;
   }
 
-  let { linkedin_text, posts, dms, documents, name, client_label } = req.body || {};
+  let { linkedin_text, posts, dms, documents, name, client_label, maturity_level } = req.body || {};
 
   if (!linkedin_text || typeof linkedin_text !== "string" || linkedin_text.length < 50) {
     res.status(400).json({ error: "linkedin_text required (min 50 chars)" });
+    return;
+  }
+
+  // Spec : 2026-04-27-clone-meta-rules-and-maturity.md §1
+  // L1 = positionnement seul, L2 = playbook DM mono-scenario, L3 = multi-scenario.
+  // Nullable : si l'opérateur skip la question on persiste null.
+  if (maturity_level !== undefined && maturity_level !== null && !["L1", "L2", "L3"].includes(maturity_level)) {
+    res.status(400).json({ error: "maturity_level must be one of L1, L2, L3, or null" });
     return;
   }
 
@@ -144,6 +152,7 @@ export default async function handler(req, res) {
         scenarios: personaConfig.scenarios,
         theme: personaConfig.theme || { accent: "#2563eb", background: "#0a0a0a", surface: "#141414", text: "#e5e5e5" },
         client_label: cleanLabel || null,
+        maturity_level: maturity_level || null,
       })
       .select()
       .single();

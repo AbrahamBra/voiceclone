@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   drainCorrectionsToProposition,
   correctionToSignal,
+  isPositiveMarker,
 } from "../scripts/feedback-event-to-proposition.js";
 
 // ─────────────────────────────────────────────────────────────
@@ -172,6 +173,71 @@ describe("correctionToSignal", () => {
     });
     assert.equal(out.context.user_message, "is the message ok?");
     assert.equal(out.context.bot_message, "n'hésitez pas à me contacter");
+  });
+});
+
+describe("isPositiveMarker", () => {
+  it("detects [VALIDATED]", () => {
+    assert.equal(isPositiveMarker("[VALIDATED] yes good"), true);
+  });
+  it("detects [CLIENT_VALIDATED]", () => {
+    assert.equal(isPositiveMarker("[CLIENT_VALIDATED] confirmé"), true);
+  });
+  it("detects [EXCELLENT]", () => {
+    assert.equal(isPositiveMarker("[EXCELLENT] pattern à multiplier"), true);
+  });
+  it("ignores other prefixes", () => {
+    assert.equal(isPositiveMarker("[COPY_PASTE_OUT] ..."), false);
+    assert.equal(isPositiveMarker("normal correction text"), false);
+  });
+  it("rejects null/undefined/non-string", () => {
+    assert.equal(isPositiveMarker(null), false);
+    assert.equal(isPositiveMarker(undefined), false);
+    assert.equal(isPositiveMarker(123), false);
+  });
+});
+
+describe("drainCorrectionsToProposition — positive markers", () => {
+  it("classifies [VALIDATED] as positive_marker (not no_candidates)", async () => {
+    const supabase = makeSupabase({
+      rows: [{ ...baseCorrection, correction: "[VALIDATED] Réponse validée par l'utilisateur" }],
+      documentIdByPersona: { "persona-1": "doc-1" },
+    });
+    const out = await drainCorrectionsToProposition({
+      supabase,
+      embed: FAKE_EMBED,
+      findSimilar: NO_SIMILAR,
+      runRouteAndExtract: () => {
+        throw new Error("router should not be called for positive markers");
+      },
+    });
+    assert.equal(out.processed, 1);
+    assert.equal(out.skipped, 1);
+    assert.equal(out.inserted, 0);
+    assert.equal(supabase.insertsCalled.length, 0);
+
+    const reasons = out.results[0].outcomes.map((o) => o.reason);
+    assert.ok(reasons.includes("positive_marker"));
+    assert.ok(!reasons.includes("no_candidates"));
+    // marked drained so cron doesn't re-pick
+    assert.ok(supabase.updatesCalled.find((u) => u.payload?.proposition_drained_at));
+  });
+
+  it("classifies [CLIENT_VALIDATED] as positive_marker", async () => {
+    const supabase = makeSupabase({
+      rows: [{ ...baseCorrection, correction: "[CLIENT_VALIDATED] confirmé par le client" }],
+      documentIdByPersona: { "persona-1": "doc-1" },
+    });
+    const out = await drainCorrectionsToProposition({
+      supabase,
+      embed: FAKE_EMBED,
+      findSimilar: NO_SIMILAR,
+      runRouteAndExtract: () => {
+        throw new Error("router should not be called");
+      },
+    });
+    assert.equal(out.skipped, 1);
+    assert.equal(out.results[0].outcomes[0].reason, "positive_marker");
   });
 });
 

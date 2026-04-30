@@ -13,10 +13,10 @@
   let personaId = $derived(data.personaId);
 
   const TABS = [
-    { id: "connaissance", label: "connaissance" },
-    { id: "protocole",    label: "protocole" },
-    { id: "intelligence", label: "intelligence" },
-    { id: "reglages",     label: "réglages" },
+    { id: "connaissance", label: "connaissance", hint: "la matière brute" },
+    { id: "protocole",    label: "protocole",    hint: "les règles dures" },
+    { id: "intelligence", label: "intelligence", hint: "ce que l'usage révèle" },
+    { id: "reglages",     label: "réglages",     hint: "les paramètres persona" },
   ];
 
   // Read the tab from the URL hash (#connaissance / #intelligence / #reglages),
@@ -71,14 +71,14 @@
   });
 </script>
 
-<svelte:head><title>Cerveau — {$personaConfig?.name || "Clone"}</title></svelte:head>
+<svelte:head><title>Cerveau de {$personaConfig?.name || "Clone"}</title></svelte:head>
 
 <div class="brain-page">
   <header class="brain-head">
     <button class="back-btn" onclick={goBack} aria-label="Retour">← retour</button>
     <div class="title">
       <span class="avatar">{$personaConfig?.avatar || "?"}</span>
-      <h1>Cerveau — {$personaConfig?.name || "Clone"}</h1>
+      <h1>Cerveau de {$personaConfig?.name || "Clone"}</h1>
     </div>
   </header>
 
@@ -93,6 +93,13 @@
       >{tab.label}</button>
     {/each}
   </div>
+
+  {#if TABS.find(t => t.id === activeTab)?.hint}
+    <div class="tab-hint">
+      {TABS.find(t => t.id === activeTab).hint}
+      · <a href="/guide#cerveau" class="tab-hint-link">qu'est-ce que c'est ?</a>
+    </div>
+  {/if}
 
   <div class="tab-body" role="tabpanel">
     {#if activeTab === "connaissance"}
@@ -137,8 +144,21 @@
   .tabs {
     display: flex;
     border-bottom: 1px solid var(--rule-strong);
-    margin-bottom: 16px;
+    margin-bottom: 8px;
   }
+  .tab-hint {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--ink-40);
+    margin: 0 0 16px 0;
+    letter-spacing: 0.04em;
+  }
+  .tab-hint-link {
+    color: var(--ink-60);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .tab-hint-link:hover { color: var(--ink); }
   .tab {
     background: transparent;
     border: none;

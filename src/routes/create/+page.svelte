@@ -6,14 +6,18 @@
   import { track } from "$lib/tracking.js";
   import { fly } from "svelte/transition";
 
-  let step = $state('info');
+  let step = $state('maturity');
   let direction = $state(1);
 
-  // DM-only flow: scrape LinkedIn for voice samples, paste DM conversations,
-  // optional protocol + docs. The "Posts LinkedIn" generation mode was
-  // removed (2026-04-28) — scraped posts still feed voice baseline as INPUT.
-  const steps = ['info', 'dm', 'protocol', 'docs'];
+  // DM-only flow: maturity tier first (L1/L2/L3), then scrape LinkedIn for
+  // voice samples, paste DM conversations, optional protocol + docs.
+  // Maturity step added 2026-04-29 per spec
+  // docs/superpowers/specs/2026-04-27-clone-meta-rules-and-maturity.md §1.
+  const steps = ['maturity', 'info', 'dm', 'protocol', 'docs'];
   const TOTAL = steps.length;
+
+  // Step 0: Maturité du document source (L1 / L2 / L3, optionnel)
+  let maturityLevel = $state(/** @type {'L1'|'L2'|'L3'|null} */(null));
 
   // Step 1: Infos générales
   let linkedinUrl = $state("");
@@ -53,9 +57,11 @@
 
   // Detect conversations with < 2 distinct speakers (monologue = useless for cloning turn-taking).
   // A "speaker" = a line starting with "Name:" (letters up to 30 chars then colon).
+  // Same tolerant split as createClone : `---` ou triple-newline.
+  const SPLIT_RE = /\n[\s]*---+[\s]*\n|\n\s*\n\s*\n+/;
   let dmIssues = $derived.by(() => {
     if (!dmsText.trim()) return [];
-    const convs = dmsText.trim().split(/\n---\n/);
+    const convs = dmsText.trim().split(SPLIT_RE);
     const issues = [];
     convs.forEach((conv, i) => {
       if (conv.trim().length < 20) return;
@@ -107,7 +113,7 @@
       if (data.posts.length > 0) {
         postsText = data.posts.slice(0, 15).join("\n---\n");
       }
-      scrapeStatus = `${data.profile.name} — profil + ${data.postCount} posts récupérés`;
+      scrapeStatus = `${data.profile.name} : profil et ${data.postCount} posts récupérés`;
       scrapeSuccess = true;
     } catch (err) {
       if (err.status === 501) {
@@ -151,10 +157,12 @@
       profileText.trim(),
     ].filter(Boolean).join("\n\n");
 
-    const posts = postsText.trim().split(/\n---\n/).map(p => p.trim()).filter(p => p.length > 30);
+    // SPLIT_RE déclaré au top-level — accepte `---` explicite OU triple
+    // newline (paste brut depuis LinkedIn / Taplio).
+    const posts = postsText.trim().split(SPLIT_RE).map(p => p.trim()).filter(p => p.length > 30);
 
     const dms = dmsText.trim()
-      ? dmsText.trim().split(/\n---\n/).map(d => d.trim()).filter(d => d.length > 20)
+      ? dmsText.trim().split(SPLIT_RE).map(d => d.trim()).filter(d => d.length > 20)
       : [];
 
     generating = true;
@@ -182,11 +190,13 @@
           dms: dms.length > 0 ? dms : undefined,
           name: personaName.trim() || undefined,
           client_label: clientLabel.trim() || undefined,
+          maturity_level: maturityLevel || undefined,
         }),
       });
       persona = data.persona;
       track("clone_created", {
         type: "dm",
+        maturity_level: maturityLevel || "skipped",
         has_docs: pendingFiles.filter(f => f.status === "pending").length > 0,
         has_protocol: !!protocolFile,
       });
@@ -245,7 +255,7 @@
         for (let b = 0; b < blocks.length; b++) {
           const blockName = blocks.length > 1 ? `${f.name} (${b + 1}/${blocks.length})` : f.name;
           currentFileLabel = blocks.length > 1
-            ? `${f.name} — bloc ${b + 1}/${blocks.length}`
+            ? `${f.name} (bloc ${b + 1}/${blocks.length})`
             : f.name;
           await api("/api/knowledge", {
             method: "POST",
@@ -263,7 +273,7 @@
     generatingPhase = "";
     generateStatus = `Clone "${persona.name}" créé !`;
     if (protocolFile) {
-      showToast("Protocole en cours de parsing — dispo dans Cerveau → Protocole d'ici ≈10 min", 6000);
+      showToast("Protocole en cours de parsing. Dispo dans Cerveau → Protocole d'ici ≈10 min", 6000);
     }
     setTimeout(() => { goto(`/calibrate/${persona.id}`); }, 800);
   }
@@ -305,7 +315,61 @@
         in:fly={{ x: 100 * direction, duration: 250 }}
         out:fly={{ x: -100 * direction, duration: 200 }}
       >
-        {#if step === 'info'}
+        {#if step === 'maturity'}
+          <!-- Step 0: Maturité du document source (L1 / L2 / L3, optionnel) -->
+          <div class="create-step">
+            <div class="step-header">
+              <strong>Maturité du document source</strong>
+              <span>Quel type de matière vas-tu uploader pour ce clone ?</span>
+            </div>
+
+            <p class="step-desc">
+              Ça nous aide à calibrer l'extraction. Aucun mauvais choix, tu peux changer plus tard ou skip.
+            </p>
+
+            <div class="maturity-options">
+              <button
+                class="maturity-card"
+                class:active={maturityLevel === 'L1'}
+                onclick={() => maturityLevel = 'L1'}
+                type="button"
+              >
+                <div class="maturity-tier">L1 · Positionnement</div>
+                <div class="maturity-desc">Bio + ICP + voix. Pas de scripts DM.</div>
+                <div class="maturity-example">Ex : un doc qui décrit qui le client est, à qui il s'adresse, et comment il s'exprime.</div>
+              </button>
+
+              <button
+                class="maturity-card"
+                class:active={maturityLevel === 'L2'}
+                onclick={() => maturityLevel = 'L2'}
+                type="button"
+              >
+                <div class="maturity-tier">L2 · Mono-scénario</div>
+                <div class="maturity-desc">Playbook DM bien outillé sur 1 scénario (ex: icebreaker outbound).</div>
+                <div class="maturity-example">Ex : un doc avec règles, scoring, templates pour un cas précis.</div>
+              </button>
+
+              <button
+                class="maturity-card"
+                class:active={maturityLevel === 'L3'}
+                onclick={() => maturityLevel = 'L3'}
+                type="button"
+              >
+                <div class="maturity-tier">L3 · Multi-scénario</div>
+                <div class="maturity-desc">Playbook complet : icebreaker × multi-source + creusement + call_proposal + graceful_exit.</div>
+                <div class="maturity-example">Ex : un doc qui couvre tout le pipeline DM end-to-end.</div>
+              </button>
+            </div>
+
+            <div class="create-actions">
+              <button onclick={nextStep}>
+                {maturityLevel ? "Suivant →" : "Skip →"}
+              </button>
+            </div>
+          </div>
+
+        {:else if step === 'info'}
           <!-- Step 1: Infos générales -->
           <div class="create-step">
             <div class="step-header">
@@ -314,7 +378,7 @@
             </div>
 
             <div class="scrape-row">
-              <input type="text" placeholder="URL LinkedIn (optionnel — auto-remplit tout)" bind:value={linkedinUrl} disabled={scraping} />
+              <input type="text" placeholder="URL LinkedIn (optionnel, auto-remplit tout)" bind:value={linkedinUrl} disabled={scraping} />
               <button class="btn-secondary" onclick={scrapeLinkedIn} disabled={scraping || !linkedinUrl.trim()}>
                 {scraping ? "..." : "Auto-remplir"}
               </button>
@@ -330,12 +394,13 @@
             <input type="text" placeholder="Ex: CEO @Offbound · GTM LinkedIn" bind:value={personaTitle} />
 
             <label>Client <span class="label-optional">(optionnel)</span></label>
-            <input type="text" placeholder="Ex: Marie Dupont — BeautyCorp" bind:value={clientLabel} maxlength="120" />
+            <input type="text" placeholder="Ex: Marie Dupont, BeautyCorp" bind:value={clientLabel} maxlength="120" />
 
             <label>Bio & positionnement</label>
             <textarea rows="4" bind:value={profileText} placeholder="Expertise, thèmes abordés, valeur ajoutée..."></textarea>
 
             <div class="create-actions">
+              <button class="btn-secondary" onclick={prevStep}>← Retour</button>
               <button onclick={nextStep} disabled={!personaName.trim() && !profileText.trim()}>
                 Suivant →
               </button>
@@ -350,7 +415,7 @@
               <span>Le style de conversation 1:1 du clone</span>
             </div>
             <p class="step-desc">
-              Colle des conversations <strong>complètes</strong> — les deux côtés, du premier message au dernier. Un monologue unilatéral ne sert à rien : le clone apprend comment tu <em>relances</em>, <em>réponds</em>, <em>clôtures</em>. Sépare chaque conversation par <code>---</code>.
+              Colle des conversations <strong>complètes</strong>, les deux côtés, du premier message au dernier. Un monologue unilatéral ne sert à rien : le clone apprend comment tu <em>relances</em>, comment tu <em>réponds</em>, comment tu <em>clôtures</em>. Sépare chaque conversation par <code>---</code> ou par une ligne vide entre deux blocs (paste depuis LinkedIn fonctionne).
             </p>
 
             <details class="dm-example">
@@ -366,7 +431,7 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
 
             {#if dmsText.trim()}
               <div class="count-badge count-ok">
-                {dmsText.trim().split(/\n---\n/).filter(d => d.trim().length > 20).length} conversation(s) détectée(s)
+                {dmsText.trim().split(SPLIT_RE).filter(d => d.trim().length > 20).length} conversation(s) détectée(s)
               </div>
             {/if}
 
@@ -392,12 +457,15 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
           <!-- Step: Protocole opérationnel (optionnel) -->
           <div class="create-step">
             <div class="step-header">
-              <strong>Protocole opérationnel</strong>
-              <span>Le doc de cadrage prospection co-créé avec le client — optionnel</span>
+              <strong>Protocole : les règles dures du clone</strong>
+              <span>Optionnel, mais c'est ce qui change tout</span>
             </div>
 
             <p class="step-desc">
-              Le <strong>protocole</strong>, c'est le document de cadrage que vous construisez avec votre client sur sa façon de prospecter : son playbook opérationnel. Qui cibler, comment ouvrir, combien de questions par message, ce qu'il ne dit <em>jamais</em>, quand pitcher, quand reculer. Uploadez-le ici et le clone <strong>appliquera ces règles en dur</strong> à chaque message — il réécrira automatiquement tout draft qui les viole. Sans protocole, le clone reste stylistiquement fidèle mais ne bloque rien.
+              Le <strong>protocole</strong>, c'est <em>comment</em> ton client prospecte : qui cibler, comment ouvrir, combien de questions par message, ce qu'il ne dit <em>jamais</em>, quand pitcher, quand reculer. Le clone <strong>applique ces règles en dur</strong> à chaque message. Il réécrit automatiquement tout draft qui les viole. C'est ce qui sépare un clone-perroquet d'un clone-opérationnel.
+            </p>
+            <p class="step-desc step-desc-aside">
+              Différent des docs de la prochaine étape, qui apportent <em>la matière</em> (offre, témoignages, articles), pas les règles.
             </p>
 
             <div class="protocol-zone">
@@ -406,7 +474,7 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
                   + Uploader le protocole (.txt .md .pdf .docx)
                 </button>
                 <input type="file" accept=".txt,.md,.pdf,.docx" hidden bind:this={protoFileInputEl} onchange={handleProtocolFile} />
-                <p class="upload-hint">Pas de protocole ? Passez cette étape — vous pourrez l'ajouter plus tard depuis Cerveau → Protocole.</p>
+                <p class="upload-hint">Pas de protocole ? Passe cette étape, tu pourras l'ajouter plus tard depuis Cerveau → Protocole.</p>
               {:else}
                 <div class="protocol-uploaded">
                   <span class="proto-check">✓</span>
@@ -430,8 +498,8 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
           <!-- Step 4: Documents + Génération -->
           <div class="create-step">
             <div class="step-header">
-              <strong>Documents & Génération</strong>
-              <span>Enrichissez la base de connaissances (optionnel)</span>
+              <strong>Docs : la matière</strong>
+              <span>Articles, témoignages, offre, bio longue. Le clone pioche dedans pour répondre. Optionnel.</span>
             </div>
 
             <button class="btn-link" onclick={() => showDocs = !showDocs}>
@@ -481,12 +549,12 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
               {#if postsText.trim()}
                 <div class="recap-item">
                   <span class="recap-label">Posts source</span>
-                  <span>{postsText.trim().split(/\n---\n/).filter(p => p.trim().length > 30).length} (échantillons voix)</span>
+                  <span>{postsText.trim().split(SPLIT_RE).filter(p => p.trim().length > 30).length} (échantillons voix)</span>
                 </div>
               {/if}
               <div class="recap-item">
                 <span class="recap-label">DMs</span>
-                <span>{dmsText.trim() ? `${dmsText.trim().split(/\n---\n/).filter(d => d.trim().length > 20).length} conversations` : "non renseigné"}</span>
+                <span>{dmsText.trim() ? `${dmsText.trim().split(SPLIT_RE).filter(d => d.trim().length > 20).length} conversations` : "non renseigné"}</span>
               </div>
               {#if protocolFile}
                 <div class="recap-item">
@@ -514,14 +582,14 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
             {:else if generatingPhase === "protocol"}
               <div class="generate-status generating-active">
                 <span class="gen-spinner" aria-hidden="true"></span>
-                <span>Importation du protocole — {currentFileLabel}</span>
+                <span>Importation du protocole : {currentFileLabel}</span>
               </div>
             {:else if generatingPhase === "files"}
               <div class="generate-status generating-active">
                 <span class="gen-spinner" aria-hidden="true"></span>
                 <span>
                   Absorption {ingestProgress.current}/{ingestProgress.total}
-                  {#if currentFileLabel} — {currentFileLabel}{/if}
+                  {#if currentFileLabel}: {currentFileLabel}{/if}
                 </span>
               </div>
             {:else if generateStatus}
@@ -700,6 +768,12 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
 
   .step-desc strong { color: var(--text); font-weight: 600; }
   .step-desc em { font-style: italic; color: var(--text-secondary); }
+  .step-desc-aside {
+    color: var(--text-tertiary);
+    border-left: 2px solid var(--border);
+    padding-left: 0.5rem;
+    margin-top: -0.25rem;
+  }
 
   .dm-example {
     margin-bottom: 0.5rem;
@@ -929,6 +1003,49 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
   }
   @keyframes gen-spin {
     to { transform: rotate(360deg); }
+  }
+
+  .maturity-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  .maturity-card {
+    text-align: left;
+    width: 100%;
+    padding: 0.75rem 0.875rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--font);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .maturity-card:hover {
+    border-color: var(--text-tertiary);
+  }
+  .maturity-card.active {
+    border-color: var(--vermillon);
+    background: color-mix(in oklab, var(--vermillon) 6%, var(--surface));
+  }
+  .maturity-tier {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+  }
+  .maturity-desc {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+    line-height: 1.4;
+  }
+  .maturity-example {
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+    font-style: italic;
+    line-height: 1.4;
   }
 
   @media (max-width: 480px) {

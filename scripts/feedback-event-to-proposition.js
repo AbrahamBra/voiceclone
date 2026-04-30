@@ -95,6 +95,18 @@ const ELIGIBLE_CORRECTION_CHANNELS = Object.freeze([
 // api/feedback.js attaches to the `correction` text for implicit signals.
 const PREFIX_TAGS_RE = /^\s*\[(COPY_PASTE_OUT|REGEN_REJECTED|EDIT_DIFF|N3|N4)\]\s*/i;
 
+// Positive validation markers — api/feedback.js insère ces préfixes dans
+// `corrections.correction` pour les actions validate / client_validate /
+// excellent. Ce ne sont PAS des corrections-à-extraire mais des signaux
+// positifs sur le bot_message validé. Le drain doit les distinguer du cas
+// "no_candidates" (la session 5 audit a tracé 22 [VALIDATED] de Thomas
+// silencieusement classés no_candidates et perdus côté loop).
+const POSITIVE_MARKERS_RE = /^\s*\[(VALIDATED|CLIENT_VALIDATED|EXCELLENT)\]/i;
+
+export function isPositiveMarker(text) {
+  return typeof text === "string" && POSITIVE_MARKERS_RE.test(text);
+}
+
 /**
  * Build a signal object from a `corrections` row. Used by the bridge that
  * lets the cron also consume implicit signals (copy_paste_out, regen_rejection)
@@ -400,6 +412,24 @@ export async function drainCorrectionsToProposition(args) {
   for (const row of rows ?? []) {
     summary.processed++;
     const rowResult = { correction_id: row.id, source_channel: row.source_channel, outcomes: [] };
+
+    // Positive markers ([VALIDATED] / [CLIENT_VALIDATED] / [EXCELLENT]) =
+    // signaux positifs, pas des corrections-à-extraire. On les marque drained
+    // et on log un skip distinct (`positive_marker` ≠ `no_candidates`) pour
+    // que l'audit puisse les compter sans confusion. Référence : Session 5
+    // audit reco #8 — sinon ils restent invisibles côté loop.
+    if (isPositiveMarker(row.correction)) {
+      summary.skipped++;
+      rowResult.outcomes.push({ action: "skipped", reason: "positive_marker" });
+      summary.results.push(rowResult);
+      if (!dryRun) {
+        await supabase
+          .from("corrections")
+          .update({ proposition_drained_at: new Date().toISOString() })
+          .eq("id", row.id);
+      }
+      continue;
+    }
 
     const signal = correctionToSignal(row);
     if (!signal) {
