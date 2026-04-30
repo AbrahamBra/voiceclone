@@ -14,10 +14,11 @@
   function pickPersona(personas) {
     if (!Array.isArray(personas) || personas.length === 0) return null;
     try {
-      const lastId = localStorage.getItem("vc_last_persona");
+      const lastId = localStorage.getItem("setclone_last_persona") || localStorage.getItem("vc_last_persona");
       if (lastId) {
         const match = personas.find((p) => p.id === lastId);
         if (match) return match;
+        localStorage.removeItem("setclone_last_persona");
         localStorage.removeItem("vc_last_persona");
       }
     } catch {}
@@ -399,7 +400,7 @@
       <a href="/login" class="foot-login">déjà client ? →</a>
     </div>
     <div class="foot-legal mono">
-      Édité par AhmetA SAS · Paris · ↗
+      Setclone · Paris
     </div>
   </footer>
 </main>
@@ -737,7 +738,7 @@
   }
   .flow-rule-meta {
     font-size: 10.5px;
-    color: var(--ink-40);
+    color: var(--ink-70);
     letter-spacing: 0.04em;
   }
   .demo-foot {

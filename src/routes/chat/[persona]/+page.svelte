@@ -281,7 +281,7 @@
   async function init(pid, prevPid, scn, scnType, srcCore) {
     currentPersonaId.set(pid);
 
-    try { localStorage.setItem("vc_last_persona", pid); } catch {}
+    try { localStorage.setItem("setclone_last_persona", pid); } catch {}
 
     const savedConvId = localStorage.getItem("conv_" + pid);
     const cached = getPersonaCache(pid);
