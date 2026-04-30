@@ -83,7 +83,9 @@ export function logout() {
     localStorage.removeItem(STORAGE_KEY);
     // Mémorisation du dernier clone visité : purge au logout pour éviter
     // qu'un autre compte partageant le navigateur reroute sur un clone
-    // auquel il n'a pas accès.
+    // auquel il n'a pas accès. Both keys removed during the rename
+    // migration window (vc_ → setclone_).
+    localStorage.removeItem("setclone_last_persona");
     localStorage.removeItem("vc_last_persona");
   }
 }

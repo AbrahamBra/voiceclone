@@ -12,7 +12,7 @@
 
   import { onMount } from "svelte";
 
-  const STORAGE_KEY = "voiceclone_demo_v1";
+  const STORAGE_KEY = "setclone_demo_v1";
   const POST_MIN = 60;
   const POST_MAX = 3000;
   const BRIEF_MIN = 20;

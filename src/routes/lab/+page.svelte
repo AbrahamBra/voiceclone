@@ -11,7 +11,6 @@
   import { goto } from "$app/navigation";
   import { accessCode, sessionToken, isAdmin, clientName, logout } from "$lib/stores/auth.js";
 
-  // TODO swap par ton lien Typeform / Tally / form waitlist quand tu l'as.
   const DEMO_CTA_HREF = "mailto:a.brakha@challengerslab.com?subject=Waitlist%20Setclone%20(20%20premiers%20clients)";
 
   // ───────── Access form ─────────
@@ -25,10 +24,11 @@
   function pickPersona(personas) {
     if (!Array.isArray(personas) || personas.length === 0) return null;
     try {
-      const lastId = localStorage.getItem("vc_last_persona");
+      const lastId = localStorage.getItem("setclone_last_persona") || localStorage.getItem("vc_last_persona");
       if (lastId) {
         const match = personas.find((p) => p.id === lastId);
         if (match) return match;
+        localStorage.removeItem("setclone_last_persona");
         localStorage.removeItem("vc_last_persona");
       }
     } catch {}
@@ -668,7 +668,7 @@
   }
   .setup-label {
     font-size: 10.5px;
-    color: var(--ink-40);
+    color: var(--ink-70);
     text-transform: uppercase;
     letter-spacing: 0.08em;
   }
@@ -697,7 +697,7 @@
   }
   .dialogue-who {
     font-size: 10.5px;
-    color: var(--ink-40);
+    color: var(--ink-70);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     padding-top: 2px;

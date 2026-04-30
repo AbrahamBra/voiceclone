@@ -24,7 +24,7 @@
     loadError = "";
 
     // Persona fetch is non-blocking: if it fails, calibration still works,
-    // header just falls back to "VoiceClone / calibration" without context.
+    // header just falls back to "Setclone / calibration" without context.
     api(`/api/config?persona=${pid}`)
       .then((personaData) => { persona = personaData.persona || personaData || null; })
       .catch(() => { /* silent — header falls back */ });
@@ -86,14 +86,14 @@
 </script>
 
 <svelte:head>
-  <title>VoiceClone — calibration</title>
+  <title>Setclone — calibration</title>
 </svelte:head>
 
 <div class="cal-page">
   <header class="cal-head">
     <div class="brand">
       <span class="brand-mark">◎</span>
-      <span class="brand-name">VoiceClone</span>
+      <span class="brand-name">Setclone</span>
       <span class="brand-sub">/ calibration</span>
       {#if persona}
         <span class="brand-context">· {persona.name}{persona.type ? ` · ${persona.type}` : ''}</span>
