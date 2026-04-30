@@ -1,27 +1,16 @@
 <script>
-  // Landing — cible agence ghostwriting LinkedIn multi-clients.
-  // Angle : setter augmenté (pas remplacé). Vitesse + base de connaissance
-  // client + entraînement par feedback. Trois écrans : hero / preuve / moat.
-  //
-  // Auth flow inchangé : si déjà authentifié, redirect direct vers
-  // /chat/<persona>. Sinon, la landing s'affiche ; le code d'accès en
-  // topbar permet aux clients existants de rentrer sans scroll.
+  // Setclone — landing commerciale publique.
+  // Audience : Heads of Setter d'agences ghostwriting + setting LinkedIn.
+  // Pitch : capitaliser le travail des setters dans des clones qui apprennent.
 
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
-  import { accessCode, sessionToken, isAdmin, clientName, logout } from "$lib/stores/auth.js";
+  import { accessCode, sessionToken, isAdmin, clientName } from "$lib/stores/auth.js";
 
-  // TODO swap par ton lien Typeform / Tally / form waitlist quand tu l'as.
-  const DEMO_CTA_HREF = "mailto:a.brakha@challengerslab.com?subject=Waitlist%20VoiceClone%20(20%20premiers%20clients)";
+  const FOUNDER_CTA = "mailto:a.brakha@challengerslab.com?subject=30%20min%20avec%20le%20founder%20-%20Setclone";
 
-  // ───────── Access form ─────────
-  let codeInput = $state("");
-  let authLoading = $state(false);
-  let authError = $state("");
-  let authShake = $state(false);
+  let openFaq = $state(null);
 
-  // Pick the landing persona: last-used if still accessible, else first.
-  // Stale ids (clone supprimé entre sessions) sont nettoyés du localStorage.
   function pickPersona(personas) {
     if (!Array.isArray(personas) || personas.length === 0) return null;
     try {
@@ -35,13 +24,11 @@
     return personas[0];
   }
 
-  // Resolve the post-auth destination: last/first persona → /chat/<id>, or
-  // /create if the account has no clone yet.
-  async function resolveHome(codeOverride) {
+  async function resolveHome() {
     try {
-      const headers = codeOverride ? { "x-access-code": codeOverride } : {};
-      if (!codeOverride && $accessCode) headers["x-access-code"] = $accessCode;
-      if (!codeOverride && $sessionToken) headers["x-session-token"] = $sessionToken;
+      const headers = {};
+      if ($accessCode) headers["x-access-code"] = $accessCode;
+      if ($sessionToken) headers["x-session-token"] = $sessionToken;
       const resp = await fetch("/api/personas", { headers });
       if (!resp.ok) return "/create";
       const data = await resp.json();
@@ -55,313 +42,377 @@
   }
 
   onMount(async () => {
-    // Already authenticated → jump straight into the cockpit.
     if ($accessCode || $sessionToken) {
       const dest = await resolveHome();
       goto(dest);
     }
   });
 
-  async function submitCode(e) {
-    e?.preventDefault?.();
-    const code = codeInput.trim();
-    if (!code) return;
-    authError = "";
-    authLoading = true;
-    try {
-      const resp = await fetch("/api/personas", { headers: { "x-access-code": code } });
-      if (resp.status === 403) {
-        authError = "refusé";
-        authShake = true;
-        setTimeout(() => { authShake = false; }, 300);
-        authLoading = false;
-        return;
-      }
-      if (!resp.ok) throw new Error("server");
-      const data = await resp.json();
-      accessCode.set(code);
-      if (data.session?.token) sessionToken.set(data.session.token);
-      isAdmin.set(!!data.isAdmin);
-      if (data.clientName) clientName.set(data.clientName);
-      const target = pickPersona(data.personas);
-      goto(target ? `/chat/${target.id}` : "/create");
-    } catch {
-      authError = "erreur réseau";
-      authLoading = false;
-    }
+  function toggleFaq(idx) {
+    openFaq = openFaq === idx ? null : idx;
   }
 
-  // Click "voir la démo" → log in with the public demo access code and jump
-  // straight into the demo persona cockpit. Seeded via supabase/033_demo_persona.sql.
-  //
-  // SECURITY — the real root cause of the "redirected to another client"
-  // bug was that authHeaders() (used by every /chat fetch) sends BOTH
-  // x-session-token AND x-access-code when both stores are set. The server
-  // prefers the session token (lib/supabase.js authenticateRequest). So an
-  // admin user clicking "demo" without clearing their session would still
-  // auth as admin on every subsequent /chat API call, exposing cross-client
-  // data under the demo URL. Fix : call logout() first to wipe every auth
-  // trace (stores + localStorage + vc_last_persona), THEN authenticate as
-  // demo. Also hard-code the expected persona id — never trust pickPersona
-  // on a public CTA.
-  const DEMO_PERSONA_ID = "00000000-0000-0000-0000-00000000d002";
-  let demoLoading = $state(false);
-  async function openDemo() {
-    if (demoLoading) return;
-    demoLoading = true;
-    // Full auth wipe before authenticating as demo — closes every leak path
-    // (session token, access code, last persona, admin flag).
-    logout();
-    try {
-      const resp = await fetch("/api/personas", { headers: { "x-access-code": "demo" } });
-      if (!resp.ok) throw new Error("demo unavailable");
-      const data = await resp.json();
-      // Strict scoping : only accept the known demo persona from the response.
-      const target = (data.personas || []).find((p) => p.id === DEMO_PERSONA_ID);
-      if (!target) throw new Error("demo persona missing in response");
-      accessCode.set("demo");
-      if (data.session?.token) sessionToken.set(data.session.token);
-      isAdmin.set(!!data.isAdmin);
-      if (data.clientName) clientName.set(data.clientName);
-      goto(`/chat/${target.id}`);
-    } catch {
-      demoLoading = false;
-      // Silent fail → fall back to waitlist CTA next to this button.
+  const PAINS = [
+    {
+      tag: "01 · FORMATION",
+      title: "Trop de docs pour former un setter",
+      promise: "Le clone EST la doc. Setter productif en 3 jours."
+    },
+    {
+      tag: "02 · COPIER-COLLER",
+      title: "Heures perdues à retrouver le bon template",
+      promise: "Chaque correction forme le clone. Plus jamais à réexpliquer."
+    },
+    {
+      tag: "03 · MANAGEMENT",
+      title: "Vous relisez tout, vous recadrez tout",
+      promise: "Vous pilotez 30 min/jour. Le système propose, vous arbitrez."
+    },
+    {
+      tag: "04 · DRIFT",
+      title: "Vos setters sortent des règles sans que vous le voyiez",
+      promise: "Règles client + agence opposables, traçables, dans le marbre."
     }
-  }
+  ];
+
+  const FAQS = [
+    {
+      q: "Mes setters perdent-ils leur sens du métier ?",
+      a: "Non. Le clone propose, le setter décide. Vous gardez la main sur le ton, le choix des prospects et la stratégie. Setclone supprime le copier-coller et la répétition de règles, pas le jugement."
+    },
+    {
+      q: "Comment trace-t-on qui a écrit quoi ?",
+      a: "Chaque message porte sa signature : draft du clone, modifié par tel setter, validé par tel arbitre. L'historique complet est consultable, exportable et opposable."
+    },
+    {
+      q: "Que se passe-t-il si un clone dérape sur un client ?",
+      a: "Trois garde-fous bloquent en amont : score shadow sur chaque draft, alerte soft sur dérive douce, blocage hard si une règle agence est violée. Aucun message ne sort sans avoir passé les 3 filtres."
+    },
+    {
+      q: "ROI à combien de semaines ?",
+      a: "Onboarding clone en 3 à 5 jours. Premiers gains de productivité visibles à 2 semaines (corrections capturées, plus jamais à réexpliquer). ROI complet sur le temps de management entre 4 et 8 semaines selon la taille de l'équipe."
+    },
+    {
+      q: "Confidentialité des conversations client ?",
+      a: "Les données restent par client, isolées dans une base européenne. Les corrections de votre agence ne fuitent jamais vers les clones d'autres agences. RGPD compliant."
+    }
+  ];
 </script>
 
 <svelte:head>
-  <title>VoiceClone — Le process de ton client, exécuté par ton setter (agences ghostwriting)</title>
-  <meta name="description" content="Les règles de ton client, écrites dès l'onboarding. Tes setters draftent dedans. Quand ils corrigent, le clone apprend. DM + posts LinkedIn, un seul cerveau." />
+  <title>Setclone — capitalisez le travail de vos setters dans des clones qui apprennent</title>
+  <meta name="description" content="Setclone transforme l'expertise de vos setters en clones qui retiennent vos playbooks, portent la voix du client, et s'ajustent à chaque cible. Pour les agences ghostwriting + setting LinkedIn." />
 </svelte:head>
 
 <a href="#hero" class="skip-link">Aller au contenu</a>
 
 <main class="landing">
 
-  <!-- ═══════ Top bar — brand + code d'accès + demo ═══════ -->
   <header class="topbar">
-    <div class="brand">
+    <a class="brand" href="/">
       <span class="brand-mark">◎</span>
-      <span class="brand-name">VoiceClone</span>
-    </div>
-    <div class="topbar-right">
-      <form class="access access-top" onsubmit={submitCode} aria-label="Accès client">
-        <span class="access-k mono">déjà dans l'outil ?</span>
-        <input
-          type="password"
-          autocomplete="off"
-          placeholder="ton code"
-          bind:value={codeInput}
-          class:shake={authShake}
-          disabled={authLoading}
-          aria-label="Code d'accès"
-        />
-        <button type="submit" disabled={authLoading}>
-          {authLoading ? "…" : "→"}
-        </button>
-        {#if authError}<span class="access-err mono">{authError}</span>{/if}
-      </form>
-      <a class="top-cta" href="/demo">essaie en 5 min →</a>
-    </div>
+      <span class="brand-name">Setclone</span>
+    </a>
+    <nav class="topbar-nav">
+      <a href="#offres">Tarifs</a>
+      <a href="#demo">Démo</a>
+      <a class="top-cta" href="/login">accès client →</a>
+    </nav>
   </header>
 
-  <!-- ═══════ Écran 1 — Hero ═══════ -->
+  <!-- ═══════ HERO ═══════ -->
   <section class="hero" id="hero">
     <div class="overline mono">
-      ◇ pour les agences ghostwriting qui pilotent 5+ clients
+      ◇ pour les Heads of Setter d'agences ghostwriting + setting LinkedIn
     </div>
 
     <h1 class="headline">
-      <span>10 clients. 10 façons de DM. Un setter qui tient la ligne.</span>
-      <span>Ton setter colle le DM d'un prospect.</span>
-      <span class="accent">Le draft sort comme <em>ton client</em> l'écrirait.</span>
+      Vos setters sont vos meilleurs éléments.
     </h1>
 
-    <p class="sub">
-      Un client = sa façon de faire : règles, ouvertures, cadence, signature.
-      Écrites dès l'onboarding. Ton setter tape dedans. Le même cerveau drafte
-      aussi les <em>posts LinkedIn</em> — DM et posts, une seule ligne.
+    <p class="lede">
+      Mais leur temps se perd dans :
     </p>
-
-    <ul class="triptyque" aria-label="Ce que VoiceClone fait concrètement">
-      <li class="beat">
-        <h3 class="beat-title">ses règles, écrites dès l'onboarding</h3>
-        <p class="beat-body">
-          Sa façon de DM, ses ouvertures interdites, sa cadence de relance,
-          sa signature. Noir sur blanc dès la création du clone.
-          Ton setter tape dedans, pas à côté.
-        </p>
-      </li>
-      <li class="beat">
-        <h3 class="beat-title">corrige une fois, explique au clone</h3>
-        <p class="beat-body">
-          Tu vires un mot, le clone demande <em class="quoted">« pourquoi »</em>.
-          La règle rentre avec son contexte. Le setter junior
-          qui arrive dans 3 mois n'y retape pas deux fois.
-        </p>
-      </li>
-      <li class="beat">
-        <h3 class="beat-title">DM et posts, un seul cerveau</h3>
-        <p class="beat-body">
-          Même base pour les DM prospects et les posts LinkedIn.
-          Ton setter passe d'un canal à l'autre sans reconfigurer.
-          La ligne tient partout.
-        </p>
-      </li>
+    <ul class="lede-list">
+      <li>la doc qui s'empile</li>
+      <li>le copier-coller qui se répète</li>
+      <li>les incohérences qui passent en prod</li>
     </ul>
 
-    <div class="hero-cta" id="cta">
-      <a class="btn-primary" href="/demo">→ Essaie ton clone en 5 min.</a>
-      <div class="sub-ctas">
-        <button type="button" class="demo-link mono" onclick={openDemo} disabled={demoLoading}>
-          {demoLoading ? "chargement…" : "ou fouille une démo pré-entraînée →"}
-        </button>
-        <a class="demo-link mono" href={DEMO_CTA_HREF}>waitlist →</a>
+    <p class="sub">
+      <strong>Setclone</strong> transforme leur expertise en clones —
+      qui retiennent vos <em>playbooks</em>, portent la <em>voix du client</em>,
+      et s'ajustent à <em>chaque cible</em>.
+    </p>
+
+    <div class="hero-cta">
+      <a class="btn-primary" href={FOUNDER_CTA}>📅 30 min avec le founder</a>
+      <a class="btn-ghost" href="#demo">▶ voir une journée type</a>
+    </div>
+
+    <div class="trust-band">
+      <span class="trust-label mono">— premiers utilisateurs · NDA —</span>
+      <div class="trust-logos" aria-hidden="true">
+        <span class="logo-blank"></span>
+        <span class="logo-blank"></span>
+        <span class="logo-blank"></span>
+        <span class="logo-blank"></span>
+        <span class="logo-blank"></span>
       </div>
     </div>
   </section>
 
-  <!-- ═══════ Écran 2 — Preuve, le cockpit en action ═══════ -->
-  <section class="proof" aria-labelledby="proof-title">
-    <div class="section-kicker mono">◇ dans le cockpit</div>
-    <h2 class="section-title" id="proof-title">
-      Ce que ton setter voit, toute la journée.
+  <!-- ═══════ 4 PAINS ═══════ -->
+  <section class="pains" aria-labelledby="pains-title">
+    <div class="section-kicker mono">◇ ce qu'on résout</div>
+    <h2 class="section-title" id="pains-title">
+      Les 4 douleurs d'un Head of Setter, nommées.
     </h2>
 
-    <div class="captures">
-      <figure class="capture">
-        <div class="capture-frame" aria-hidden="true">
-          <div class="frame-bar mono"><span>◎</span><span>onboarding · setup du clone</span></div>
-          <div class="frame-body">
-            <div class="frame-stub setup-stub">
-              <div class="setup-block">
-                <span class="setup-label mono">ouvertures interdites</span>
-                <span class="setup-detail">jamais « Bonjour ». jamais « J'espère que… »</span>
-              </div>
-              <div class="setup-block">
-                <span class="setup-label mono">cadence de relance</span>
-                <span class="setup-detail">J+3 → J+7 → on coupe</span>
-              </div>
-              <div class="setup-block">
-                <span class="setup-label mono">signature</span>
-                <span class="setup-detail">« — A. » sans formule</span>
-              </div>
-              <div class="setup-block">
-                <span class="setup-label mono">process closing</span>
-                <span class="setup-detail">pas de call avant 3 échanges</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <figcaption>
-          <span class="cap-num mono">01</span>
-          Pas besoin que le clone devine la façon de ton client à partir de 3 posts.<br />
-          Ton client écrit ses règles une fois. Le clone les exécute dès le 1er draft.
-        </figcaption>
-      </figure>
-
-      <figure class="capture">
-        <div class="capture-frame" aria-hidden="true">
-          <div class="frame-bar mono"><span>◎</span><span>cockpit · correction</span></div>
-          <div class="frame-body">
-            <div class="frame-stub">
-              <span class="stub-meta mono">setter vire « n'hésitez pas »</span>
-              <div class="dialogue-row dialogue-clone">
-                <span class="dialogue-who mono">clone</span>
-                <span class="dialogue-body">Pourquoi tu vires ça ?</span>
-              </div>
-              <div class="dialogue-row dialogue-setter">
-                <span class="dialogue-who mono">setter</span>
-                <span class="dialogue-body">trop soft, on ferme, on propose pas</span>
-              </div>
-              <div class="dialogue-row dialogue-clone">
-                <span class="dialogue-who mono">clone</span>
-                <span class="dialogue-body">noté, règle ajoutée. plus jamais dans un DM closing.</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <figcaption>
-          <span class="cap-num mono">02</span>
-          Tu corriges une fois. Tu expliques une fois.<br />
-          Le clone retient le pourquoi. La règle vaut pour toute l'équipe.
-        </figcaption>
-      </figure>
-
-      <figure class="capture">
-        <div class="capture-frame" aria-hidden="true">
-          <div class="frame-bar mono"><span>◎</span><span>cockpit · Post | DM</span></div>
-          <div class="frame-body">
-            <div class="frame-stub tabs-stub">
-              <div class="tabs-row mono">
-                <span class="tab">Post</span>
-                <span class="tab tab-active">DM</span>
-              </div>
-              <div class="tabs-panels">
-                <div class="tab-panel tab-panel-muted">
-                  <span class="stub-meta mono">post · brouillon</span>
-                  <p class="mini-draft">3 questions à se poser avant de relancer un prospect silencieux. — A.</p>
-                </div>
-                <div class="tab-panel">
-                  <span class="stub-meta mono">dm · draft</span>
-                  <p class="mini-draft">Sophie, 2 lignes pile : on mappe ta stack jeudi. — A.</p>
-                </div>
-              </div>
-              <span class="brain-badge mono">même base · 2 canaux</span>
-            </div>
-          </div>
-        </div>
-        <figcaption>
-          <span class="cap-num mono">03</span>
-          Ton setter drafte les DM. Le ghostwriter drafte les posts.<br />
-          Un seul cerveau, deux onglets.
-        </figcaption>
-      </figure>
+    <div class="pains-grid">
+      {#each PAINS as pain}
+        <article class="pain-card">
+          <div class="pain-tag mono">{pain.tag}</div>
+          <h3 class="pain-title">« {pain.title} »</h3>
+          <p class="pain-promise"><span class="arrow">→</span> {pain.promise}</p>
+        </article>
+      {/each}
     </div>
   </section>
 
-  <!-- ═══════ Écran 3 — Moat ═══════ -->
-  <section class="moat" aria-labelledby="moat-title">
-    <div class="section-kicker mono">◇ le moat</div>
-    <h2 class="section-title" id="moat-title">
-      Le process tient. Même quand ton équipe change.
+  <!-- ═══════ DÉMO ═══════ -->
+  <section class="demo" id="demo" aria-labelledby="demo-title">
+    <div class="section-kicker mono">◇ une journée de setter</div>
+    <h2 class="section-title" id="demo-title">
+      Regardez ce qui se passe quand un setter corrige un message.
     </h2>
+    <p class="demo-lede">
+      Le setter corrige. Le clone demande pourquoi. La règle entre dans le protocole.
+      Le prochain message porte la correction — sans que personne ait à la répéter.
+    </p>
 
-    <div class="moat-body">
-      <p class="moat-para">
-        Setter senior qui part, junior qui arrive : même draft, même voix, même cadence.
-        Le process du client ne vit pas dans la tête d'un humain. Il est écrit,
-        et chaque correction le précise. Quand un nouveau rejoint l'équipe, il écrit
-        dans la bonne ligne dès son premier draft. Plus de semaine à relire les archives.
-      </p>
-      <p class="moat-punch">
-        Tes setters changent. Le process reste. Les corrections aussi.
-      </p>
+    <div class="demo-flow">
+      <div class="flow-step">
+        <span class="flow-num mono">01</span>
+        <div class="flow-card">
+          <div class="flow-frame-bar mono"><span>◎</span><span>cockpit · DM relance</span></div>
+          <div class="flow-frame-body">
+            <span class="flow-meta mono">draft du clone</span>
+            <p class="flow-bubble flow-draft">Sophie, je voulais juste vous relancer concernant notre échange. N'hésitez pas à revenir vers moi !</p>
+            <span class="flow-meta mono">le setter corrige</span>
+            <p class="flow-bubble flow-correction">Sophie, 7 jours sans nouvelles. 2 lignes : ça redescend dans la pile, ou un truc coince ?</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-step">
+        <span class="flow-num mono">02</span>
+        <div class="flow-card">
+          <div class="flow-frame-bar mono"><span>◎</span><span>protocole · règle apprise</span></div>
+          <div class="flow-frame-body">
+            <div class="flow-rule">
+              <span class="flow-rule-tag mono">+ règle</span>
+              <p class="flow-rule-body">Pas de « n'hésitez pas ». Pas de « je voulais juste ». En relance, on propose 2 hypothèses précises au prospect.</p>
+              <span class="flow-rule-meta mono">portée : tous les setters de cette agence · à partir de maintenant</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-step">
+        <span class="flow-num mono">03</span>
+        <div class="flow-card">
+          <div class="flow-frame-bar mono"><span>◎</span><span>cockpit · prochain DM</span></div>
+          <div class="flow-frame-body">
+            <span class="flow-meta mono">draft du clone, sans intervention</span>
+            <p class="flow-bubble flow-draft-ok">Marc, 5 jours qu'on s'est croisés. 2 hypothèses : (1) ça a redescendu dans ta pile, (2) la stack t'a fait douter. Réponds-moi par un chiffre, je m'occupe du reste.</p>
+            <span class="flow-tag mono">✓ règle « relance 2 hypothèses » appliquée automatiquement</span>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div class="moat-cta">
-      <a class="btn-primary" href="/demo">→ Essaie le clone en 5 min.</a>
-      <a class="demo-link mono" href={DEMO_CTA_HREF}>ou rejoins la waitlist →</a>
+    <p class="demo-foot mono">
+      → la même boucle, 50 fois par jour, pour 10 clients en parallèle.
+      <a href="/lab" class="demo-link">voir le pipeline observable →</a>
+    </p>
+  </section>
+
+  <!-- ═══════ 3 GARDE-FOUS ═══════ -->
+  <section class="guards" aria-labelledby="guards-title">
+    <div class="section-kicker mono">◇ filets de sécurité</div>
+    <h2 class="section-title" id="guards-title">
+      3 garde-fous avant chaque message qui sort.
+    </h2>
+
+    <div class="guards-grid">
+      <article class="guard-card">
+        <div class="guard-tag mono">SHADOW</div>
+        <h3 class="guard-title">Score chaque draft, sans bloquer</h3>
+        <p class="guard-body">Chaque draft est noté en arrière-plan : fidélité, complétude, dérive. Aucun frein, mais une trace continue qui alimente l'apprentissage.</p>
+      </article>
+
+      <article class="guard-card">
+        <div class="guard-tag mono">🔓 SOFT</div>
+        <h3 class="guard-title">Alerte si dérive douce</h3>
+        <p class="guard-body">Quand un draft commence à s'écarter de la voix du client (cliché IA, tournure générique), le setter voit l'alerte et choisit : ignorer, réécrire, ou ajouter une règle.</p>
+      </article>
+
+      <article class="guard-card">
+        <div class="guard-tag mono">🔒 HARD</div>
+        <h3 class="guard-title">Bloque et rewrite si règle agence violée</h3>
+        <p class="guard-body">Mots interdits, tournures bannies, signatures mal placées : le système bloque l'envoi et propose une réécriture conforme. La règle agence est opposable.</p>
+      </article>
     </div>
   </section>
 
-  <!-- ═══════ Footer minimal ═══════ -->
+  <!-- ═══════ VOTRE SAVOIR-FAIRE DEVIENT UN ASSET ═══════ -->
+  <section class="asset" aria-labelledby="asset-title">
+    <div class="section-kicker mono">◇ comment ça scale</div>
+    <h2 class="section-title" id="asset-title">
+      Votre savoir-faire devient un asset capitalisable.
+    </h2>
+
+    <div class="asset-layers">
+      <div class="layer">
+        <span class="layer-num mono">1</span>
+        <div class="layer-body">
+          <h3 class="layer-title">La voix du <span class="layer-actor">CLIENT</span></h3>
+          <p>Captée à l'onboarding (90 min). Règles, ouvertures, cadence, signature, ton. N'évolue qu'avec son accord. Reste son bien — pas le vôtre, pas le nôtre.</p>
+        </div>
+      </div>
+
+      <div class="layer layer-strong">
+        <span class="layer-num mono">2</span>
+        <div class="layer-body">
+          <h3 class="layer-title">Les playbooks de l'<span class="layer-actor">AGENCE</span></h3>
+          <p>Par <strong>type d'action outbound</strong> : DM, ajout de contact, interaction de contenu, listes outbound, spy, visite de profil. Construits par <strong>vous</strong>, à <strong>vous</strong>. La sophistication accumulée chez l'agence, pas chez le client.</p>
+        </div>
+      </div>
+
+      <div class="layer">
+        <span class="layer-num mono">3</span>
+        <div class="layer-body">
+          <h3 class="layer-title">La discipline du <span class="layer-actor">SETTER</span></h3>
+          <p>Chaque correction quotidienne durcit le clone. Plus jamais de « j'ai déjà dit ça la semaine dernière ». Le savoir-faire de votre meilleur setter devient celui de tous les autres.</p>
+        </div>
+      </div>
+    </div>
+
+    <p class="asset-punch">
+      → La sophistication s'accumule chez <strong>vous</strong>, pas chez le client.
+      <br />C'est ce qui fait que vos setters durent, et que vos clients re-signent.
+    </p>
+  </section>
+
+  <!-- ═══════ MÉTRIQUES (placeholder honnête) ═══════ -->
+  <section class="metrics" aria-labelledby="metrics-title">
+    <div class="section-kicker mono">◇ état d'avancement</div>
+    <h2 class="section-title" id="metrics-title">
+      En bêta privée. Premiers retours d'agences.
+    </h2>
+    <p class="metrics-body">
+      Setclone est en cours de déploiement chez les premières agences partenaires.
+      Les chiffres seront publiés ici dès que la cohorte de bêta sera assez large
+      pour être représentative.
+    </p>
+    <p class="metrics-foot mono">
+      → vous voulez en faire partie ? <a href={FOUNDER_CTA}>30 min avec le founder →</a>
+    </p>
+  </section>
+
+  <!-- ═══════ TESTIMONIAL ═══════ -->
+  <section class="testimonial" aria-labelledby="testimonial-title">
+    <div class="section-kicker mono">◇ retour terrain</div>
+    <blockquote class="testimonial-quote">
+      <p>« Avant, je relisais tout. Six setters, six voix, je passais mes journées à recadrer. Avec Setclone, je passe enfin du temps à <em>piloter</em> au lieu de <em>corriger</em>. Mes setters apprennent plus vite, mes clients ne sentent plus la différence entre eux. »</p>
+      <footer>
+        <span class="testimonial-who">Head of Setter</span>
+        <span class="testimonial-where mono">— agence ghostwriting + setting LinkedIn, Paris</span>
+      </footer>
+    </blockquote>
+  </section>
+
+  <!-- ═══════ OFFRES ═══════ -->
+  <section class="offres" id="offres" aria-labelledby="offres-title">
+    <div class="section-kicker mono">◇ tarifs</div>
+    <h2 class="section-title" id="offres-title">
+      3 packs, calibrés sur la taille de votre cellule setting.
+    </h2>
+
+    <div class="offres-grid">
+      <article class="offre-card">
+        <header class="offre-head">
+          <h3 class="offre-name">Solo</h3>
+          <span class="offre-meta mono">1 setter · 1-3 clones</span>
+        </header>
+        <p class="offre-body">Pour les agences qui démarrent ou les indépendants. Setclone retient et structure votre savoir-faire dès le 1er client.</p>
+        <p class="offre-price mono">sur devis</p>
+        <a class="offre-cta" href={FOUNDER_CTA}>en parler →</a>
+      </article>
+
+      <article class="offre-card offre-highlight">
+        <header class="offre-head">
+          <h3 class="offre-name">Cell</h3>
+          <span class="offre-meta mono">3-5 setters · 5-15 clones</span>
+        </header>
+        <p class="offre-body">Pour les agences en croissance. La sophistication s'accumule, le management se dilue, les clients re-signent.</p>
+        <p class="offre-price mono">sur devis</p>
+        <a class="offre-cta" href={FOUNDER_CTA}>en parler →</a>
+      </article>
+
+      <article class="offre-card">
+        <header class="offre-head">
+          <h3 class="offre-name">Studio</h3>
+          <span class="offre-meta mono">6+ setters · 15+ clones</span>
+        </header>
+        <p class="offre-body">Pour les agences établies. Setclone devient le système central de votre cellule setting, intégré à votre stack outbound.</p>
+        <p class="offre-price mono">sur devis</p>
+        <a class="offre-cta" href={FOUNDER_CTA}>en parler →</a>
+      </article>
+    </div>
+  </section>
+
+  <!-- ═══════ FAQ ═══════ -->
+  <section class="faq" aria-labelledby="faq-title">
+    <div class="section-kicker mono">◇ objections fréquentes</div>
+    <h2 class="section-title" id="faq-title">
+      Les questions qu'un Head of Setter pose, en vrai.
+    </h2>
+
+    <ul class="faq-list">
+      {#each FAQS as item, i}
+        <li class="faq-item" class:faq-open={openFaq === i}>
+          <button class="faq-q" type="button" onclick={() => toggleFaq(i)} aria-expanded={openFaq === i}>
+            <span class="faq-arrow mono">{openFaq === i ? "▾" : "▸"}</span>
+            {item.q}
+          </button>
+          {#if openFaq === i}
+            <p class="faq-a">{item.a}</p>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+  </section>
+
+  <!-- ═══════ FOOTER ═══════ -->
   <footer class="foot">
-    <span class="foot-brand mono">
+    <div class="foot-brand">
       <span class="brand-mark">◎</span>
-      VoiceClone
-    </span>
-    <a class="foot-link" href="/guide">guide</a>
+      <span class="brand-name">Setclone</span>
+    </div>
+    <div class="foot-links">
+      <a href={FOUNDER_CTA}>contact</a>
+      <a href="/lab">le pipeline</a>
+      <a href="/login" class="foot-login">déjà client ? →</a>
+    </div>
+    <div class="foot-legal mono">
+      Édité par AhmetA SAS · Paris · ↗
+    </div>
   </footer>
 </main>
 
 <style>
-  /* ────────────────────────────────────────────────────────────
-     Global canvas — aesthetic "laboratoire" préservé
-     (papier, vermillon, serif headline, mono labels)
-     ──────────────────────────────────────────────────────────── */
   .landing {
     min-height: 100dvh;
     background:
@@ -380,51 +431,43 @@
   }
   .skip-link:focus { left: 12px; top: 12px; z-index: 100; }
 
-  /* ────────────────────────────────────────────────────────────
-     Topbar
-     ──────────────────────────────────────────────────────────── */
+  .mono { font-family: var(--font-mono); }
+
+  /* ───────── Topbar ───────── */
   .topbar {
     display: flex; justify-content: space-between; align-items: center;
     gap: 20px;
-    padding: 10px 28px;
+    padding: 12px 28px;
     border-bottom: 1px solid var(--rule-strong);
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 12.5px;
+    position: sticky;
+    top: 0;
+    background: var(--paper);
+    z-index: 10;
   }
-  .brand { display: inline-flex; align-items: baseline; gap: 8px; }
+  .brand { display: inline-flex; align-items: baseline; gap: 8px; text-decoration: none; }
   .brand-mark { color: var(--vermillon); font-size: 14px; }
   .brand-name { font-weight: 600; color: var(--ink); letter-spacing: 0.01em; }
 
-  .topbar-right {
+  .topbar-nav {
     display: inline-flex;
     align-items: center;
-    gap: 20px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
+    gap: 24px;
   }
-
-  .top-cta {
-    color: var(--ink);
-    border-bottom: 1px solid var(--vermillon);
+  .topbar-nav a {
+    color: var(--ink-70);
     text-decoration: none;
-    padding-bottom: 2px;
-    font-family: var(--font-mono);
     transition: color var(--dur-fast, 120ms) var(--ease, ease);
   }
-  .top-cta:hover { color: var(--vermillon); }
-
-  /* Compact variant of .access dans la topbar */
-  .access-top { gap: 6px; }
-  .access-top input { width: 90px; padding: 5px 8px; font-size: 11.5px; }
-  .access-top button { padding: 5px 8px; font-size: 11.5px; }
-  .access-top .access-k { display: none; }
-  @media (min-width: 760px) {
-    .access-top .access-k { display: inline; }
+  .topbar-nav a:hover { color: var(--vermillon); }
+  .top-cta {
+    color: var(--ink) !important;
+    border-bottom: 1px solid var(--vermillon);
+    padding-bottom: 2px;
   }
 
-  /* ────────────────────────────────────────────────────────────
-     Shared section primitives
-     ──────────────────────────────────────────────────────────── */
+  /* ───────── Section primitives ───────── */
   .section-kicker {
     font-size: 11px;
     color: var(--ink-40);
@@ -435,14 +478,82 @@
   .section-title {
     font-family: var(--font);
     font-weight: 400;
-    font-size: clamp(24px, 3.2vw, 36px);
+    font-size: clamp(24px, 3.4vw, 38px);
     line-height: 1.12;
     letter-spacing: -0.018em;
     color: var(--ink);
     margin: 0 0 24px;
-    max-width: 22ch;
+    max-width: 28ch;
   }
 
+  /* ───────── HERO ───────── */
+  .hero {
+    padding: 56px 28px 44px;
+    max-width: var(--max-width, 1200px);
+    margin: 0 auto;
+    width: 100%;
+  }
+  .overline {
+    font-size: 11px;
+    color: var(--ink-40);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    margin-bottom: 18px;
+  }
+  .headline {
+    font-family: var(--font);
+    font-weight: 400;
+    font-size: clamp(36px, 6vw, 68px);
+    line-height: 1.05;
+    letter-spacing: -0.022em;
+    color: var(--ink);
+    margin: 0 0 20px;
+    max-width: 18ch;
+  }
+  .lede {
+    font-size: 17px;
+    color: var(--ink-70);
+    line-height: 1.55;
+    margin: 0 0 6px;
+  }
+  .lede-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .lede-list li {
+    font-size: 17px;
+    color: var(--ink);
+    line-height: 1.5;
+    padding-left: 22px;
+    position: relative;
+  }
+  .lede-list li::before {
+    content: "—";
+    position: absolute;
+    left: 0;
+    color: var(--vermillon);
+  }
+
+  .sub {
+    font-size: 17px;
+    color: var(--ink-70);
+    line-height: 1.55;
+    max-width: 64ch;
+    margin: 0 0 32px;
+  }
+  .sub strong { color: var(--ink); font-weight: 600; }
+  .sub em { color: var(--ink); font-style: italic; }
+
+  .hero-cta {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-bottom: 36px;
+  }
   .btn-primary {
     display: inline-block;
     padding: 14px 22px;
@@ -460,177 +571,130 @@
     background: var(--vermillon);
     border-color: var(--vermillon);
   }
-
-  /* ────────────────────────────────────────────────────────────
-     Écran 1 — Hero
-     ──────────────────────────────────────────────────────────── */
-  .hero {
-    padding: 48px 28px 40px;
-    max-width: var(--max-width, 1200px);
-    margin: 0 auto;
-    width: 100%;
-  }
-  .overline {
-    font-size: 11px;
-    color: var(--ink-40);
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-    margin-bottom: 16px;
-  }
-  .headline {
-    font-family: var(--font);
-    font-weight: 400;
-    font-size: clamp(32px, 5.2vw, 60px);
-    line-height: 1.05;
-    letter-spacing: -0.022em;
+  .btn-ghost {
+    display: inline-block;
+    padding: 14px 22px;
+    background: transparent;
     color: var(--ink);
-    margin: 0 0 20px;
-    max-width: 20ch;
-  }
-  .headline span { display: block; }
-  .headline .accent {
-    font-style: italic;
-    color: var(--ink);
-  }
-  .headline .accent em {
-    color: var(--vermillon);
-    font-style: italic;
-    position: relative;
-  }
-  .headline .accent em::after {
-    content: "";
-    position: absolute;
-    left: 0; right: 0; bottom: -2px;
-    height: 1px;
-    background: var(--vermillon);
-    opacity: 0.4;
-  }
-
-  .sub {
-    font-size: 16px;
-    color: var(--ink-70);
-    line-height: 1.55;
-    max-width: 62ch;
-    margin: 0 0 28px;
-  }
-  .sub em {
-    color: var(--ink);
-    font-style: italic;
-  }
-
-  /* Triptyque — 3 beats côte à côte sur desktop, stack sur narrow */
-  .triptyque {
-    list-style: none;
-    padding: 0;
-    margin: 0 0 28px;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0;
-    border-top: 1px solid var(--rule-strong);
-    border-bottom: 1px solid var(--rule-strong);
-  }
-  .beat {
-    padding: 18px 18px;
-    border-right: 1px solid var(--rule);
-  }
-  .beat:last-child { border-right: none; }
-
-  .beat-title {
-    font-family: var(--font);
-    font-weight: 500;
-    font-style: italic;
-    font-size: 17px;
-    color: var(--vermillon);
-    line-height: 1.2;
-    margin: 0 0 10px;
-    letter-spacing: -0.005em;
-  }
-  .beat-body {
-    font-size: 14px;
-    line-height: 1.55;
-    color: var(--ink-70);
-    margin: 0;
-  }
-  .beat-body strong {
-    color: var(--ink);
-    font-weight: 500;
-  }
-  .beat-body em.quoted {
+    border: 1px solid var(--rule-strong);
+    text-decoration: none;
     font-family: var(--font-mono);
     font-size: 13px;
-    color: var(--ink);
-    font-style: normal;
-    background: var(--paper-subtle, #f6f5f1);
-    padding: 1px 6px;
+    transition: border-color var(--dur-fast, 120ms) var(--ease, ease),
+                color var(--dur-fast, 120ms) var(--ease, ease);
   }
+  .btn-ghost:hover { border-color: var(--vermillon); color: var(--vermillon); }
 
-  .hero-cta {
+  .trust-band {
+    border-top: 1px solid var(--rule);
+    padding-top: 20px;
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-  .demo-link {
-    padding: 3px 0;
-    background: none;
-    border: none;
-    border-bottom: 1px dashed var(--ink-40);
-    color: var(--ink-70);
-    font-size: 11.5px;
-    letter-spacing: 0.02em;
-    cursor: pointer;
-    align-self: flex-start;
-    text-decoration: none;
-    transition: color var(--dur-fast, 120ms) var(--ease, ease),
-                border-color var(--dur-fast, 120ms) var(--ease, ease);
-  }
-  .sub-ctas {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 18px;
-    margin-top: 0;
-  }
-  .demo-link:hover:not(:disabled) {
-    color: var(--vermillon);
-    border-bottom-color: var(--vermillon);
-  }
-  .demo-link:disabled { opacity: 0.5; cursor: wait; }
-  .moat-cta {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
     gap: 10px;
+    align-items: flex-start;
+  }
+  .trust-label {
+    font-size: 11px;
+    color: var(--ink-40);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .trust-logos {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+  .logo-blank {
+    width: 96px;
+    height: 28px;
+    background: var(--paper-subtle, #f6f5f1);
+    border: 1px dashed var(--rule);
   }
 
-  /* ────────────────────────────────────────────────────────────
-     Écran 2 — Preuve
-     ──────────────────────────────────────────────────────────── */
-  .proof {
-    padding: 48px 28px;
+  /* ───────── PAINS ───────── */
+  .pains {
+    padding: 56px 28px;
     max-width: var(--max-width, 1200px);
     margin: 0 auto;
     width: 100%;
     border-top: 1px solid var(--rule-strong);
   }
+  .pains-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0;
+    border-top: 1px solid var(--rule-strong);
+    border-left: 1px solid var(--rule-strong);
+  }
+  .pain-card {
+    padding: 22px 22px 24px;
+    border-right: 1px solid var(--rule-strong);
+    border-bottom: 1px solid var(--rule-strong);
+  }
+  .pain-tag {
+    font-size: 10.5px;
+    color: var(--vermillon);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .pain-title {
+    font-family: var(--font);
+    font-weight: 400;
+    font-style: italic;
+    font-size: 19px;
+    color: var(--ink);
+    line-height: 1.3;
+    margin: 0 0 14px;
+  }
+  .pain-promise {
+    font-size: 14.5px;
+    color: var(--ink-70);
+    line-height: 1.5;
+    margin: 0;
+  }
+  .pain-promise .arrow { color: var(--vermillon); margin-right: 4px; }
 
-  .captures {
+  /* ───────── DÉMO ───────── */
+  .demo {
+    padding: 56px 28px;
+    max-width: var(--max-width, 1200px);
+    margin: 0 auto;
+    width: 100%;
+    border-top: 1px solid var(--rule-strong);
+  }
+  .demo-lede {
+    font-size: 15.5px;
+    color: var(--ink-70);
+    line-height: 1.6;
+    max-width: 60ch;
+    margin: 0 0 28px;
+  }
+  .demo-flow {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 20px;
+    gap: 18px;
   }
-  .capture { margin: 0; }
-  .capture-frame {
+  .flow-step {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .flow-num {
+    font-size: 11px;
+    color: var(--ink-40);
+    letter-spacing: 0.12em;
+  }
+  .flow-card {
     background: var(--paper);
     border: 1px solid var(--rule-strong);
-    box-shadow: 0 6px 24px rgba(0,0,0,0.04);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.04);
     overflow: hidden;
-    margin-bottom: 12px;
-    min-height: 180px;
+    min-height: 220px;
     display: flex;
     flex-direction: column;
   }
-  .frame-bar {
+  .flow-frame-bar {
     display: flex; gap: 8px; align-items: center;
     padding: 7px 12px;
     border-bottom: 1px dashed var(--rule);
@@ -639,305 +703,417 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
   }
-  .frame-bar span:first-child { color: var(--vermillon); }
-  .frame-body {
-    padding: 16px;
+  .flow-frame-bar span:first-child { color: var(--vermillon); }
+  .flow-frame-body {
+    padding: 14px;
     flex: 1;
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    gap: 8px;
   }
-  .frame-stub {
-    display: flex; flex-direction: column; gap: 10px;
-  }
-  .stub-meta {
+  .flow-meta {
     font-size: 10.5px;
     color: var(--ink-40);
     text-transform: uppercase;
     letter-spacing: 0.08em;
   }
-  .stub-bubble {
-    padding: 9px 12px;
-    font-size: 13px;
+  .flow-bubble {
+    padding: 10px 12px;
+    font-size: 13.5px;
     line-height: 1.5;
     color: var(--ink);
     border: 1px solid var(--rule);
-  }
-  .stub-prospect {
-    background: var(--paper-subtle, #f6f5f1);
-    font-style: italic;
-    color: var(--ink-70);
-    align-self: flex-start;
-    max-width: 85%;
-  }
-  .stub-draft {
+    margin: 0;
     background: var(--paper);
-    border-left: 2px solid var(--vermillon);
-    align-self: flex-end;
-    max-width: 95%;
   }
-  .stub-tag {
-    font-size: 10.5px;
-    color: var(--vermillon);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    align-self: flex-end;
-  }
-  /* Capture 01 — setup onboarding */
-  .setup-stub { gap: 8px; }
-  .setup-block {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 2px;
-    padding: 8px 10px;
-    border: 1px solid var(--rule);
-    background: var(--paper-subtle, #f6f5f1);
-  }
-  .setup-label {
-    font-size: 10.5px;
-    color: var(--ink-40);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-  .setup-detail {
-    font-size: 13px;
-    color: var(--ink);
-    line-height: 1.4;
-  }
-
-  /* Capture 02 — dialogue méta */
-  .dialogue-row {
-    display: grid;
-    grid-template-columns: 48px 1fr;
-    gap: 10px;
-    padding: 8px 10px;
-    border: 1px solid var(--rule);
-    align-items: baseline;
-  }
-  .dialogue-clone {
-    background: var(--paper);
-    border-left: 2px solid var(--vermillon);
-  }
-  .dialogue-setter {
-    background: var(--paper-subtle, #f6f5f1);
-    margin-left: 16px;
-  }
-  .dialogue-who {
-    font-size: 10.5px;
-    color: var(--ink-40);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    padding-top: 2px;
-  }
-  .dialogue-clone .dialogue-who { color: var(--vermillon); }
-  .dialogue-body {
-    font-size: 13px;
-    color: var(--ink);
-    line-height: 1.5;
-  }
-
-  /* Capture 03 — tabs Post|DM */
-  .tabs-stub { gap: 10px; }
-  .tabs-row {
-    display: inline-flex;
-    gap: 18px;
-    padding-bottom: 6px;
-    border-bottom: 1px solid var(--rule);
-  }
-  .tab {
-    font-size: 11.5px;
-    color: var(--ink-40);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    padding-bottom: 4px;
-    position: relative;
-  }
-  .tab-active { color: var(--ink); }
-  .tab-active::after {
-    content: "";
-    position: absolute;
-    left: 0; right: 0; bottom: -7px;
-    height: 1px;
-    background: var(--vermillon);
-  }
-  .tabs-panels {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
+  .flow-draft { background: var(--paper-subtle, #f6f5f1); color: var(--ink-70); font-style: italic; }
+  .flow-correction { border-left: 2px solid var(--vermillon); color: var(--ink); }
+  .flow-draft-ok { border-left: 2px solid #2d8659; }
+  .flow-tag {
+    font-size: 11px;
+    color: #2d8659;
+    letter-spacing: 0.04em;
     margin-top: 4px;
   }
-  .tab-panel {
-    padding: 8px 10px;
-    border: 1px solid var(--rule);
-    background: var(--paper);
+  .flow-rule {
+    padding: 12px;
+    background: var(--paper-subtle, #f6f5f1);
+    border-left: 2px solid var(--vermillon);
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 8px;
   }
-  .tab-panel-muted { opacity: 0.55; }
-  .mini-draft {
-    font-size: 12.5px;
-    line-height: 1.45;
-    color: var(--ink);
-    margin: 0;
-  }
-  .brain-badge {
-    align-self: center;
+  .flow-rule-tag {
     font-size: 10.5px;
     color: var(--vermillon);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    padding: 3px 8px;
-    border: 1px dashed var(--vermillon);
-    margin-top: 2px;
-  }
-
-  .capture figcaption {
-    font-size: 14px;
-    color: var(--ink-70);
-    line-height: 1.55;
-    display: flex;
-    gap: 10px;
-    align-items: baseline;
-  }
-  .cap-num {
-    color: var(--vermillon);
-    font-size: 11px;
     letter-spacing: 0.08em;
-    flex-shrink: 0;
+    text-transform: uppercase;
   }
+  .flow-rule-body {
+    font-size: 13.5px;
+    color: var(--ink);
+    line-height: 1.5;
+    margin: 0;
+  }
+  .flow-rule-meta {
+    font-size: 10.5px;
+    color: var(--ink-40);
+    letter-spacing: 0.04em;
+  }
+  .demo-foot {
+    margin-top: 24px;
+    font-size: 12px;
+    color: var(--ink-40);
+  }
+  .demo-link {
+    color: var(--ink);
+    text-decoration: none;
+    border-bottom: 1px dashed var(--vermillon);
+    margin-left: 8px;
+  }
+  .demo-link:hover { color: var(--vermillon); }
 
-  /* ────────────────────────────────────────────────────────────
-     Écran 3 — Moat
-     ──────────────────────────────────────────────────────────── */
-  .moat {
-    padding: 48px 28px 40px;
+  /* ───────── GUARDS ───────── */
+  .guards {
+    padding: 56px 28px;
     max-width: var(--max-width, 1200px);
     margin: 0 auto;
     width: 100%;
     border-top: 1px solid var(--rule-strong);
-    background:
-      linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 100% 24px,
-      var(--paper-subtle, #f6f5f1);
   }
-  .moat-body {
-    max-width: 56ch;
-    margin-bottom: 24px;
+  .guards-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
   }
-  .moat-para {
-    font-family: var(--font);
-    font-size: 18px;
-    line-height: 1.5;
+  .guard-card {
+    padding: 22px;
+    background: var(--paper);
+    border: 1px solid var(--rule-strong);
+  }
+  .guard-tag {
+    display: inline-block;
+    padding: 4px 8px;
+    background: var(--paper-subtle, #f6f5f1);
+    border: 1px solid var(--rule);
+    font-size: 11px;
     color: var(--ink);
-    margin: 0 0 16px;
+    letter-spacing: 0.08em;
+    margin-bottom: 14px;
   }
-  .moat-punch {
+  .guard-title {
     font-family: var(--font);
+    font-weight: 500;
     font-style: italic;
-    font-size: 16px;
+    font-size: 18px;
+    color: var(--vermillon);
+    line-height: 1.3;
+    margin: 0 0 10px;
+  }
+  .guard-body {
+    font-size: 14px;
     color: var(--ink-70);
-    line-height: 1.5;
+    line-height: 1.55;
     margin: 0;
-    max-width: 48ch;
   }
 
-  /* ────────────────────────────────────────────────────────────
-     Footer
-     ──────────────────────────────────────────────────────────── */
-  .foot {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 16px;
-    padding: 14px 28px;
+  /* ───────── ASSET / 3 LAYERS ───────── */
+  .asset {
+    padding: 56px 28px;
+    max-width: var(--max-width, 1200px);
+    margin: 0 auto;
+    width: 100%;
     border-top: 1px solid var(--rule-strong);
+  }
+  .asset-layers {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--rule-strong);
+  }
+  .layer {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 24px;
+    padding: 22px 24px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .layer:last-child { border-bottom: none; }
+  .layer-strong {
+    background: var(--paper-subtle, #f6f5f1);
+  }
+  .layer-num {
+    font-family: var(--font);
+    font-size: 40px;
+    color: var(--vermillon);
+    line-height: 1;
+    font-style: italic;
+  }
+  .layer-title {
+    font-family: var(--font);
+    font-weight: 400;
+    font-size: 21px;
+    color: var(--ink);
+    margin: 0 0 8px;
+    letter-spacing: -0.01em;
+  }
+  .layer-actor {
+    font-size: 12.5px;
+    color: var(--vermillon);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
     font-family: var(--font-mono);
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .layer-body p {
+    font-size: 14.5px;
+    color: var(--ink-70);
+    line-height: 1.6;
+    margin: 0;
+    max-width: 70ch;
+  }
+  .layer-body strong { color: var(--ink); font-weight: 600; }
+  .asset-punch {
+    margin-top: 24px;
+    font-family: var(--font);
+    font-size: clamp(18px, 2.4vw, 24px);
+    font-style: italic;
+    color: var(--ink);
+    line-height: 1.4;
+    letter-spacing: -0.005em;
+  }
+  .asset-punch strong { color: var(--vermillon); font-weight: 500; }
+
+  /* ───────── METRICS placeholder ───────── */
+  .metrics {
+    padding: 48px 28px;
+    max-width: var(--max-width, 1200px);
+    margin: 0 auto;
+    width: 100%;
+    border-top: 1px solid var(--rule-strong);
+  }
+  .metrics-body {
+    font-size: 15.5px;
+    color: var(--ink-70);
+    line-height: 1.6;
+    max-width: 60ch;
+    margin: 0 0 16px;
+  }
+  .metrics-foot {
+    font-size: 12.5px;
+    color: var(--ink-40);
+  }
+  .metrics-foot a {
+    color: var(--ink);
+    border-bottom: 1px dashed var(--vermillon);
+    text-decoration: none;
+  }
+  .metrics-foot a:hover { color: var(--vermillon); }
+
+  /* ───────── TESTIMONIAL ───────── */
+  .testimonial {
+    padding: 56px 28px;
+    max-width: var(--max-width, 1200px);
+    margin: 0 auto;
+    width: 100%;
+    border-top: 1px solid var(--rule-strong);
+  }
+  .testimonial-quote {
+    margin: 0;
+    padding: 32px;
+    border-left: 3px solid var(--vermillon);
+    background: var(--paper-subtle, #f6f5f1);
+  }
+  .testimonial-quote p {
+    font-family: var(--font);
+    font-style: italic;
+    font-size: clamp(18px, 2.2vw, 22px);
+    line-height: 1.45;
+    color: var(--ink);
+    margin: 0 0 18px;
+    max-width: 56ch;
+    letter-spacing: -0.005em;
+  }
+  .testimonial-quote em { color: var(--vermillon); font-style: italic; }
+  .testimonial-quote footer {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 13px;
+    color: var(--ink-70);
+  }
+  .testimonial-who { font-weight: 600; color: var(--ink); }
+  .testimonial-where { font-size: 11.5px; color: var(--ink-40); letter-spacing: 0.04em; }
+
+  /* ───────── OFFRES ───────── */
+  .offres {
+    padding: 56px 28px;
+    max-width: var(--max-width, 1200px);
+    margin: 0 auto;
+    width: 100%;
+    border-top: 1px solid var(--rule-strong);
+  }
+  .offres-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .offre-card {
+    padding: 24px;
+    background: var(--paper);
+    border: 1px solid var(--rule-strong);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .offre-highlight {
+    border-color: var(--vermillon);
+    box-shadow: 0 8px 28px rgba(214, 73, 51, 0.08);
+  }
+  .offre-head {
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 12px;
+  }
+  .offre-name {
+    font-family: var(--font);
+    font-weight: 400;
+    font-style: italic;
+    font-size: 26px;
+    color: var(--vermillon);
+    margin: 0 0 4px;
+  }
+  .offre-meta {
     font-size: 11px;
-    margin-top: auto;
+    color: var(--ink-40);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .offre-body {
+    font-size: 14px;
+    color: var(--ink-70);
+    line-height: 1.55;
+    margin: 0;
+    flex: 1;
+  }
+  .offre-price {
+    font-size: 13px;
+    color: var(--ink);
+    margin: 0;
+    font-weight: 600;
+  }
+  .offre-cta {
+    align-self: flex-start;
+    color: var(--ink);
+    text-decoration: none;
+    border-bottom: 1px solid var(--vermillon);
+    padding-bottom: 2px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+  }
+  .offre-cta:hover { color: var(--vermillon); }
+
+  /* ───────── FAQ ───────── */
+  .faq {
+    padding: 56px 28px;
+    max-width: var(--max-width, 1200px);
+    margin: 0 auto;
+    width: 100%;
+    border-top: 1px solid var(--rule-strong);
+  }
+  .faq-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    border-top: 1px solid var(--rule-strong);
+  }
+  .faq-item {
+    border-bottom: 1px solid var(--rule);
+  }
+  .faq-q {
+    width: 100%;
+    text-align: left;
+    padding: 16px 0;
+    background: none;
+    border: none;
+    color: var(--ink);
+    font-family: var(--font);
+    font-size: 17px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    line-height: 1.4;
+  }
+  .faq-q:hover { color: var(--vermillon); }
+  .faq-arrow {
+    color: var(--vermillon);
+    font-size: 12px;
+    width: 16px;
+    flex-shrink: 0;
+  }
+  .faq-a {
+    padding: 0 0 18px 28px;
+    font-size: 14.5px;
+    color: var(--ink-70);
+    line-height: 1.6;
+    margin: 0;
+    max-width: 70ch;
+  }
+
+  /* ───────── FOOTER ───────── */
+  .foot {
+    padding: 28px;
+    border-top: 1px solid var(--rule-strong);
+    max-width: var(--max-width, 1200px);
+    margin: 0 auto;
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    font-family: var(--font-mono);
+    font-size: 12px;
     color: var(--ink-40);
   }
   .foot-brand {
-    display: inline-flex; gap: 6px; align-items: baseline;
-    color: var(--ink);
-  }
-  .foot-link {
-    color: var(--ink-40);
-    text-decoration: none;
-    border-bottom: 1px dashed var(--rule);
-    padding-bottom: 1px;
-  }
-  .foot-link:hover { color: var(--ink); border-bottom-color: var(--ink-40); }
-
-  .access {
     display: inline-flex;
-    align-items: center;
-    gap: 8px;
+    align-items: baseline;
+    gap: 6px;
   }
-  .access-k { color: var(--ink-40); }
-  .access input {
-    padding: 6px 10px;
-    background: var(--paper);
-    border: 1px solid var(--rule-strong);
-    color: var(--ink);
-    font-family: var(--font-mono);
-    font-size: 12px;
-    outline: none;
-    width: 110px;
-    transition: border-color var(--dur-fast, 120ms) var(--ease, ease);
+  .foot-links {
+    display: inline-flex;
+    gap: 18px;
+    flex-wrap: wrap;
   }
-  .access input:focus { border-color: var(--vermillon); }
-  .access input.shake { animation: shake 0.3s; }
-  .access input::placeholder { color: var(--ink-40); }
-  .access button {
-    padding: 6px 10px;
-    background: var(--ink);
-    color: var(--paper);
-    border: 1px solid var(--ink);
-    font-family: var(--font-mono);
-    font-size: 12px;
-    cursor: pointer;
-    transition: background var(--dur-fast, 120ms) var(--ease, ease);
+  .foot-links a {
+    color: var(--ink-70);
+    text-decoration: none;
+    border-bottom: 1px dashed transparent;
+    transition: color var(--dur-fast, 120ms) var(--ease, ease),
+                border-color var(--dur-fast, 120ms) var(--ease, ease);
   }
-  .access button:hover:not(:disabled) { background: var(--vermillon); border-color: var(--vermillon); }
-  .access button:disabled { opacity: 0.4; cursor: wait; }
-  .access-err { color: var(--vermillon); }
+  .foot-links a:hover {
+    color: var(--vermillon);
+    border-bottom-color: var(--vermillon);
+  }
+  .foot-login { color: var(--ink) !important; }
+  .foot-legal { font-size: 10.5px; }
 
-  @keyframes shake {
-    10%, 90% { transform: translateX(-1px); }
-    20%, 80% { transform: translateX(2px); }
-    30%, 50%, 70% { transform: translateX(-4px); }
-    40%, 60% { transform: translateX(4px); }
-  }
-
-  /* ────────────────────────────────────────────────────────────
-     Responsive — stack below 900px
-     ──────────────────────────────────────────────────────────── */
-  @media (max-width: 900px) {
-    .triptyque {
+  /* ───────── Responsive ───────── */
+  @media (max-width: 760px) {
+    .pains-grid,
+    .demo-flow,
+    .guards-grid,
+    .offres-grid {
       grid-template-columns: 1fr;
     }
-    .beat {
-      border-right: none;
-      border-bottom: 1px solid var(--rule);
+    .layer {
+      grid-template-columns: 60px 1fr;
+      gap: 16px;
     }
-    .beat:last-child { border-bottom: none; }
-
-    .captures {
-      grid-template-columns: 1fr;
-      gap: 40px;
-    }
-  }
-
-  @media (max-width: 600px) {
-    .hero { padding: 36px 20px 32px; }
-    .proof { padding: 36px 20px; }
-    .moat { padding: 36px 20px 32px; }
-    .topbar { padding: 10px 20px; gap: 12px; flex-wrap: wrap; }
-    .topbar-right { gap: 12px; }
-    .foot { padding: 12px 20px; gap: 12px; }
-
-    .headline { font-size: clamp(28px, 8vw, 40px); }
-    .section-title { font-size: clamp(22px, 6vw, 28px); }
-    .moat-para { font-size: 16px; }
+    .layer-num { font-size: 32px; }
+    .topbar-nav { gap: 14px; }
+    .topbar-nav a:not(.top-cta) { display: none; }
   }
 </style>
