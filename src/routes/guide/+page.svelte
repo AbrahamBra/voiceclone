@@ -182,7 +182,7 @@
       <button class="back-btn" onclick={() => history.back()}>&larr; Retour</button>
       <h1>Guide</h1>
       <p class="guide-subtitle">
-        Comment fonctionne VoiceClone, et comment piloter un clone pour un client.
+        Comment fonctionne Setclone, et comment piloter un clone pour un client.
       </p>
     </header>
 

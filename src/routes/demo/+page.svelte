@@ -171,13 +171,13 @@
 </script>
 
 <svelte:head>
-  <title>Essaie en 5 min — VoiceClone</title>
+  <title>Essaie en 5 min — Setclone</title>
   <meta name="description" content="Colle 3 de tes posts LinkedIn, un brief prospect, reçois un DM drafté dans ta voix. Sans inscription, sans stocker tes données." />
 </svelte:head>
 
 <div class="demo-root">
   <header class="demo-header">
-    <a class="back" href="/" aria-label="Retour landing">← VoiceClone</a>
+    <a class="back" href="/" aria-label="Retour landing">← Setclone</a>
     <div class="step-meta mono">
       étape {step}/3 · démo éphémère · aucune donnée stockée
     </div>

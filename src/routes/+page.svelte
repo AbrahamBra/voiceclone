@@ -101,7 +101,7 @@
 
 <svelte:head>
   <title>Setclone — capitalisez le travail de vos setters dans des clones qui apprennent</title>
-  <meta name="description" content="Setclone transforme l'expertise de vos setters en clones qui retiennent vos playbooks, portent la voix du client, et s'ajustent à chaque cible. Pour les agences (ghostwriting, branding, growth) qui font aussi du setting LinkedIn." />
+  <meta name="description" content="Setclone enregistre les corrections de vos setters dans des clones qui se calent sur la voix du client et vos playbooks. Pour les agences (ghostwriting, branding, growth) qui font aussi du setting LinkedIn." />
 </svelte:head>
 
 <a href="#hero" class="skip-link">Aller au contenu</a>
@@ -132,7 +132,7 @@
     </h1>
 
     <p class="lede">
-      Mais leur journée part en :
+      Mais leur journée se perd dans :
     </p>
     <ul class="lede-list">
       <li>la doc qui s'empile</li>
@@ -141,9 +141,8 @@
     </ul>
 
     <p class="sub">
-      <strong>Setclone</strong> transforme leur expertise en clones —
-      qui retiennent vos <em>playbooks</em>, portent la <em>voix du client</em>,
-      et s'ajustent à <em>chaque cible</em>.
+      <strong>Setclone</strong> enregistre leurs corrections dans le clone du client.
+      Plus ils corrigent, plus le clone se cale sur sa voix et sur vos playbooks.
     </p>
 
     <div class="hero-cta">
@@ -188,8 +187,8 @@
       Regardez ce qui se passe quand un setter corrige un message.
     </h2>
     <p class="demo-lede">
-      Le setter corrige. Le clone demande pourquoi. La règle entre dans le protocole.
-      Le prochain message porte la correction — sans que personne ait à la répéter.
+      Le setter corrige un message. Le clone lui demande la raison.
+      La règle entre dans le protocole, et le prochain DM la suit.
     </p>
 
     <div class="demo-flow">
@@ -234,7 +233,6 @@
     </div>
 
     <p class="demo-foot mono">
-      → la même boucle, 50 fois par jour, pour 10 clients en parallèle.
       <a href="/lab" class="demo-link">voir le pipeline observable →</a>
     </p>
   </section>
@@ -250,7 +248,7 @@
       <article class="guard-card">
         <div class="guard-tag mono">SHADOW</div>
         <h3 class="guard-title">Score chaque draft, sans bloquer</h3>
-        <p class="guard-body">Chaque draft est noté en arrière-plan : fidélité, complétude, dérive. Aucun frein, mais une trace continue qui alimente l'apprentissage.</p>
+        <p class="guard-body">Chaque draft est noté en arrière-plan. Aucun blocage, juste une trace que le système relit ensuite pour ajuster.</p>
       </article>
 
       <article class="guard-card">
@@ -262,7 +260,7 @@
       <article class="guard-card">
         <div class="guard-tag mono">🔒 HARD</div>
         <h3 class="guard-title">Bloque et rewrite si règle agence violée</h3>
-        <p class="guard-body">Mots interdits, tournures bannies, signatures mal placées : le système bloque l'envoi et propose une réécriture conforme. La règle agence est opposable.</p>
+        <p class="guard-body">Si une règle agence est violée (mot interdit, tournure bannie, signature mal placée), le système bloque l'envoi et propose une réécriture. La règle est opposable.</p>
       </article>
     </div>
   </section>
@@ -271,7 +269,7 @@
   <section class="asset" aria-labelledby="asset-title">
     <div class="section-kicker mono">◇ comment ça scale</div>
     <h2 class="section-title" id="asset-title">
-      Votre savoir-faire devient un asset capitalisable.
+      Votre savoir-faire reste à l'agence.
     </h2>
 
     <div class="asset-layers">
@@ -301,8 +299,8 @@
     </div>
 
     <p class="asset-punch">
-      → La sophistication s'accumule chez <strong>vous</strong>, pas chez le client.
-      <br />C'est ce qui fait que vos setters durent, et que vos clients re-signent.
+      → Ce que vos setters apprennent reste chez <strong>vous</strong>.
+      <br />Pas chez le client, pas dans la tête d'un setter qui peut partir.
     </p>
   </section>
 
@@ -326,7 +324,7 @@
   <section class="testimonial" aria-labelledby="testimonial-title">
     <div class="section-kicker mono">◇ retour terrain</div>
     <blockquote class="testimonial-quote">
-      <p>« Avant, je relisais tout. Six setters, six voix, je passais mes journées à recadrer. Avec Setclone, je passe enfin du temps à <em>piloter</em> au lieu de <em>corriger</em>. Mes setters apprennent plus vite, mes clients ne sentent plus la différence entre eux. »</p>
+      <p>« Avant, je relisais tout. Six setters, six voix, je passais mes journées à recadrer. Maintenant je pilote au lieu de corriger. Mes setters apprennent plus vite, mes clients ne sentent plus la différence entre eux. »</p>
       <footer>
         <span class="testimonial-who">Head of Setter</span>
         <span class="testimonial-where mono">— agence ghostwriting + setting LinkedIn, Paris</span>
@@ -347,7 +345,7 @@
           <h3 class="offre-name">Solo</h3>
           <span class="offre-meta mono">1 setter · 1-3 clones</span>
         </header>
-        <p class="offre-body">Pour les agences qui démarrent ou les indépendants. Setclone retient et structure votre savoir-faire dès le 1er client.</p>
+        <p class="offre-body">Pour démarrer en solo ou tester l'outil. Le clone capte la voix du 1er client dès les premières corrections.</p>
         <p class="offre-price mono">sur devis</p>
         <a class="offre-cta" href={FOUNDER_CTA}>en parler →</a>
       </article>
@@ -357,7 +355,7 @@
           <h3 class="offre-name">Cell</h3>
           <span class="offre-meta mono">3-5 setters · 5-15 clones</span>
         </header>
-        <p class="offre-body">Pour les agences en croissance. La sophistication s'accumule, le management se dilue, les clients re-signent.</p>
+        <p class="offre-body">Pour les agences qui scalent. Vos setters montent en autonomie, vous reprenez la main sur le pilotage.</p>
         <p class="offre-price mono">sur devis</p>
         <a class="offre-cta" href={FOUNDER_CTA}>en parler →</a>
       </article>
@@ -367,7 +365,7 @@
           <h3 class="offre-name">Studio</h3>
           <span class="offre-meta mono">6+ setters · 15+ clones</span>
         </header>
-        <p class="offre-body">Pour les agences établies. Setclone devient le système central de votre cellule setting, intégré à votre stack outbound.</p>
+        <p class="offre-body">Pour les agences avec une cellule setting structurée. Intégration à votre stack outbound, gouvernance multi-clients.</p>
         <p class="offre-price mono">sur devis</p>
         <a class="offre-cta" href={FOUNDER_CTA}>en parler →</a>
       </article>

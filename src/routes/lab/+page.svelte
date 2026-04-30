@@ -12,7 +12,7 @@
   import { accessCode, sessionToken, isAdmin, clientName, logout } from "$lib/stores/auth.js";
 
   // TODO swap par ton lien Typeform / Tally / form waitlist quand tu l'as.
-  const DEMO_CTA_HREF = "mailto:a.brakha@challengerslab.com?subject=Waitlist%20VoiceClone%20(20%20premiers%20clients)";
+  const DEMO_CTA_HREF = "mailto:a.brakha@challengerslab.com?subject=Waitlist%20Setclone%20(20%20premiers%20clients)";
 
   // ───────── Access form ─────────
   let codeInput = $state("");
@@ -185,7 +185,7 @@
       aussi les <em>posts LinkedIn</em> — DM et posts, une seule ligne.
     </p>
 
-    <ul class="triptyque" aria-label="Ce que VoiceClone fait concrètement">
+    <ul class="triptyque" aria-label="Ce que Setclone fait concrètement">
       <li class="beat">
         <h3 class="beat-title">ses règles, écrites dès l'onboarding</h3>
         <p class="beat-body">
