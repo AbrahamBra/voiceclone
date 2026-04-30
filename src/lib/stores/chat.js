@@ -11,4 +11,10 @@ export const currentScenario = writable("");
 // scenario_type is provided in the URL.
 /** @type {import("svelte/store").Writable<string | null>} */
 export const currentScenarioType = writable(null);
+// Migration 055 — source_core (lead origin), orthogonal to scenario_type.
+// One of the 6 core categories from $lib/source-core.js, or null when not set.
+// When non-null, the chat backend merges in the persona's source-specific
+// playbook artifacts on top of the global protocol doc.
+/** @type {import("svelte/store").Writable<string | null>} */
+export const currentSourceCore = writable(null);
 export const sending = writable(false);

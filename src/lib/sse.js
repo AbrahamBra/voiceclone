@@ -4,7 +4,7 @@ const MAX_RETRIES = 5;
 const MAX_BACKOFF = 15000;
 
 export async function streamChat(params, callbacks, retryCount = 0) {
-  const { message, scenario, scenarioType, personaId, conversationId } = params;
+  const { message, scenario, scenarioType, sourceCore, personaId, conversationId } = params;
   const { onDelta, onThinking, onRewriting, onClear, onDone, onConversation, onError, onIds } = callbacks;
 
   let resp;
@@ -18,6 +18,10 @@ export async function streamChat(params, callbacks, retryCount = 0) {
         // Sprint 0.b dual-write : canonical enum value (may be undefined).
         // Backend writes it to conversations.scenario_type on new-conv create.
         scenario_type: scenarioType || undefined,
+        // Migration 055 — lead origin (orthogonal to scenario_type). When set,
+        // the backend merges in the persona's source-specific playbook on top
+        // of the global protocol doc and persists source_core on the conv row.
+        source_core: sourceCore || undefined,
         persona: personaId,
         conversation_id: conversationId || undefined,
       }),

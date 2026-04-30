@@ -2,28 +2,40 @@ import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 import {
   getActiveDocument,
+  getActivePlaybookForSource,
   listSections,
   listArtifacts,
   getActiveArtifactsForPersona,
 } from "../lib/protocol-v2-db.js";
 
 // Stub supabase: returns configurable data.
+// Supports: select, eq, in, is, order, limit, single, maybeSingle, then.
+// .is(col, null) matches rows where the column is null OR the column is missing.
 function makeStub(rows) {
   return {
     from(table) {
       return {
         _rows: rows[table] || [],
-        _filter: {},        // { col: val } via eq
-        _inFilter: null,    // { col, values } via in
+        _filter: {},          // { col: val } via eq
+        _isFilter: {},        // { col: val } via is (null-aware)
+        _inFilter: null,      // { col, values } via in
         _limit: null,
         select() { return this; },
         eq(col, val) { this._filter[col] = val; return this; },
+        is(col, val) { this._isFilter[col] = val; return this; },
         in(col, values) { this._inFilter = { col, values }; return this; },
         order() { return this; },
         limit(n) { this._limit = n; return this; },
         _matches() {
           let m = this._rows.filter(r =>
             Object.entries(this._filter).every(([k, v]) => r[k] === v));
+          for (const [k, v] of Object.entries(this._isFilter)) {
+            if (v === null) {
+              m = m.filter(r => r[k] === null || r[k] === undefined);
+            } else {
+              m = m.filter(r => r[k] === v);
+            }
+          }
           if (this._inFilter) {
             m = m.filter(r => this._inFilter.values.includes(r[this._inFilter.col]));
           }
@@ -31,6 +43,9 @@ function makeStub(rows) {
           return m;
         },
         single() {
+          return Promise.resolve({ data: this._matches()[0] || null, error: null });
+        },
+        maybeSingle() {
           return Promise.resolve({ data: this._matches()[0] || null, error: null });
         },
         then(resolve) {
@@ -136,6 +151,124 @@ describe("protocol-v2-db", () => {
       });
       const arts = await getActiveArtifactsForPersona(sb, "p1", { limit: 4 });
       assert.equal(arts.length, 4);
+    });
+  });
+
+  describe("source_core dimension (migration 055)", () => {
+    it("getActiveDocument returns only the GLOBAL doc (source_core IS NULL), ignoring source-specific playbooks", async () => {
+      const sb = makeStub({
+        protocol_document: [
+          { id: "dGlobal", owner_kind: "persona", owner_id: "p1", status: "active", source_core: null, version: 3 },
+          { id: "dPlaybook", owner_kind: "persona", owner_id: "p1", status: "active", source_core: "visite_profil", version: 1 },
+        ],
+      });
+      const doc = await getActiveDocument(sb, "p1");
+      assert.equal(doc?.id, "dGlobal");
+      assert.equal(doc?.source_core, null);
+    });
+
+    it("getActivePlaybookForSource returns the matching source-specific doc", async () => {
+      const sb = makeStub({
+        protocol_document: [
+          { id: "dGlobal", owner_kind: "persona", owner_id: "p1", status: "active", source_core: null, version: 3 },
+          { id: "dPlaybook", owner_kind: "persona", owner_id: "p1", status: "active", source_core: "visite_profil", version: 1 },
+          { id: "dOtherSource", owner_kind: "persona", owner_id: "p1", status: "active", source_core: "spyer", version: 1 },
+        ],
+      });
+      const doc = await getActivePlaybookForSource(sb, "p1", "visite_profil");
+      assert.equal(doc?.id, "dPlaybook");
+      assert.equal(doc?.source_core, "visite_profil");
+    });
+
+    it("getActivePlaybookForSource returns null when no matching playbook exists", async () => {
+      const sb = makeStub({
+        protocol_document: [
+          { id: "dGlobal", owner_kind: "persona", owner_id: "p1", status: "active", source_core: null, version: 1 },
+        ],
+      });
+      const doc = await getActivePlaybookForSource(sb, "p1", "visite_profil");
+      assert.equal(doc, null);
+    });
+
+    it("getActivePlaybookForSource returns null when sourceCore is falsy", async () => {
+      const sb = makeStub({ protocol_document: [] });
+      assert.equal(await getActivePlaybookForSource(sb, "p1", null), null);
+      assert.equal(await getActivePlaybookForSource(sb, "p1", ""), null);
+      assert.equal(await getActivePlaybookForSource(sb, "p1", undefined), null);
+    });
+
+    it("getActiveArtifactsForPersona MERGES global + source-specific artifacts when sourceCore is set", async () => {
+      const sb = makeStub({
+        protocol_document: [
+          { id: "dGlobal", owner_kind: "persona", owner_id: "p1", status: "active", source_core: null, version: 1 },
+          { id: "dPlaybook", owner_kind: "persona", owner_id: "p1", status: "active", source_core: "visite_profil", version: 1 },
+        ],
+        protocol_section: [
+          { id: "sG", document_id: "dGlobal" },
+          { id: "sP", document_id: "dPlaybook" },
+        ],
+        protocol_artifact: [
+          { id: "aGlobal", source_section_id: "sG", is_active: true, kind: "hard_check", content: { text: "voice rule" }, severity: "hard" },
+          { id: "aPlaybook", source_section_id: "sP", is_active: true, kind: "pattern", content: { text: "curiosité symétrique" }, severity: "strong" },
+        ],
+      });
+      const arts = await getActiveArtifactsForPersona(sb, "p1", { sourceCore: "visite_profil" });
+      const ids = arts.map(a => a.id).sort();
+      assert.deepEqual(ids, ["aGlobal", "aPlaybook"]);
+    });
+
+    it("getActiveArtifactsForPersona without sourceCore returns ONLY global artifacts (backward compat)", async () => {
+      const sb = makeStub({
+        protocol_document: [
+          { id: "dGlobal", owner_kind: "persona", owner_id: "p1", status: "active", source_core: null, version: 1 },
+          { id: "dPlaybook", owner_kind: "persona", owner_id: "p1", status: "active", source_core: "visite_profil", version: 1 },
+        ],
+        protocol_section: [
+          { id: "sG", document_id: "dGlobal" },
+          { id: "sP", document_id: "dPlaybook" },
+        ],
+        protocol_artifact: [
+          { id: "aGlobal", source_section_id: "sG", is_active: true, kind: "hard_check", content: { text: "voice rule" }, severity: "hard" },
+          { id: "aPlaybook", source_section_id: "sP", is_active: true, kind: "pattern", content: { text: "curiosité symétrique" }, severity: "strong" },
+        ],
+      });
+      const arts = await getActiveArtifactsForPersona(sb, "p1");
+      const ids = arts.map(a => a.id);
+      assert.deepEqual(ids, ["aGlobal"]);
+    });
+
+    it("getActiveArtifactsForPersona with sourceCore but no matching playbook returns global only (graceful fallback)", async () => {
+      const sb = makeStub({
+        protocol_document: [
+          { id: "dGlobal", owner_kind: "persona", owner_id: "p1", status: "active", source_core: null, version: 1 },
+        ],
+        protocol_section: [
+          { id: "sG", document_id: "dGlobal" },
+        ],
+        protocol_artifact: [
+          { id: "aGlobal", source_section_id: "sG", is_active: true, kind: "hard_check", content: { text: "voice rule" }, severity: "hard" },
+        ],
+      });
+      const arts = await getActiveArtifactsForPersona(sb, "p1", { sourceCore: "visite_profil" });
+      const ids = arts.map(a => a.id);
+      assert.deepEqual(ids, ["aGlobal"]);
+    });
+
+    it("getActiveArtifactsForPersona with sourceCore but no global doc returns playbook only", async () => {
+      const sb = makeStub({
+        protocol_document: [
+          { id: "dPlaybook", owner_kind: "persona", owner_id: "p1", status: "active", source_core: "visite_profil", version: 1 },
+        ],
+        protocol_section: [
+          { id: "sP", document_id: "dPlaybook" },
+        ],
+        protocol_artifact: [
+          { id: "aPlaybook", source_section_id: "sP", is_active: true, kind: "pattern", content: { text: "curiosité symétrique" }, severity: "strong" },
+        ],
+      });
+      const arts = await getActiveArtifactsForPersona(sb, "p1", { sourceCore: "visite_profil" });
+      const ids = arts.map(a => a.id);
+      assert.deepEqual(ids, ["aPlaybook"]);
     });
   });
 });

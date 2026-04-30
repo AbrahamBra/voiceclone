@@ -138,7 +138,7 @@ export default async function handler(req, res) {
   const validationError = validateInput(req.body);
   if (validationError) { res.status(400).json({ error: validationError }); return; }
 
-  const { message, history: bodyHistory, scenario, scenario_type: rawScenarioType, persona: personaId, conversation_id } = req.body;
+  const { message, history: bodyHistory, scenario, scenario_type: rawScenarioType, source_core: rawSourceCore, persona: personaId, conversation_id } = req.body;
   if (!personaId) { res.status(400).json({ error: "persona is required" }); return; }
 
   // Sprint 0.b dual-write : only accept a well-formed canonical id. Unknown
@@ -146,6 +146,16 @@ export default async function handler(req, res) {
   // compatibility). The DB column is a Postgres enum, so a bad value would
   // fail the insert otherwise.
   const scenarioType = isScenarioId(rawScenarioType) ? rawScenarioType : null;
+
+  // Migration 055 : source_core (lead origin) is orthogonal to scenario_type.
+  // Only accept the 6 core values; bad values are silently dropped (the CHECK
+  // constraint would also reject them at insert time). Source-specific playbook
+  // assembly happens at line ~285 below if a value resolves on the conv.
+  const SOURCE_CORE_VALUES = new Set([
+    "visite_profil", "dr_recue", "interaction_contenu",
+    "premier_degre", "spyer", "sales_nav",
+  ]);
+  const sourceCoreFromBody = SOURCE_CORE_VALUES.has(rawSourceCore) ? rawSourceCore : null;
 
   // Load persona data from DB
   const persona = await getPersonaFromDb(personaId);
@@ -162,10 +172,15 @@ export default async function handler(req, res) {
   let convId = conversation_id || null;
   let messages;
 
+  // Source-core resolved on this conversation (loaded from DB or set on insert).
+  // Used downstream by getActiveArtifactsForPersona to merge in the source-specific
+  // playbook (cf migration 055).
+  let convSourceCore = null;
+
   if (convId) {
     // Load existing conversation
     const { data: conv, error: convErr } = await supabase
-      .from("conversations").select("id, client_id, scenario, scenario_type")
+      .from("conversations").select("id, client_id, scenario, scenario_type, source_core")
       .eq("id", convId).single();
 
     if (convErr || !conv) { res.status(404).json({ error: "Conversation not found" }); return; }
@@ -185,6 +200,20 @@ export default async function handler(req, res) {
         .from("conversations")
         .update({ scenario_type: scenarioType })
         .eq("id", convId);
+    }
+
+    // Persist source_core if the operator just set it (e.g. tagging an existing
+    // conv as visite_profil after the fact). Body value wins over the persisted
+    // one when it differs ; null is never a valid override (you can't UN-tag a
+    // source via this path, by design — keep it explicit).
+    if (sourceCoreFromBody && conv.source_core !== sourceCoreFromBody) {
+      await supabase
+        .from("conversations")
+        .update({ source_core: sourceCoreFromBody })
+        .eq("id", convId);
+      convSourceCore = sourceCoreFromBody;
+    } else {
+      convSourceCore = conv.source_core || null;
     }
 
     // Load last 40 chat messages from DB. Filter out `message_type='meta'`
@@ -220,6 +249,12 @@ export default async function handler(req, res) {
       // Sprint 0.b : persist canonical scenario_type alongside the legacy
       // scenario text. Nullable — omitted when no valid canonical was sent.
       if (scenarioType) insertData.scenario_type = scenarioType;
+      // Migration 055 : persist source_core (lead origin) so the source-specific
+      // playbook can be assembled on subsequent turns of the same conv.
+      if (sourceCoreFromBody) {
+        insertData.source_core = sourceCoreFromBody;
+        convSourceCore = sourceCoreFromBody;
+      }
       const { data: newConv, error: convInsErr } = await supabase
         .from("conversations").insert(insertData).select("id").single();
       if (convInsErr) {
@@ -282,6 +317,9 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
   // returns 5xx to the client before initSSE, the SSE client retries 5×, and
   // the user sees "Connexion perdue. Reessayez." Graceful degradation = chat
   // without RAG/entities/corrections this turn, instead of no chat at all.
+  // Migration 055 : when convSourceCore is set, the artifact loader merges in
+  // the persona's source-specific playbook (visite_profil, etc.) on top of the
+  // global doc. NULL preserves pre-055 behavior (global doc only).
   const [ontology, corrections, protocolRules, protocolArtifacts] = await Promise.all([
     findRelevantEntities(personaId, messages).catch((err) => {
       console.log(JSON.stringify({ event: "entities_load_error", ts: new Date().toISOString(), persona: personaId, error: err?.message || "Unknown" }));
@@ -292,7 +330,7 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
       return [];
     }),
     getActiveHardRules(personaId, scenario).catch(() => []),
-    getActiveArtifactsForPersona(supabase, personaId).catch(() => []),
+    getActiveArtifactsForPersona(supabase, personaId, { sourceCore: convSourceCore }).catch(() => []),
   ]);
 
   // Knowledge uses boost terms from graph — must wait for ontology
