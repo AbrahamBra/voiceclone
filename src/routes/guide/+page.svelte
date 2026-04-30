@@ -9,35 +9,35 @@
     activeSection = activeSection === id ? null : id;
   }
 
-  // Les 4 onglets du Cerveau — ce que voit l'opérateur quand il ouvre /brain/[persona]
+  // Les 4 onglets du Cerveau (ce que voit l'opérateur quand il ouvre /brain/[persona])
   const brainTabs = [
     {
       id: "tab-connaissance",
       title: "Connaissance",
-      role: "Matière brute du clone",
-      content: "Tous les docs uploadés (offre, audience, background, témoignages, articles). Stockés en chunks sémantiques — au moment où le setter drafte, le clone retrouve les passages utiles via similarité et s'en sert comme contexte. Plus tu enrichis, plus le clone a de matière à citer.",
-      example: "Doc 'Background Nicolas' (3 chunks · extraction OK), 'Audience cible' (4 chunks), 'Positionnement' (3 chunks). Type = Générique. Le clone pioche dedans.",
+      role: "La matière brute",
+      content: "Les docs uploadés : offre, audience, background, témoignages, articles. Stockés en chunks sémantiques. Quand le setter drafte, le clone retrouve les passages utiles par similarité et les utilise comme contexte. Plus tu enrichis, plus le clone a de matière à citer.",
+      example: "Doc 'Background Nicolas' (3 chunks, extraction OK), 'Audience cible' (4 chunks), 'Positionnement' (3 chunks). Type = Générique. Le clone pioche dedans.",
     },
     {
       id: "tab-protocole",
       title: "Protocole",
-      role: "Mode opératoire — règles dures",
-      content: "Le playbook DM de ton client : qui cibler, comment ouvrir, max N questions, ce qu'il ne dit jamais, quand pitcher, quand reculer. Stocké en sections (hard_rules, errors, process, icp_patterns, scoring, templates) + artefacts compilés. Appliqué EN DUR : si un draft viole une règle, le clone réécrit automatiquement.",
-      example: "Hard rule: 'Jamais 2 questions dans un même message'. Si le draft en met 2, le clone le réécrit avant de l'afficher au setter.",
+      role: "Les règles dures",
+      content: "Le playbook DM de ton client : qui cibler, comment ouvrir, max N questions, ce qu'il ne dit jamais, quand pitcher, quand reculer. Stocké en 6 sections (hard_rules, errors, process, icp_patterns, scoring, templates) plus des artefacts compilés. Si un draft viole une règle, le clone le réécrit automatiquement.",
+      example: "Hard rule : 'Jamais 2 questions dans un même message'. Si le draft en met 2, le clone le réécrit avant de l'afficher au setter.",
     },
     {
       id: "tab-intelligence",
       title: "Intelligence",
-      role: "Apprentissage continu",
-      content: "Ce qui sort de l'usage : entités extraites des docs, corrections que le setter a faites, propositions de règles à arbitrer, score de fidélité voix. C'est le tableau de bord de la boucle d'apprentissage — pas une zone de mémoire en soi, mais la vue sur ce que les autres zones produisent.",
-      example: "5 nouvelles entités extraites de 'Background' (EPITA, Ludik Factory…). 3 corrections setter cette semaine. 2 propositions de règles en attente d'arbitrage.",
+      role: "L'apprentissage continu",
+      content: "Ce qui sort de l'usage : entités extraites des docs, corrections du setter, propositions de règles à arbitrer, score de fidélité voix. Ce n'est pas une zone de mémoire en soi. C'est la vue sur ce que les autres zones produisent.",
+      example: "5 nouvelles entités extraites de 'Background' (EPITA, Ludik Factory). 3 corrections setter cette semaine. 2 propositions de règles en attente d'arbitrage.",
     },
     {
       id: "tab-reglages",
       title: "Réglages",
-      role: "Paramètres persona",
-      content: "Nom, titre, avatar, label client, type. Modifiable à tout moment. Pas d'impact sur le runtime tant que le clone est déjà créé.",
-      example: "Renommer 'Nicolas' en 'Nicolas Lavallée — coach dirigeants'. Changer l'avatar. Archiver le clone.",
+      role: "Les paramètres persona",
+      content: "Nom, titre, avatar, label client, type. Modifiable à tout moment. Aucun impact sur le runtime du clone existant.",
+      example: "Renommer 'Nicolas' en 'Nicolas Lavallée, coach dirigeants'. Changer l'avatar. Archiver le clone.",
     },
   ];
 
@@ -46,31 +46,31 @@
     {
       num: "01",
       title: "Maturité",
-      desc: "Tu choisis L1, L2 ou L3 selon le doc source que tu as. L1 = positionnement seul. L2 = playbook DM mono-scénario (ex: icebreaker outbound). L3 = playbook multi-scénario (icebreaker × multi-source + creusement + call_proposal + graceful_exit). Skippable si tu n'es pas sûr.",
+      desc: "Tu choisis L1, L2 ou L3 selon le doc source que tu as. L1 = positionnement seul. L2 = playbook DM sur un seul scénario (par exemple icebreaker outbound). L3 = playbook multi-scénario (icebreaker × multi-source, creusement, call_proposal, graceful_exit). Skippable si tu n'es pas sûr.",
       time: "30 sec"
     },
     {
       num: "02",
       title: "Infos générales",
-      desc: "URL LinkedIn de ton client (auto-remplit nom, titre, bio, posts publics) ou saisie manuelle. Posts publics récupérés sont utilisés comme baseline de voix — pas régénérés, juste lus.",
+      desc: "URL LinkedIn de ton client (auto-remplit nom, titre, bio, posts publics) ou saisie manuelle. Les posts publics récupérés servent de baseline de voix. Ils sont lus, pas régénérés.",
       time: "1 min"
     },
     {
       num: "03",
       title: "DMs de référence",
-      desc: "Colle 5 à 15 conversations DM réelles de ton client. Format: 'Prénom: message' ligne par ligne, conversations séparées par --- ou par une ligne vide. Le clone apprend la dynamique 1:1 (relances, clôtures, ton).",
-      time: "5-10 min"
+      desc: "Colle 5 à 15 conversations DM réelles de ton client. Format : 'Prénom: message' ligne par ligne, conversations séparées par --- ou par une ligne vide. Le clone apprend la dynamique 1:1 : relances, clôtures, ton.",
+      time: "5 à 10 min"
     },
     {
       num: "04",
       title: "Protocole opérationnel",
-      desc: "Optionnel mais hautement recommandé. Uploade le doc de cadrage prospection co-construit avec ton client (.txt .md .pdf .docx). Parsing async ~10 min après création. Tu valideras les règles extraites avant activation depuis Cerveau → Protocole.",
+      desc: "Optionnel, mais c'est ce qui change tout. Uploade le doc de cadrage prospection co-construit avec ton client (.txt .md .pdf .docx). Le parsing tourne en arrière-plan environ 10 min après création. Tu valideras les règles extraites avant activation depuis Cerveau → Protocole.",
       time: "1 min upload + 10 min parsing"
     },
     {
       num: "05",
-      title: "Docs complémentaires + génération",
-      desc: "Optionnel. Uploade offre, témoignages, méthodes, audience. Embed sync (chunks RAG immédiats). Click 'Générer le clone' → création persona + style + analyse DM en 30-60s, redirect vers /calibrate.",
+      title: "Docs complémentaires et génération",
+      desc: "Optionnel. Uploade offre, témoignages, méthodes, audience. L'embed est synchrone (chunks RAG dispo immédiatement). Click 'Générer le clone' lance la création persona, l'analyse de style et de DMs en 30 à 60 secondes, puis redirige vers /calibrate.",
       time: "1 min upload + 1 min génération"
     },
   ];
@@ -79,89 +79,89 @@
   const knowledgeItems = [
     {
       id: "background",
-      title: "Background & parcours",
+      title: "Background et parcours",
       desc: "Qui est ton client",
       target: "Connaissance",
-      content: "Parcours pro, expériences clés, formation, réalisations marquantes. Le clone s'en sert pour donner de la chair quand un prospect demande 'tu as fait quoi avant' ou 'pourquoi je devrais te croire'.",
-      example: "Ex: '15 ans en B2B SaaS, ex-VP Sales chez X, scale 0 → 50M ARR. Aujourd'hui CEO de Y, accompagne les founders sur le GTM LinkedIn.'",
-      priority: "Essentiel"
+      content: "Parcours pro, expériences clés, formation, réalisations. Le clone s'en sert pour répondre quand un prospect demande 'tu as fait quoi avant' ou 'pourquoi je devrais te croire'.",
+      example: "Ex : '15 ans en B2B SaaS, ex-VP Sales chez X, scale 0 → 50M ARR. Aujourd'hui CEO de Y, accompagne les founders sur le GTM LinkedIn.'",
+      priority: "à avoir"
     },
     {
       id: "positioning",
-      title: "Positionnement & expertise",
+      title: "Positionnement et expertise",
       desc: "Sur quoi ton client est expert",
       target: "Connaissance",
-      content: "Thèmes principaux, angle, ce qui le différencie. Le clone l'utilise pour cadrer les réponses et orienter vers les sujets qui sont la zone de force.",
-      example: "Ex: 'Expert LinkedIn B2B. Angle: pas de growth hacks, que du fond. Anti-bullshit, pro-valeur.'",
-      priority: "Essentiel"
+      content: "Thèmes principaux, angle, ce qui le différencie. Le clone l'utilise pour cadrer les réponses et orienter vers les sujets où ton client est solide.",
+      example: "Ex : 'Expert LinkedIn B2B. Angle : pas de growth hacks, que du fond. Anti-bullshit, pro-valeur.'",
+      priority: "à avoir"
     },
     {
       id: "audience",
       title: "Audience cible (ICP)",
       desc: "À qui ton client s'adresse",
       target: "Connaissance",
-      content: "Profil prospect idéal, niveau de maturité, vocabulaire, références culturelles. Le clone reconnaît un prospect ICP vs hors-cible et adapte le niveau du discours.",
-      example: "Ex: 'CEOs/VP Sales de startups B2B SaaS Series A-C. Connaissent LinkedIn mais pas de stratégie structurée. Budget 5-20k/mois acquisition.'",
-      priority: "Essentiel"
+      content: "Profil prospect idéal, niveau de maturité, vocabulaire, références. Le clone reconnaît un prospect ICP par rapport à un hors-cible et ajuste le niveau du discours.",
+      example: "Ex : 'CEOs et VP Sales de startups B2B SaaS Series A-C. Ils connaissent LinkedIn mais n'ont pas de stratégie structurée. Budget 5 à 20k par mois sur l'acquisition.'",
+      priority: "à avoir"
     },
     {
       id: "product",
-      title: "Offre & pricing",
+      title: "Offre et pricing",
       desc: "Ce que ton client vend",
       target: "Connaissance",
       content: "Description offre, pricing, process de vente, objections courantes, arguments. Le clone pioche dedans pour qualifier et closer.",
-      example: "Ex: 'Accompagnement LinkedIn 3 mois. 3 paliers: Starter 1.5k, Growth 3k, Scale 6k. Objection #1: \"j'ai pas le temps de poster\".'",
-      priority: "Important"
+      example: "Ex : 'Accompagnement LinkedIn 3 mois. 3 paliers : Starter 1.5k, Growth 3k, Scale 6k. Objection numéro 1 : \"j'ai pas le temps de poster\".'",
+      priority: "à avoir"
     },
     {
       id: "method",
-      title: "Méthode & frameworks",
+      title: "Méthode et frameworks",
       desc: "Concepts propriétaires",
       target: "Connaissance",
-      content: "Frameworks maison, méthodologies, acronymes signature. Tout ce qui fait la 'patte' intellectuelle. Le clone les nomme et les utilise comme un porte-parole.",
-      example: "Ex: 'Méthode SCALE: Stratégie/Contenu/Audience/Leads/Engagement. Utilisée dans chaque accompagnement.'",
-      priority: "Recommandé"
+      content: "Frameworks maison, méthodologies, acronymes signature. Ce qui fait la patte intellectuelle de ton client. Le clone les nomme et les utilise comme un porte-parole.",
+      example: "Ex : 'Méthode SCALE : Stratégie / Contenu / Audience / Leads / Engagement. Utilisée dans chaque accompagnement.'",
+      priority: "en plus"
     },
     {
       id: "leadmagnet",
       title: "Lead magnets",
       desc: "Ressources offertes",
       target: "Connaissance",
-      content: "Guides, templates, audits gratuits. Le clone peut les recommander naturellement quand le moment s'y prête.",
-      example: "Ex: 'Guide 30 hooks LinkedIn (lien). Template calendrier édito (lien). Audit gratuit profil (lien).'",
-      priority: "Optionnel"
+      content: "Guides, templates, audits gratuits. Le clone peut les recommander quand le moment s'y prête.",
+      example: "Ex : 'Guide 30 hooks LinkedIn (lien). Template calendrier édito (lien). Audit gratuit profil (lien).'",
+      priority: "en plus"
     },
     {
       id: "dms",
       title: "DMs de référence",
       desc: "Style 1:1 réel",
       target: "Voice baseline (étape 03)",
-      content: "5 à 15 conversations DM réelles complètes — les deux côtés. Le clone apprend les relances, les clôtures, les pivots. Format: 'Prénom: message' par ligne, conversations séparées par --- ou ligne vide.",
+      content: "5 à 15 conversations DM réelles complètes, les deux côtés. Le clone apprend les relances, les clôtures, les pivots. Format : 'Prénom: message' par ligne, conversations séparées par --- ou ligne vide.",
       example: "Collé directement à l'étape 03 de la création. Pas un upload de doc.",
-      priority: "Essentiel"
+      priority: "à avoir"
     },
     {
       id: "protocol",
       title: "Protocole opérationnel",
       desc: "Règles dures du DM",
       target: "Protocole",
-      content: "Le playbook prospection : qui cibler, comment ouvrir, max N questions par message, ce qu'il ne dit JAMAIS, quand pitcher, quand reculer. Le clone applique en dur — réécrit tout draft qui viole. Sans protocole, il reste stylistiquement fidèle mais ne bloque rien.",
-      example: "Ex: 'Jamais 2 questions par message. Max 8 lignes. Pas de mention de prix avant le call. Toujours signer par le prénom.' Uploadé à l'étape 04.",
-      priority: "Hautement recommandé"
+      content: "Le playbook prospection : qui cibler, comment ouvrir, max N questions par message, ce qu'il ne dit JAMAIS, quand pitcher, quand reculer. Le clone applique en dur. Il réécrit tout draft qui viole. Sans protocole, il reste fidèle au style mais ne bloque rien.",
+      example: "Ex : 'Jamais 2 questions par message. Max 8 lignes. Pas de mention de prix avant le call. Toujours signer par le prénom.' Uploadé à l'étape 04.",
+      priority: "à avoir"
     },
   ];
 
-  // Boucle d'apprentissage — comment ça évolue après création
+  // Boucle d'apprentissage (comment ça évolue après création)
   const loopSteps = [
     {
       num: "1",
       title: "Le setter drafte",
-      desc: "Le setter ouvre le chat du clone, colle le DM du prospect. Le clone répond avec un draft qui respecte protocole + intelligence + style learned.",
+      desc: "Le setter ouvre le chat du clone et colle le DM du prospect. Le clone répond avec un draft qui respecte le protocole, la connaissance et le style appris.",
     },
     {
       num: "2",
-      title: "Le setter corrige (ou valide)",
-      desc: "Si le draft est ok → bouton 'validé' (signal positif). Si à retoucher → bouton 'corriger' avec le bon texte, OU directement instruction dans le chat ('trop long', 'jamais ce mot', 'ajoute la règle X'). Chaque action est tracée.",
+      title: "Le setter corrige ou valide",
+      desc: "Si le draft passe, le setter clique sur 'validé' (signal positif). Sinon il clique 'corriger' avec le bon texte, ou il donne l'instruction directement dans le chat ('trop long', 'jamais ce mot', 'ajoute la règle X'). Chaque action est tracée.",
     },
     {
       num: "3",
@@ -171,7 +171,7 @@
     {
       num: "4",
       title: "Tu arbitres",
-      desc: "Pour chaque proposition: Accepter (la règle entre dans le protocole), Modifier (tu reformules), Rejeter (signal noté, pas de règle). C'est ce qui fait évoluer le mode opératoire du clone dans le temps.",
+      desc: "Pour chaque proposition tu choisis : Accepter (la règle entre dans le protocole), Modifier (tu reformules), Rejeter (signal noté, pas de règle). C'est ce qui fait évoluer le clone dans le temps.",
     },
   ];
 </script>
@@ -182,29 +182,29 @@
       <button class="back-btn" onclick={() => history.back()}>&larr; Retour</button>
       <h1>Guide</h1>
       <p class="guide-subtitle">
-        Comment fonctionne VoiceClone et comment piloter un clone pour un client.
+        Comment fonctionne VoiceClone, et comment piloter un clone pour un client.
       </p>
     </header>
 
-    <!-- SECTION 1: Le cerveau du clone — modèle mental -->
+    <!-- SECTION 1: Le cerveau du clone, modèle mental -->
     <section class="guide-section" id="cerveau">
       <h2 class="section-title">
         <span class="section-num">01</span>
         Comment le clone fonctionne
       </h2>
       <p class="section-desc">
-        Le clone a deux zones de mémoire qui agissent à des moments différents quand le setter drafte une réponse.
+        Le clone a deux zones de mémoire. Elles agissent à des moments différents quand le setter drafte une réponse.
       </p>
 
       <div class="brain-compare">
         <div class="brain-side">
           <div class="brain-tag">PROTOCOLE</div>
-          <div class="brain-headline">Le mode opératoire — règles dures</div>
+          <div class="brain-headline">Les règles dures</div>
           <p class="brain-body">
             <em>Comment</em> ton client prospecte. Vouvoie ou tutoie. Max 2 questions par message. Jamais "n'hésitez pas". Pitche après 3 échanges, pas avant.
           </p>
           <div class="brain-runtime">
-            <strong>Au runtime :</strong> injecté dans le prompt (PASS 1) ET re-vérifié après génération (PASS 2). Si un draft viole une règle, le clone <strong>réécrit automatiquement</strong>.
+            <strong>Au runtime :</strong> les règles sont injectées dans le prompt, et re-vérifiées après génération. Si un draft viole une règle, le clone le <strong>réécrit automatiquement</strong>.
           </div>
         </div>
 
@@ -212,18 +212,18 @@
 
         <div class="brain-side">
           <div class="brain-tag tag-alt">CONNAISSANCE</div>
-          <div class="brain-headline">La matière — contexte sémantique</div>
+          <div class="brain-headline">La matière brute</div>
           <p class="brain-body">
-            <em>Quoi</em> ton client sait. Son ICP, son histoire, son offre, ses cas, ses anecdotes, ses verbatims.
+            <em>Ce que</em> ton client sait. Son ICP, son histoire, son offre, ses cas, ses anecdotes, ses verbatims.
           </p>
           <div class="brain-runtime">
-            <strong>Au runtime :</strong> la question du prospect est embeddée, on cherche les passages proches. Le clone reçoit ces passages comme <strong>contexte</strong> — il s'en sert s'il en a besoin, sans y être forcé.
+            <strong>Au runtime :</strong> la question du prospect est embeddée, et on cherche les passages proches. Le clone reçoit ces passages comme <strong>contexte</strong>. Il s'en sert s'il en a besoin, sans y être forcé.
           </div>
         </div>
       </div>
 
       <div class="metaphor">
-        <strong>Métaphore :</strong> Protocole = la <em>grammaire</em> (règles non-négociables). Connaissance = le <em>dictionnaire</em> (vocabulaire/savoir disponibles). Tu peux avoir un dictionnaire énorme avec une grammaire bancale → le clone parle de plein de trucs mais peut violer le ton. Inversement, grammaire stricte + dictionnaire pauvre → discipliné mais creux. Les deux comptent.
+        <strong>Pense à ça comme la grammaire et le dictionnaire.</strong> Protocole = la <em>grammaire</em> (règles non-négociables). Connaissance = le <em>dictionnaire</em> (vocabulaire et savoir disponibles). Un dictionnaire énorme avec une grammaire bancale donne un clone qui parle de plein de trucs mais qui peut violer le ton. Une grammaire stricte avec un dictionnaire pauvre donne un clone discipliné mais creux. Les deux comptent.
       </div>
     </section>
 
@@ -234,7 +234,7 @@
         Créer un clone
       </h2>
       <p class="section-desc">
-        5 étapes, &lt; 15 min de saisie. Le parsing protocole tourne async ~10 min après — pas bloquant.
+        5 étapes, moins de 15 min de saisie. Le parsing protocole tourne en arrière-plan environ 10 min après. Ça ne bloque rien.
       </p>
 
       <div class="timeline">
@@ -253,11 +253,11 @@
       </div>
     </section>
 
-    <!-- SECTION 3: Le cockpit Cerveau -->
+    <!-- SECTION 3: La page Cerveau -->
     <section class="guide-section" id="brain">
       <h2 class="section-title">
         <span class="section-num">03</span>
-        Le cockpit Cerveau
+        La page Cerveau
       </h2>
       <p class="section-desc">
         4 onglets à <code>/brain/[persona]</code>. Click sur chacun pour voir ce qu'il contient et quand l'enrichir.
@@ -295,7 +295,7 @@
         Quoi uploader, et où ça atterrit
       </h2>
       <p class="section-desc">
-        Chaque type de contenu va dans la bonne zone — Protocole pour les règles, Connaissance pour la matière. Click pour voir l'usage.
+        Chaque type de contenu va dans la bonne zone : Protocole pour les règles, Connaissance pour la matière. Click pour voir l'usage.
       </p>
 
       <div class="knowledge-grid">
@@ -312,8 +312,8 @@
                 <span class="knowledge-card-desc">{item.desc} → <em>{item.target}</em></span>
               </div>
               <span class="priority-badge"
-                class:essential={item.priority === "Essentiel" || item.priority === "Hautement recommandé"}
-                class:important={item.priority === "Important" || item.priority === "Recommandé"}
+                class:essential={item.priority === "à avoir"}
+                class:important={item.priority === "en plus"}
               >{item.priority}</span>
             </div>
             {#if activeSection === item.id}
@@ -353,13 +353,13 @@
       </div>
 
       <div class="feedback-tips">
-        <h3>Tips opérationnels</h3>
+        <h3>Quelques principes opérationnels</h3>
         <ul>
-          <li><strong>Sois spécifique.</strong> "Trop long" passe, "Trop long, max 3 lignes par paragraphe" rend une règle clusterisable.</li>
-          <li><strong>Corrige tôt, corrige souvent.</strong> Les 15 premières corrections sont les plus impactantes — c'est là que le clone calibre.</li>
+          <li><strong>Sois spécifique.</strong> "Trop long" passe. "Trop long, max 3 lignes par paragraphe" donne une règle exploitable.</li>
+          <li><strong>Corrige tôt, corrige souvent.</strong> Les 15 premières corrections sont les plus impactantes. C'est là que le clone calibre.</li>
           <li><strong>Valide aussi les bonnes réponses.</strong> Le bouton "validé" compte autant qu'une correction. Le clone renforce ce qui marche.</li>
           <li><strong>Sépare règle dure et préférence.</strong> Une règle dure ("jamais d'emoji") va au protocole. Une préférence ("plutôt court") nourrit le style mais ne bloque rien.</li>
-          <li><strong>Enrichis la connaissance régulièrement.</strong> Nouveau cas client, nouvelle offre, nouveau verbatim → upload depuis Cerveau → Connaissance. Le clone élargit son contexte sémantique sans changer ses règles.</li>
+          <li><strong>Enrichis la connaissance régulièrement.</strong> Nouveau cas client, nouvelle offre, nouveau verbatim : upload depuis Cerveau → Connaissance. Le clone élargit son contexte sans changer ses règles.</li>
         </ul>
       </div>
     </section>

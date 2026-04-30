@@ -13,10 +13,10 @@
   let personaId = $derived(data.personaId);
 
   const TABS = [
-    { id: "connaissance", label: "connaissance", hint: "matière sémantique (RAG)" },
-    { id: "protocole",    label: "protocole",    hint: "règles dures appliquées" },
-    { id: "intelligence", label: "intelligence", hint: "apprentissage continu" },
-    { id: "reglages",     label: "réglages",     hint: "paramètres persona" },
+    { id: "connaissance", label: "connaissance", hint: "la matière brute" },
+    { id: "protocole",    label: "protocole",    hint: "les règles dures" },
+    { id: "intelligence", label: "intelligence", hint: "ce que l'usage révèle" },
+    { id: "reglages",     label: "réglages",     hint: "les paramètres persona" },
   ];
 
   // Read the tab from the URL hash (#connaissance / #intelligence / #reglages),
@@ -71,14 +71,14 @@
   });
 </script>
 
-<svelte:head><title>Cerveau — {$personaConfig?.name || "Clone"}</title></svelte:head>
+<svelte:head><title>Cerveau de {$personaConfig?.name || "Clone"}</title></svelte:head>
 
 <div class="brain-page">
   <header class="brain-head">
     <button class="back-btn" onclick={goBack} aria-label="Retour">← retour</button>
     <div class="title">
       <span class="avatar">{$personaConfig?.avatar || "?"}</span>
-      <h1>Cerveau — {$personaConfig?.name || "Clone"}</h1>
+      <h1>Cerveau de {$personaConfig?.name || "Clone"}</h1>
     </div>
   </header>
 

@@ -113,7 +113,7 @@
       if (data.posts.length > 0) {
         postsText = data.posts.slice(0, 15).join("\n---\n");
       }
-      scrapeStatus = `${data.profile.name} — profil + ${data.postCount} posts récupérés`;
+      scrapeStatus = `${data.profile.name} : profil et ${data.postCount} posts récupérés`;
       scrapeSuccess = true;
     } catch (err) {
       if (err.status === 501) {
@@ -255,7 +255,7 @@
         for (let b = 0; b < blocks.length; b++) {
           const blockName = blocks.length > 1 ? `${f.name} (${b + 1}/${blocks.length})` : f.name;
           currentFileLabel = blocks.length > 1
-            ? `${f.name} — bloc ${b + 1}/${blocks.length}`
+            ? `${f.name} (bloc ${b + 1}/${blocks.length})`
             : f.name;
           await api("/api/knowledge", {
             method: "POST",
@@ -273,7 +273,7 @@
     generatingPhase = "";
     generateStatus = `Clone "${persona.name}" créé !`;
     if (protocolFile) {
-      showToast("Protocole en cours de parsing — dispo dans Cerveau → Protocole d'ici ≈10 min", 6000);
+      showToast("Protocole en cours de parsing. Dispo dans Cerveau → Protocole d'ici ≈10 min", 6000);
     }
     setTimeout(() => { goto(`/calibrate/${persona.id}`); }, 800);
   }
@@ -324,7 +324,7 @@
             </div>
 
             <p class="step-desc">
-              Ça nous aide à calibrer l'extraction. Aucun mauvais choix — tu peux changer plus tard ou skip.
+              Ça nous aide à calibrer l'extraction. Aucun mauvais choix, tu peux changer plus tard ou skip.
             </p>
 
             <div class="maturity-options">
@@ -334,7 +334,7 @@
                 onclick={() => maturityLevel = 'L1'}
                 type="button"
               >
-                <div class="maturity-tier">L1 — Positionnement</div>
+                <div class="maturity-tier">L1 · Positionnement</div>
                 <div class="maturity-desc">Bio + ICP + voix. Pas de scripts DM.</div>
                 <div class="maturity-example">Ex : un doc qui décrit qui le client est, à qui il s'adresse, et comment il s'exprime.</div>
               </button>
@@ -345,7 +345,7 @@
                 onclick={() => maturityLevel = 'L2'}
                 type="button"
               >
-                <div class="maturity-tier">L2 — Mono-scénario</div>
+                <div class="maturity-tier">L2 · Mono-scénario</div>
                 <div class="maturity-desc">Playbook DM bien outillé sur 1 scénario (ex: icebreaker outbound).</div>
                 <div class="maturity-example">Ex : un doc avec règles, scoring, templates pour un cas précis.</div>
               </button>
@@ -356,7 +356,7 @@
                 onclick={() => maturityLevel = 'L3'}
                 type="button"
               >
-                <div class="maturity-tier">L3 — Multi-scénario</div>
+                <div class="maturity-tier">L3 · Multi-scénario</div>
                 <div class="maturity-desc">Playbook complet : icebreaker × multi-source + creusement + call_proposal + graceful_exit.</div>
                 <div class="maturity-example">Ex : un doc qui couvre tout le pipeline DM end-to-end.</div>
               </button>
@@ -378,7 +378,7 @@
             </div>
 
             <div class="scrape-row">
-              <input type="text" placeholder="URL LinkedIn (optionnel — auto-remplit tout)" bind:value={linkedinUrl} disabled={scraping} />
+              <input type="text" placeholder="URL LinkedIn (optionnel, auto-remplit tout)" bind:value={linkedinUrl} disabled={scraping} />
               <button class="btn-secondary" onclick={scrapeLinkedIn} disabled={scraping || !linkedinUrl.trim()}>
                 {scraping ? "..." : "Auto-remplir"}
               </button>
@@ -394,7 +394,7 @@
             <input type="text" placeholder="Ex: CEO @Offbound · GTM LinkedIn" bind:value={personaTitle} />
 
             <label>Client <span class="label-optional">(optionnel)</span></label>
-            <input type="text" placeholder="Ex: Marie Dupont — BeautyCorp" bind:value={clientLabel} maxlength="120" />
+            <input type="text" placeholder="Ex: Marie Dupont, BeautyCorp" bind:value={clientLabel} maxlength="120" />
 
             <label>Bio & positionnement</label>
             <textarea rows="4" bind:value={profileText} placeholder="Expertise, thèmes abordés, valeur ajoutée..."></textarea>
@@ -415,7 +415,7 @@
               <span>Le style de conversation 1:1 du clone</span>
             </div>
             <p class="step-desc">
-              Colle des conversations <strong>complètes</strong> — les deux côtés, du premier message au dernier. Un monologue unilatéral ne sert à rien : le clone apprend comment tu <em>relances</em>, <em>réponds</em>, <em>clôtures</em>. Sépare chaque conversation par <code>---</code> ou par une ligne vide entre deux blocs (paste depuis LinkedIn fonctionne).
+              Colle des conversations <strong>complètes</strong>, les deux côtés, du premier message au dernier. Un monologue unilatéral ne sert à rien : le clone apprend comment tu <em>relances</em>, comment tu <em>réponds</em>, comment tu <em>clôtures</em>. Sépare chaque conversation par <code>---</code> ou par une ligne vide entre deux blocs (paste depuis LinkedIn fonctionne).
             </p>
 
             <details class="dm-example">
@@ -457,15 +457,15 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
           <!-- Step: Protocole opérationnel (optionnel) -->
           <div class="create-step">
             <div class="step-header">
-              <strong>Protocole — le mode opératoire</strong>
-              <span>Le squelette du cerveau du clone — optionnel mais hautement recommandé</span>
+              <strong>Protocole : les règles dures du clone</strong>
+              <span>Optionnel, mais c'est ce qui change tout</span>
             </div>
 
             <p class="step-desc">
-              Le <strong>protocole</strong>, c'est <em>comment</em> ton client prospecte : qui cibler, comment ouvrir, combien de questions par message, ce qu'il ne dit <em>jamais</em>, quand pitcher, quand reculer. Le clone <strong>applique ces règles en dur</strong> à chaque message — il réécrit automatiquement tout draft qui les viole. C'est ce qui sépare un clone-perroquet d'un clone-opérationnel.
+              Le <strong>protocole</strong>, c'est <em>comment</em> ton client prospecte : qui cibler, comment ouvrir, combien de questions par message, ce qu'il ne dit <em>jamais</em>, quand pitcher, quand reculer. Le clone <strong>applique ces règles en dur</strong> à chaque message. Il réécrit automatiquement tout draft qui les viole. C'est ce qui sépare un clone-perroquet d'un clone-opérationnel.
             </p>
             <p class="step-desc step-desc-aside">
-              ≠ des docs de la prochaine étape, qui apportent <em>la matière</em> (offre, témoignages, articles) — pas le mode opératoire.
+              Différent des docs de la prochaine étape, qui apportent <em>la matière</em> (offre, témoignages, articles), pas les règles.
             </p>
 
             <div class="protocol-zone">
@@ -474,7 +474,7 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
                   + Uploader le protocole (.txt .md .pdf .docx)
                 </button>
                 <input type="file" accept=".txt,.md,.pdf,.docx" hidden bind:this={protoFileInputEl} onchange={handleProtocolFile} />
-                <p class="upload-hint">Pas de protocole ? Passez cette étape — vous pourrez l'ajouter plus tard depuis Cerveau → Protocole.</p>
+                <p class="upload-hint">Pas de protocole ? Passe cette étape, tu pourras l'ajouter plus tard depuis Cerveau → Protocole.</p>
               {:else}
                 <div class="protocol-uploaded">
                   <span class="proto-check">✓</span>
@@ -498,8 +498,8 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
           <!-- Step 4: Documents + Génération -->
           <div class="create-step">
             <div class="step-header">
-              <strong>Docs — la matière</strong>
-              <span>Articles, témoignages, offre, bio longue. Le clone pioche dedans pour répondre — optionnel</span>
+              <strong>Docs : la matière</strong>
+              <span>Articles, témoignages, offre, bio longue. Le clone pioche dedans pour répondre. Optionnel.</span>
             </div>
 
             <button class="btn-link" onclick={() => showDocs = !showDocs}>
@@ -582,14 +582,14 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
             {:else if generatingPhase === "protocol"}
               <div class="generate-status generating-active">
                 <span class="gen-spinner" aria-hidden="true"></span>
-                <span>Importation du protocole — {currentFileLabel}</span>
+                <span>Importation du protocole : {currentFileLabel}</span>
               </div>
             {:else if generatingPhase === "files"}
               <div class="generate-status generating-active">
                 <span class="gen-spinner" aria-hidden="true"></span>
                 <span>
                   Absorption {ingestProgress.current}/{ingestProgress.total}
-                  {#if currentFileLabel} — {currentFileLabel}{/if}
+                  {#if currentFileLabel}: {currentFileLabel}{/if}
                 </span>
               </div>
             {:else if generateStatus}
