@@ -152,7 +152,7 @@
         <input
           type="password"
           autocomplete="off"
-          placeholder="ton code"
+          placeholder="votre code"
           bind:value={codeInput}
           class:shake={authShake}
           disabled={authLoading}
@@ -170,19 +170,20 @@
   <!-- ═══════ Écran 1 — Hero ═══════ -->
   <section class="hero" id="hero">
     <div class="overline mono">
-      ◇ pour les agences ghostwriting qui pilotent 5+ clients
+      ◇ pour les agences ghostwriting · branding · growth qui font aussi du setting LinkedIn
     </div>
 
     <h1 class="headline">
-      <span>10 clients. 10 façons de DM. Un setter qui tient la ligne.</span>
-      <span>Ton setter colle le DM d'un prospect.</span>
-      <span class="accent">Le draft sort comme <em>ton client</em> l'écrirait.</span>
+      <span>Plusieurs clients. Plusieurs façons de DM. Un setter qui tient la ligne.</span>
+      <span>Votre setter colle le DM d'un prospect.</span>
+      <span class="accent">Le draft sort comme <em>votre client</em> l'écrirait.</span>
     </h1>
 
     <p class="sub">
       Un client = sa façon de faire : règles, ouvertures, cadence, signature.
-      Écrites dès l'onboarding. Ton setter tape dedans. Le même cerveau drafte
-      aussi les <em>posts LinkedIn</em> — DM et posts, une seule ligne.
+      Écrites dès l'onboarding. Votre setter tape dedans. Chaque type d'action
+      outbound (DM, ajout de contact, interaction de contenu, visite de profil...)
+      porte ensuite son playbook agence par-dessus.
     </p>
 
     <ul class="triptyque" aria-label="Ce que Setclone fait concrètement">
@@ -191,32 +192,32 @@
         <p class="beat-body">
           Sa façon de DM, ses ouvertures interdites, sa cadence de relance,
           sa signature. Noir sur blanc dès la création du clone.
-          Ton setter tape dedans, pas à côté.
+          Votre setter tape dedans, pas à côté.
         </p>
       </li>
       <li class="beat">
-        <h3 class="beat-title">corrige une fois, explique au clone</h3>
+        <h3 class="beat-title">corrigez une fois, expliquez au clone</h3>
         <p class="beat-body">
-          Tu vires un mot, le clone demande <em class="quoted">« pourquoi »</em>.
-          La règle rentre avec son contexte. Le setter junior
-          qui arrive dans 3 mois n'y retape pas deux fois.
+          Vous virez un mot, le clone demande <em class="quoted">« pourquoi »</em>.
+          La règle rentre avec son contexte. Le setter junior qui arrivera
+          plus tard n'y retapera pas deux fois.
         </p>
       </li>
       <li class="beat">
-        <h3 class="beat-title">DM et posts, un seul cerveau</h3>
+        <h3 class="beat-title">trois garde-fous, zéro message qui dérape</h3>
         <p class="beat-body">
-          Même base pour les DM prospects et les posts LinkedIn.
-          Ton setter passe d'un canal à l'autre sans reconfigurer.
-          La ligne tient partout.
+          Score shadow sur chaque draft. Alerte soft sur dérive douce.
+          Blocage hard si une règle agence est violée. Aucun message
+          ne sort sans avoir passé les filtres.
         </p>
       </li>
     </ul>
 
     <div class="hero-cta" id="cta">
-      <a class="btn-primary" href="/demo">→ Essaie ton clone en 5 min.</a>
+      <a class="btn-primary" href="/demo">→ Essayez un clone en 5 min.</a>
       <div class="sub-ctas">
         <button type="button" class="demo-link mono" onclick={openDemo} disabled={demoLoading}>
-          {demoLoading ? "chargement…" : "ou fouille une démo pré-entraînée →"}
+          {demoLoading ? "chargement…" : "ou fouillez une démo pré-entraînée →"}
         </button>
         <a class="demo-link mono" href={DEMO_CTA_HREF}>waitlist →</a>
       </div>
@@ -227,7 +228,7 @@
   <section class="proof" aria-labelledby="proof-title">
     <div class="section-kicker mono">◇ dans le cockpit</div>
     <h2 class="section-title" id="proof-title">
-      Ce que ton setter voit, toute la journée.
+      Ce que votre setter voit, toute la journée.
     </h2>
 
     <div class="captures">
@@ -257,8 +258,8 @@
         </div>
         <figcaption>
           <span class="cap-num mono">01</span>
-          Pas besoin que le clone devine la façon de ton client à partir de 3 posts.<br />
-          Ton client écrit ses règles une fois. Le clone les exécute dès le 1er draft.
+          Pas besoin que le clone devine la façon de votre client à partir de quelques posts.<br />
+          Votre client écrit ses règles une fois. Le clone les exécute dès le 1er draft.
         </figcaption>
       </figure>
 
@@ -285,40 +286,11 @@
         </div>
         <figcaption>
           <span class="cap-num mono">02</span>
-          Tu corriges une fois. Tu expliques une fois.<br />
+          Vous corrigez une fois. Vous expliquez une fois.<br />
           Le clone retient le pourquoi. La règle vaut pour toute l'équipe.
         </figcaption>
       </figure>
 
-      <figure class="capture">
-        <div class="capture-frame" aria-hidden="true">
-          <div class="frame-bar mono"><span>◎</span><span>cockpit · Post | DM</span></div>
-          <div class="frame-body">
-            <div class="frame-stub tabs-stub">
-              <div class="tabs-row mono">
-                <span class="tab">Post</span>
-                <span class="tab tab-active">DM</span>
-              </div>
-              <div class="tabs-panels">
-                <div class="tab-panel tab-panel-muted">
-                  <span class="stub-meta mono">post · brouillon</span>
-                  <p class="mini-draft">3 questions à se poser avant de relancer un prospect silencieux. — A.</p>
-                </div>
-                <div class="tab-panel">
-                  <span class="stub-meta mono">dm · draft</span>
-                  <p class="mini-draft">Sophie, 2 lignes pile : on mappe ta stack jeudi. — A.</p>
-                </div>
-              </div>
-              <span class="brain-badge mono">même base · 2 canaux</span>
-            </div>
-          </div>
-        </div>
-        <figcaption>
-          <span class="cap-num mono">03</span>
-          Ton setter drafte les DM. Le ghostwriter drafte les posts.<br />
-          Un seul cerveau, deux onglets.
-        </figcaption>
-      </figure>
     </div>
   </section>
 
@@ -326,24 +298,24 @@
   <section class="moat" aria-labelledby="moat-title">
     <div class="section-kicker mono">◇ le moat</div>
     <h2 class="section-title" id="moat-title">
-      Le process tient. Même quand ton équipe change.
+      Le process tient. Même quand votre équipe change.
     </h2>
 
     <div class="moat-body">
       <p class="moat-para">
         Setter senior qui part, junior qui arrive : même draft, même voix, même cadence.
-        Le process du client ne vit pas dans la tête d'un humain. Il est écrit,
+        Le process du client ne vit plus dans la tête d'un humain. Il est écrit,
         et chaque correction le précise. Quand un nouveau rejoint l'équipe, il écrit
         dans la bonne ligne dès son premier draft. Plus de semaine à relire les archives.
       </p>
       <p class="moat-punch">
-        Tes setters changent. Le process reste. Les corrections aussi.
+        Vos setters changent. Le process reste. Les corrections aussi.
       </p>
     </div>
 
     <div class="moat-cta">
-      <a class="btn-primary" href="/demo">→ Essaie le clone en 5 min.</a>
-      <a class="demo-link mono" href={DEMO_CTA_HREF}>ou rejoins la waitlist →</a>
+      <a class="btn-primary" href="/demo">→ Essayez un clone en 5 min.</a>
+      <a class="demo-link mono" href={DEMO_CTA_HREF}>ou rejoignez la waitlist →</a>
     </div>
   </section>
 
@@ -735,62 +707,6 @@
     font-size: 13px;
     color: var(--ink);
     line-height: 1.5;
-  }
-
-  /* Capture 03 — tabs Post|DM */
-  .tabs-stub { gap: 10px; }
-  .tabs-row {
-    display: inline-flex;
-    gap: 18px;
-    padding-bottom: 6px;
-    border-bottom: 1px solid var(--rule);
-  }
-  .tab {
-    font-size: 11.5px;
-    color: var(--ink-40);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    padding-bottom: 4px;
-    position: relative;
-  }
-  .tab-active { color: var(--ink); }
-  .tab-active::after {
-    content: "";
-    position: absolute;
-    left: 0; right: 0; bottom: -7px;
-    height: 1px;
-    background: var(--vermillon);
-  }
-  .tabs-panels {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-top: 4px;
-  }
-  .tab-panel {
-    padding: 8px 10px;
-    border: 1px solid var(--rule);
-    background: var(--paper);
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .tab-panel-muted { opacity: 0.55; }
-  .mini-draft {
-    font-size: 12.5px;
-    line-height: 1.45;
-    color: var(--ink);
-    margin: 0;
-  }
-  .brain-badge {
-    align-self: center;
-    font-size: 10.5px;
-    color: var(--vermillon);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    padding: 3px 8px;
-    border: 1px dashed var(--vermillon);
-    margin-top: 2px;
   }
 
   .capture figcaption {
