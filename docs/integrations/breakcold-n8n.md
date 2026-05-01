@@ -5,7 +5,7 @@ chaque lead ajouté à une liste "À contacter" dans Breakcold déclenche la
 génération d'un draft personnalisé qui atterrit en note dans la card du
 lead, avec un deep link vers Setclone pour les ajustements / l'envoi.
 
-**Temps estimé** : ~25 min de setup, ~5 min par n8n test sur 1 lead.
+**Temps estimé** : ~1 min de smoke (Étape 0), ~25 min de setup n8n complet (Étapes 1-4), ~5 min par n8n test sur 1 lead.
 
 ---
 
@@ -15,6 +15,25 @@ lead, avec un deep link vers Setclone pour les ajustements / l'envoi.
 - Un compte Breakcold avec une API key (Settings → Developers → API).
 - Un clone Setclone créé et calibré (page `/create` puis `/calibrate`).
 - Une URL Setclone (preview Vercel ou prod) — par défaut `https://voiceclone-lake.vercel.app`.
+
+---
+
+## Étape 0 — Smoke test (recommandé avant tout setup n8n)
+
+Avant d'attaquer le setup complet n8n + Breakcold, valide en 1 min que ta clé Setclone fonctionne et que le flow draft → conv → deep link tient. Si cette étape passe, tout ce qu'il restera à debugger plus loin sera côté n8n / Breakcold (pas Setclone).
+
+1. Mint une API key Setclone via `/brain/<persona>/intégrations` (cf. Étape 1 ci-dessous), copie la clé `sk_…`.
+2. Lance le smoke depuis le repo Setclone :
+
+   ```bash
+   SETCLONE_API_KEY=sk_… \
+   SETCLONE_BASE_URL=https://voiceclone-lake.vercel.app \
+   node scripts/smoke-breakcold-draft.js
+   ```
+
+3. Le script imprime ✓/✗ pour chaque assertion, le draft généré dans la voix du clone, et le deep link Setclone que Breakcold mettra dans la note. Tu cliques le lien → tu dois atterrir sur la conv dans la sidebar **À envoyer**.
+
+Si tout est vert : passe à Étape 1. Si rouge : le payload d'erreur indique le problème (key invalide, persona inactive, prod down…).
 
 ---
 

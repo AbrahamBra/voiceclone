@@ -463,6 +463,7 @@ describe("POST /api/v2/draft", () => {
     assert.equal(res._body.conversation_id, "conv-existing");
     assert.equal(res._body.draft_id, "msg-existing");
     assert.equal(res._body.draft, "Salut Alex (existing).");
+    assert.equal(res._body.persona_id, "p1", "persona_id required for n8n deep link template");
     assert.equal(generateCalled, false, "generate must NOT be called on idempotent hit");
   });
 
@@ -500,11 +501,24 @@ describe("POST /api/v2/draft", () => {
     assert.equal(res.statusCode, 200);
     assert.ok(res._body.conversation_id, "conversation_id must be returned");
     assert.ok(res._body.draft_id, "draft_id (assistant message id) must be returned");
+    assert.equal(res._body.persona_id, "p1", "persona_id required for n8n deep link template");
     const inserted = fakeSupabase.tables.conversations[0];
     assert.equal(inserted.external_lead_ref, "breakcold:newlead");
     assert.equal(inserted.lifecycle_state, "awaiting_send");
     assert.equal(inserted.source_core, "visite_profil");
     assert.equal(inserted.persona_id, "p1");
+  });
+
+  it("response includes persona_id on stateless path (no external_lead_ref)", async () => {
+    const { default: handler } = await import("../api/v2/draft.js");
+    const req = {
+      method: "POST", headers: {},
+      body: { personaId: "p1", prospectContext: "Alex DG PME 50p" },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps());
+    assert.equal(res.statusCode, 200);
+    assert.equal(res._body.persona_id, "p1", "persona_id required for n8n deep link template");
   });
 
   // ── V3.6.5 — API key auth path ──────────────────────────────
