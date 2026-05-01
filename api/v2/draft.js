@@ -100,11 +100,15 @@ function deriveTitle({ prospectName, prospectMessage }) {
   return (prospectMessage || "").slice(0, 50).replace(/\s+\S*$/, "");
 }
 
-function validate(body) {
+function validate(body, { apiKeyPinsPersona = false } = {}) {
   if (!body || typeof body !== "object") return "Body must be an object";
 
+  // When the request is authenticated via x-api-key, the key already pins a
+  // persona — body.persona_id is optional (and merely cross-checked later).
+  // For session/access-code auth, persona_id is the only signal we have, so
+  // it stays required.
   const personaId = body.persona_id || body.personaId;
-  if (typeof personaId !== "string" || !personaId) {
+  if (!apiKeyPinsPersona && (typeof personaId !== "string" || !personaId)) {
     return "personaId is required";
   }
 
@@ -303,7 +307,7 @@ export default async function handler(req, res, deps) {
     }
   }
 
-  const validationError = validate(req.body);
+  const validationError = validate(req.body, { apiKeyPinsPersona: !!apiKeyPersona });
   if (validationError) { res.status(400).json({ error: validationError }); return; }
 
   const body = req.body;

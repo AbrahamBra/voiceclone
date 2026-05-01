@@ -549,6 +549,34 @@ describe("POST /api/v2/draft", () => {
     }));
     assert.equal(res.statusCode, 200);
   });
+
+  it("API key auth: body without persona_id proceeds (key pins the persona)", async () => {
+    const { default: handler } = await import("../api/v2/draft.js");
+    // Reproduces the n8n / Breakcold call shape : x-api-key header, body
+    // carries prospect_data + source_core + external_lead_ref but NO
+    // persona_id. The key alone resolves the persona.
+    const req = {
+      method: "POST", headers: { "x-api-key": "sk_test" },
+      body: {
+        prospect_data: { context: "Alex DG PME 50p, post sur IA" },
+        source_core: "interaction_contenu",
+        external_lead_ref: "breakcold:42",
+      },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps({
+      resolveApiKey: async () => ({ persona: PERSONA, client: { id: "c1" }, keyId: "k1", isAdmin: false }),
+    }));
+    assert.equal(res.statusCode, 200, `expected 200, got ${res.statusCode}: ${JSON.stringify(res._body)}`);
+    assert.equal(res._body.persona_id, "p1");
+    assert.ok(res._body.draft.length > 0);
+  });
+
+  it("validate(): personaId still required without API key context", async () => {
+    const { validate } = await import("../api/v2/draft.js");
+    assert.match(validate({ prospectContext: "x" }), /personaId is required/);
+    assert.equal(validate({ prospect_data: { context: "x" } }, { apiKeyPinsPersona: true }), null);
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────
