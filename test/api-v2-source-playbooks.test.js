@@ -673,3 +673,302 @@ describe("DELETE /api/v2/protocol/source-playbooks — archive", () => {
     assert.equal(res.statusCode, 403);
   });
 });
+
+// ── V2.2 — multi-section management ───────────────────────────────
+//
+// New flows :
+//   - GET ?id= now returns sections[] (V2.1 returned only `section`).
+//     Legacy `section` field kept as alias for backcompat.
+//   - PATCH ?id= accepts optional section_id to target a specific section.
+//     Without section_id → first section (V2.1 default).
+//   - POST with body.playbook_id appends a new section to existing playbook.
+//     Distinct from POST with body.persona_id (creates new playbook).
+describe("V2.2 — GET ?id= returns sections array", () => {
+  it("returns all sections, not just the first one", async () => {
+    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const req = { method: "GET", query: { id: VALID_DOC } };
+    const res = makeRes();
+    const supabase = makeSupabase({
+      selectByTable: {
+        protocol_document: [{
+          id: VALID_DOC, owner_kind: "persona", owner_id: VALID_PERSONA,
+          source_core: "spyer", version: 1, status: "active",
+          parent_template_id: null,
+          created_at: "2026-04-30T12:00:00Z",
+          updated_at: "2026-04-30T12:00:00Z",
+        }],
+        protocol_section: [
+          { id: "sec-alec", document_id: VALID_DOC, order: 0, heading: "Spyer Alec Henry", prose: "Audience…", kind: "custom" },
+          { id: "sec-nina", document_id: VALID_DOC, order: 1, heading: "Spyer Nina Ramen", prose: "Audience…", kind: "custom" },
+          { id: "sec-margo", document_id: VALID_DOC, order: 2, heading: "Spyer Margo", prose: "Audience…", kind: "custom" },
+        ],
+      },
+    });
+    await handler(req, res, baseDeps({ supabase }));
+    assert.equal(res.statusCode, 200);
+    assert.equal(res._body.playbook.sections.length, 3);
+    assert.equal(res._body.playbook.sections[0].heading, "Spyer Alec Henry");
+    assert.equal(res._body.playbook.sections[2].heading, "Spyer Margo");
+    // V2.1 backcompat alias points to first section
+    assert.equal(res._body.playbook.section.id, "sec-alec");
+  });
+
+  it("returns empty sections array when playbook has none", async () => {
+    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const req = { method: "GET", query: { id: VALID_DOC } };
+    const res = makeRes();
+    const supabase = makeSupabase({
+      selectByTable: {
+        protocol_document: [{
+          id: VALID_DOC, owner_kind: "persona", owner_id: VALID_PERSONA,
+          source_core: "visite_profil", status: "active",
+        }],
+        protocol_section: [],
+      },
+    });
+    await handler(req, res, baseDeps({ supabase }));
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res._body.playbook.sections, []);
+    assert.equal(res._body.playbook.section, null);
+  });
+});
+
+describe("V2.2 — PATCH ?id= with section_id targets specific section", () => {
+  it("rejects non-uuid section_id", async () => {
+    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const req = {
+      method: "PATCH",
+      query: { id: VALID_DOC },
+      body: { prose: "abc", section_id: "not-a-uuid" },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps());
+    assert.equal(res.statusCode, 400);
+    assert.match(res._body.error, /section_id must be a uuid/);
+  });
+
+  it("returns 404 when section_id doesn't exist", async () => {
+    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const req = {
+      method: "PATCH",
+      query: { id: VALID_DOC },
+      body: { prose: "abc", section_id: "11111111-aaaa-bbbb-cccc-444444444444" },
+    };
+    const res = makeRes();
+    const supabase = makeSupabase({
+      selectByTable: {
+        protocol_document: [{
+          id: VALID_DOC, owner_kind: "persona", owner_id: VALID_PERSONA,
+          source_core: "spyer", status: "active",
+        }],
+        protocol_section: [], // no sections — lookup by id will miss
+      },
+    });
+    await handler(req, res, baseDeps({ supabase }));
+    assert.equal(res.statusCode, 404);
+    assert.match(res._body.error, /section not found/);
+  });
+
+  it("returns 403 when section belongs to a different document", async () => {
+    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const SECTION_ID = "11111111-aaaa-bbbb-cccc-444444444444";
+    const req = {
+      method: "PATCH",
+      query: { id: VALID_DOC },
+      body: { prose: "abc", section_id: SECTION_ID },
+    };
+    const res = makeRes();
+    const supabase = makeSupabase({
+      selectByTable: {
+        protocol_document: [{
+          id: VALID_DOC, owner_kind: "persona", owner_id: VALID_PERSONA,
+          source_core: "spyer", status: "active",
+        }],
+        protocol_section: [
+          { id: SECTION_ID, document_id: "OTHER-DOC-ID", order: 0, heading: "X", prose: "Y" },
+        ],
+      },
+    });
+    await handler(req, res, baseDeps({ supabase }));
+    assert.equal(res.statusCode, 403);
+    assert.match(res._body.error, /does not belong/);
+  });
+
+  it("targets the specified section_id (not the first one)", async () => {
+    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const SECTION_ID = "11111111-aaaa-bbbb-cccc-555555555555";
+    const req = {
+      method: "PATCH",
+      query: { id: VALID_DOC },
+      body: { prose: "Nouvelle prose Nina", heading: "Nina updated", section_id: SECTION_ID },
+    };
+    const res = makeRes();
+    const supabase = makeSupabase({
+      selectByTable: {
+        protocol_document: [{
+          id: VALID_DOC, owner_kind: "persona", owner_id: VALID_PERSONA,
+          source_core: "spyer", status: "active",
+        }],
+        protocol_section: [
+          { id: "sec-alec", document_id: VALID_DOC, order: 0, heading: "Alec", prose: "Old Alec" },
+          { id: SECTION_ID, document_id: VALID_DOC, order: 1, heading: "Nina old", prose: "Old Nina" },
+        ],
+        protocol_artifact: [],
+      },
+    });
+    await handler(req, res, baseDeps({
+      supabase,
+      routeAndExtract: async () => [],
+    }));
+    assert.equal(res.statusCode, 200);
+    assert.equal(res._body.section_id, SECTION_ID);
+    // Stub records the update by `eq("id", X)` — assert it targeted Nina, not Alec
+    assert.equal(supabase.updates.protocol_section.length, 1);
+    assert.equal(supabase.updates.protocol_section[0].val, SECTION_ID);
+    assert.match(supabase.updates.protocol_section[0].payload.prose, /Nouvelle prose Nina/);
+    assert.equal(supabase.updates.protocol_section[0].payload.heading, "Nina updated");
+  });
+});
+
+describe("V2.2 — POST playbook_id appends a new section", () => {
+  it("rejects when both playbook_id and persona_id are provided", async () => {
+    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const req = {
+      method: "POST",
+      body: {
+        playbook_id: VALID_DOC,
+        persona_id: VALID_PERSONA,
+        source_core: "spyer",
+        prose: "abc",
+      },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps());
+    assert.equal(res.statusCode, 400);
+    assert.match(res._body.error, /EITHER playbook_id .* OR persona_id/);
+  });
+
+  it("rejects missing prose", async () => {
+    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const req = { method: "POST", body: { playbook_id: VALID_DOC, prose: "  " } };
+    const res = makeRes();
+    await handler(req, res, baseDeps());
+    assert.equal(res.statusCode, 400);
+  });
+
+  it("returns 404 when playbook doesn't exist", async () => {
+    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const req = { method: "POST", body: { playbook_id: VALID_DOC, prose: "abc" } };
+    const res = makeRes();
+    await handler(req, res, baseDeps({ supabase: makeSupabase({ selectByTable: { protocol_document: [] } }) }));
+    assert.equal(res.statusCode, 404);
+  });
+
+  it("appends a new section with order = max(existing) + 1", async () => {
+    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const req = {
+      method: "POST",
+      body: { playbook_id: VALID_DOC, prose: "Spyer Margo Cunego — engagement audience…" },
+    };
+    const res = makeRes();
+    const supabase = makeSupabase({
+      selectByTable: {
+        protocol_document: [{
+          id: VALID_DOC, owner_kind: "persona", owner_id: VALID_PERSONA,
+          source_core: "spyer", status: "active",
+        }],
+        // 2 existing sections — new one should get order=2
+        protocol_section: [
+          { id: "sec-alec", document_id: VALID_DOC, order: 0, heading: "Alec", prose: "..." },
+          { id: "sec-nina", document_id: VALID_DOC, order: 1, heading: "Nina", prose: "..." },
+        ],
+        protocol_artifact: [],
+      },
+    });
+    await handler(req, res, baseDeps({
+      supabase,
+      routeAndExtract: async () => [
+        { target_kind: "icp_patterns", proposal: { intent: "add_paragraph", proposed_text: "Pattern Margo", confidence: 0.85 } },
+      ],
+    }));
+    assert.equal(res.statusCode, 201);
+    assert.equal(supabase.inserts.protocol_section.length, 1);
+    assert.equal(supabase.inserts.protocol_section[0].order, 2, "new section should get max(order)+1");
+    assert.equal(supabase.inserts.protocol_section[0].document_id, VALID_DOC);
+    assert.equal(res._body.order, 2);
+    assert.equal(res._body.artifacts_created, 1);
+  });
+
+  it("first section (no existing) gets order=0", async () => {
+    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const req = { method: "POST", body: { playbook_id: VALID_DOC, prose: "First section" } };
+    const res = makeRes();
+    const supabase = makeSupabase({
+      selectByTable: {
+        protocol_document: [{
+          id: VALID_DOC, owner_kind: "persona", owner_id: VALID_PERSONA,
+          source_core: "spyer", status: "active",
+        }],
+        protocol_section: [],
+        protocol_artifact: [],
+      },
+    });
+    await handler(req, res, baseDeps({ supabase, routeAndExtract: async () => [] }));
+    assert.equal(res.statusCode, 201);
+    assert.equal(supabase.inserts.protocol_section[0].order, 0);
+  });
+
+  it("dedupes appended-section artifacts against ALL playbook artifacts (not just this section's)", async () => {
+    const { computeArtifactHash } = await import("../lib/protocol-v2-db.js");
+    const sharedText = "JAMAIS plus de 3 touches";
+    const sharedHash = computeArtifactHash(sharedText);
+
+    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const req = { method: "POST", body: { playbook_id: VALID_DOC, prose: "Margo prose" } };
+    const res = makeRes();
+    const supabase = makeSupabase({
+      selectByTable: {
+        protocol_document: [{
+          id: VALID_DOC, owner_kind: "persona", owner_id: VALID_PERSONA,
+          source_core: "spyer", status: "active",
+        }],
+        protocol_section: [
+          { id: "sec-alec", document_id: VALID_DOC, order: 0, heading: "Alec" },
+        ],
+        // Existing artifact with sharedHash on a sibling section — must dedup
+        protocol_artifact: [
+          { source_section_id: "sec-alec", content_hash: sharedHash, protocol_section: { document_id: VALID_DOC } },
+        ],
+      },
+    });
+    await handler(req, res, baseDeps({
+      supabase,
+      routeAndExtract: async () => [
+        // Same text as existing → dedup'd
+        { target_kind: "hard_rules", proposal: { intent: "add_rule", proposed_text: sharedText, confidence: 0.95 } },
+        // New text → kept
+        { target_kind: "icp_patterns", proposal: { intent: "add_paragraph", proposed_text: "Margo-only insight", confidence: 0.9 } },
+      ],
+    }));
+    assert.equal(res.statusCode, 201);
+    assert.equal(res._body.artifacts_created, 1, "1 truly new (the dedup'd one was skipped)");
+    assert.equal(res._body.artifacts_dedup_skipped, 1);
+    assert.equal(supabase.inserts.protocol_artifact.length, 1);
+  });
+
+  it("returns 422 when target playbook is archived", async () => {
+    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const req = { method: "POST", body: { playbook_id: VALID_DOC, prose: "abc" } };
+    const res = makeRes();
+    const supabase = makeSupabase({
+      selectByTable: {
+        protocol_document: [{
+          id: VALID_DOC, owner_kind: "persona", owner_id: VALID_PERSONA,
+          source_core: "spyer", status: "archived",
+        }],
+      },
+    });
+    await handler(req, res, baseDeps({ supabase }));
+    assert.equal(res.statusCode, 409);
+  });
+});

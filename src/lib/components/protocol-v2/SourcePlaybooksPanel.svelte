@@ -16,20 +16,28 @@
   let listError = $state(null);
 
   let formOpen = $state(false);
-  /** @type {'create' | 'edit'} */
+  /** @type {'create' | 'edit-section' | 'add-section'} */
   let formMode = $state("create");
-  /** @type {string | null} — id of the playbook being edited */
+  /** @type {string | null} — id of the playbook being edited / appended to */
   let formDocId = $state(null);
+  /** @type {string | null} — id of the section being edited (when formMode='edit-section') */
+  let formSectionId = $state(null);
   let formSourceCore = $state("");
   let formHeading = $state("");
   let formProse = $state("");
   let formSubmitting = $state(false);
   let formError = $state(null);
-  let formResult = $state(/** @type {null | { document_id, artifacts_created, candidates_total, low_confidence_dropped, artifacts_dedup_skipped?, extraction_error?, extraction_skipped? }} */ (null));
+  let formResult = $state(/** @type {null | { document_id, section_id?, order?, artifacts_created, candidates_total, low_confidence_dropped, artifacts_dedup_skipped?, extraction_error?, extraction_skipped? }} */ (null));
 
-  // Per-row archive state — tracks which row is currently being archived so
-  // we can disable just that row's button instead of locking the whole panel.
+  // Per-row archive state.
   let archivingId = $state(/** @type {string | null} */ (null));
+
+  // V2.2 — accordion expansion. Only one row expanded at a time. When
+  // expanded, sections list is loaded via GET ?id= and cached.
+  let expandedId = $state(/** @type {string | null} */ (null));
+  /** @type {Record<string, Array<{ id, heading, prose, order, kind, updated_at }>>} */
+  let sectionsByDoc = $state({});
+  let sectionsLoadingId = $state(/** @type {string | null} */ (null));
 
   $effect(() => {
     if (!personaId) return;
@@ -61,6 +69,7 @@
     formOpen = true;
     formMode = "create";
     formDocId = null;
+    formSectionId = null;
     formSourceCore = "";
     formHeading = "";
     formProse = "";
@@ -68,34 +77,55 @@
     formResult = null;
   }
 
-  async function openEditForm(playbookId) {
+  async function openEditSectionForm(playbookId, sectionId) {
     formOpen = true;
-    formMode = "edit";
+    formMode = "edit-section";
     formDocId = playbookId;
+    formSectionId = sectionId;
     formSourceCore = "";
     formHeading = "";
     formProse = "";
     formError = null;
     formResult = null;
     formSubmitting = true;
-    // Fetch detail to pre-fill prose + heading.
+    // Pre-fill from cached sections if loaded ; otherwise fetch.
     try {
-      const resp = await fetch(`/api/v2/protocol/source-playbooks?id=${playbookId}`, {
-        headers: authHeaders(),
-      });
-      const body = await resp.json().catch(() => ({}));
-      if (!resp.ok || !body.playbook) {
-        formError = body.error || `HTTP ${resp.status}`;
-        return;
+      let sec = (sectionsByDoc[playbookId] || []).find((s) => s.id === sectionId);
+      let pb = playbooks.find((p) => p.id === playbookId);
+      if (!sec) {
+        const resp = await fetch(`/api/v2/protocol/source-playbooks?id=${playbookId}`, {
+          headers: authHeaders(),
+        });
+        const body = await resp.json().catch(() => ({}));
+        if (!resp.ok || !body.playbook) {
+          formError = body.error || `HTTP ${resp.status}`;
+          return;
+        }
+        sectionsByDoc = { ...sectionsByDoc, [playbookId]: body.playbook.sections || [] };
+        sec = (sectionsByDoc[playbookId] || []).find((s) => s.id === sectionId);
+        pb = pb || { source_core: body.playbook.source_core };
       }
-      formSourceCore = body.playbook.source_core;
-      formHeading = body.playbook.section?.heading || "";
-      formProse = body.playbook.section?.prose || "";
+      formSourceCore = pb?.source_core || "";
+      formHeading = sec?.heading || "";
+      formProse = sec?.prose || "";
     } catch (e) {
       formError = e?.message || String(e);
     } finally {
       formSubmitting = false;
     }
+  }
+
+  function openAddSectionForm(playbookId) {
+    const pb = playbooks.find((p) => p.id === playbookId);
+    formOpen = true;
+    formMode = "add-section";
+    formDocId = playbookId;
+    formSectionId = null;
+    formSourceCore = pb?.source_core || "";
+    formHeading = "";
+    formProse = "";
+    formError = null;
+    formResult = null;
   }
 
   function closeForm() {
@@ -112,17 +142,28 @@
       return;
     }
     if (!formProse.trim()) {
-      formError = "Colle le contenu du playbook (texte, markdown, doc Notion exporté…).";
+      formError = "Colle le contenu (texte, markdown, doc Notion exporté…).";
       return;
     }
     formSubmitting = true;
     try {
       let resp;
-      if (formMode === "edit" && formDocId) {
+      if (formMode === "edit-section" && formDocId) {
         resp = await fetch(`/api/v2/protocol/source-playbooks?id=${formDocId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json", ...authHeaders() },
           body: JSON.stringify({
+            section_id: formSectionId || undefined,
+            heading: formHeading || undefined,
+            prose: formProse,
+          }),
+        });
+      } else if (formMode === "add-section" && formDocId) {
+        resp = await fetch("/api/v2/protocol/source-playbooks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({
+            playbook_id: formDocId,
             heading: formHeading || undefined,
             prose: formProse,
           }),
@@ -149,10 +190,43 @@
       }
       formResult = body;
       await loadPlaybooks();
+      // If edit/add hit a doc currently expanded, refresh its sections.
+      if ((formMode === "edit-section" || formMode === "add-section") && formDocId) {
+        await loadSections(formDocId, /* force */ true);
+      }
     } catch (e) {
       formError = e?.message || String(e);
     } finally {
       formSubmitting = false;
+    }
+  }
+
+  async function toggleExpand(playbookId) {
+    if (expandedId === playbookId) {
+      expandedId = null;
+      return;
+    }
+    expandedId = playbookId;
+    if (!sectionsByDoc[playbookId]) {
+      await loadSections(playbookId, false);
+    }
+  }
+
+  async function loadSections(playbookId, force) {
+    if (!force && sectionsByDoc[playbookId]) return;
+    sectionsLoadingId = playbookId;
+    try {
+      const resp = await fetch(`/api/v2/protocol/source-playbooks?id=${playbookId}`, {
+        headers: authHeaders(),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (resp.ok && body.playbook) {
+        sectionsByDoc = { ...sectionsByDoc, [playbookId]: body.playbook.sections || [] };
+      }
+    } catch {
+      // best-effort — leave the row collapsed without sections
+    } finally {
+      sectionsLoadingId = null;
     }
   }
 
@@ -213,14 +287,17 @@
   {/if}
 
   {#if formOpen}
-    <section class="form" aria-label={formMode === "edit" ? "Édition playbook" : "Nouveau playbook"}>
-      <h3 class="form-h">
-        {formMode === "edit" ? `Éditer le playbook ${sourceLabel(formSourceCore)}` : "Nouveau playbook"}
-      </h3>
+    {@const formTitle = formMode === "edit-section"
+      ? `Éditer une section — ${sourceLabel(formSourceCore)}`
+      : formMode === "add-section"
+        ? `Ajouter une section — ${sourceLabel(formSourceCore)}`
+        : "Nouveau playbook"}
+    <section class="form" aria-label={formTitle}>
+      <h3 class="form-h">{formTitle}</h3>
 
       <label class="field">
         <span class="field-label">Source</span>
-        <select bind:value={formSourceCore} disabled={formSubmitting || formMode === "edit"}>
+        <select bind:value={formSourceCore} disabled={formSubmitting || formMode !== "create"}>
           <option value="" disabled>— choisis une source —</option>
           {#each SOURCE_CORES as sc (sc.id)}
             <option value={sc.id}>{sc.label}</option>
@@ -229,7 +306,8 @@
         {#if formSourceCore}
           <span class="field-hint">
             {sourceHint(formSourceCore)}
-            {#if formMode === "edit"} · La source ne peut pas être changée — archive et recrée.{/if}
+            {#if formMode === "edit-section"} · La source du playbook ne peut pas changer — archive et recrée.{/if}
+            {#if formMode === "add-section"} · Nouvelle section dans le playbook existant.{/if}
           </span>
         {/if}
       </label>
@@ -262,7 +340,11 @@
 
       {#if formResult}
         <div class="form-ok">
-          <strong>{formMode === "edit" ? "Playbook mis à jour." : "Playbook créé."}</strong>
+          <strong>
+            {#if formMode === "edit-section"}Section mise à jour.
+            {:else if formMode === "add-section"}Section ajoutée au playbook.
+            {:else}Playbook créé.{/if}
+          </strong>
           {formResult.candidates_total} candidats extraits,
           <strong>{formResult.artifacts_created}</strong> nouveaux artifacts persistés (confiance ≥ 0.75),
           {#if formResult.artifacts_dedup_skipped !== undefined}
@@ -270,10 +352,10 @@
           {/if}
           {formResult.low_confidence_dropped} ignorés (confiance &lt; 0.75).
           {#if formResult.extraction_error}
-            <br><span class="warn">⚠ Erreur extraction : {formResult.extraction_error} — le doc + le texte ont été sauvegardés. Tu peux ré-éditer plus tard.</span>
+            <br><span class="warn">⚠ Erreur extraction : {formResult.extraction_error} — le texte a été sauvegardé. Tu peux ré-éditer plus tard.</span>
           {/if}
           {#if formResult.extraction_skipped}
-            <br><span class="warn">Extraction désactivée (kill-switch). Doc + section sauvegardés sans artifacts.</span>
+            <br><span class="warn">Extraction désactivée (kill-switch). Texte sauvegardé sans artifacts.</span>
           {/if}
         </div>
       {/if}
@@ -285,9 +367,13 @@
         {#if !formResult}
           <button type="button" class="btn-primary" onclick={submitForm} disabled={formSubmitting}>
             {#if formSubmitting}
-              {formMode === "edit" ? "Mise à jour…" : "Création + extraction…"}
+              {#if formMode === "edit-section"}Mise à jour…
+              {:else if formMode === "add-section"}Ajout + extraction…
+              {:else}Création + extraction…{/if}
             {:else}
-              {formMode === "edit" ? "Mettre à jour le playbook" : "Créer le playbook"}
+              {#if formMode === "edit-section"}Mettre à jour la section
+              {:else if formMode === "add-section"}Ajouter la section
+              {:else}Créer le playbook{/if}
             {/if}
           </button>
         {/if}
@@ -307,35 +393,80 @@
     {:else}
       <ul class="rows">
         {#each playbooks as pb (pb.id)}
-          <li class="row">
-            <div class="row-main">
-              <div class="row-label">{sourceLabel(pb.source_core)}</div>
-              <div class="row-hint">{sourceHint(pb.source_core)}</div>
-            </div>
-            <div class="row-meta">
-              <span class="meta">v{pb.version}</span>
-              <span class="meta">{pb.artifacts_count} artifacts</span>
-              {#if pb.pending_propositions_count > 0}
-                <span class="meta meta-warn">{pb.pending_propositions_count} en attente</span>
-              {/if}
-              <span class="meta meta-date">{fmtDate(pb.created_at)}</span>
-            </div>
-            <div class="row-actions">
+          <li class="row-wrap" class:expanded={expandedId === pb.id}>
+            <div class="row">
               <button
                 type="button"
-                class="row-btn"
-                onclick={() => openEditForm(pb.id)}
-                disabled={formOpen || archivingId !== null}
-                title="Modifier le prose et re-extraire les artifacts"
-              >Éditer</button>
-              <button
-                type="button"
-                class="row-btn row-btn-danger"
-                onclick={() => archivePlaybook(pb)}
-                disabled={archivingId !== null || formOpen}
-                title="Archiver ce playbook (soft delete) pour libérer le slot"
-              >{archivingId === pb.id ? "…" : "Archiver"}</button>
+                class="expand-btn"
+                onclick={() => toggleExpand(pb.id)}
+                aria-expanded={expandedId === pb.id}
+                aria-label={expandedId === pb.id ? "Replier les sections" : "Déplier les sections"}
+              >{expandedId === pb.id ? "▾" : "▸"}</button>
+              <div class="row-main">
+                <div class="row-label">{sourceLabel(pb.source_core)}</div>
+                <div class="row-hint">{sourceHint(pb.source_core)}</div>
+              </div>
+              <div class="row-meta">
+                <span class="meta">v{pb.version}</span>
+                <span class="meta">{pb.sections_count} sect.</span>
+                <span class="meta">{pb.artifacts_count} artifacts</span>
+                {#if pb.pending_propositions_count > 0}
+                  <span class="meta meta-warn">{pb.pending_propositions_count} en attente</span>
+                {/if}
+                <span class="meta meta-date">{fmtDate(pb.created_at)}</span>
+              </div>
+              <div class="row-actions">
+                <button
+                  type="button"
+                  class="row-btn row-btn-danger"
+                  onclick={() => archivePlaybook(pb)}
+                  disabled={archivingId !== null || formOpen}
+                  title="Archiver ce playbook (soft delete) pour libérer le slot"
+                >{archivingId === pb.id ? "…" : "Archiver"}</button>
+              </div>
             </div>
+
+            {#if expandedId === pb.id}
+              <div class="sections" aria-label="Sections du playbook">
+                {#if sectionsLoadingId === pb.id && !sectionsByDoc[pb.id]}
+                  <div class="loading">Chargement des sections…</div>
+                {:else if (sectionsByDoc[pb.id] || []).length === 0}
+                  <div class="empty">Aucune section.</div>
+                {:else}
+                  <ul class="section-list">
+                    {#each sectionsByDoc[pb.id] as sec (sec.id)}
+                      <li class="section-row">
+                        <div class="section-main">
+                          <div class="section-heading">{sec.heading || "(sans titre)"}</div>
+                          <div class="section-prose-preview">
+                            {sec.prose ? sec.prose.slice(0, 140) + (sec.prose.length > 140 ? "…" : "") : "(vide)"}
+                          </div>
+                        </div>
+                        <div class="section-meta">
+                          <span class="meta">#{sec.order}</span>
+                        </div>
+                        <div class="section-actions">
+                          <button
+                            type="button"
+                            class="row-btn"
+                            onclick={() => openEditSectionForm(pb.id, sec.id)}
+                            disabled={formOpen}
+                            title="Éditer cette section + re-extraire ses artifacts"
+                          >Éditer</button>
+                        </div>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+                <button
+                  type="button"
+                  class="cta cta-section"
+                  onclick={() => openAddSectionForm(pb.id)}
+                  disabled={formOpen}
+                  title="Ajouter une section au playbook (typique pour spyer multi-instances)"
+                >+ Ajouter une section</button>
+              </div>
+            {/if}
           </li>
         {/each}
       </ul>
@@ -571,5 +702,73 @@
     background: color-mix(in srgb, var(--vermillon) 8%, var(--paper));
     border-color: var(--vermillon);
     color: var(--vermillon);
+  }
+
+  /* V2.2 — expandable rows + sections list */
+  .row-wrap {
+    border-bottom: 1px dashed var(--rule);
+  }
+  .row-wrap .row {
+    border-bottom: none;
+  }
+  .expand-btn {
+    background: transparent;
+    border: 0;
+    color: var(--ink-40);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: var(--fs-small);
+    padding: 4px 6px;
+    flex-shrink: 0;
+  }
+  .expand-btn:hover {
+    color: var(--ink);
+  }
+  .sections {
+    padding: 4px 8px 12px 32px;
+    background: color-mix(in srgb, var(--paper-subtle) 50%, transparent);
+  }
+  .section-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .section-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 8px 4px;
+    border-bottom: 1px dotted var(--rule);
+  }
+  .section-row:last-child {
+    border-bottom: none;
+  }
+  .section-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .section-heading {
+    font-weight: var(--fw-medium);
+    font-size: var(--fs-small);
+    margin-bottom: 2px;
+  }
+  .section-prose-preview {
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+    color: var(--ink-40);
+    line-height: var(--lh-snug);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .section-meta {
+    flex-shrink: 0;
+  }
+  .section-actions {
+    flex-shrink: 0;
+  }
+  .cta-section {
+    margin-top: 8px;
+    align-self: flex-start;
+    font-size: var(--fs-tiny);
   }
 </style>
