@@ -112,10 +112,17 @@
       personaName = data.profile.name || "";
       personaTitle = data.profile.headline || "";
       profileText = data.profile.text || "";
+      const POSTS_CAP = 15;
+      let truncatedNote = "";
       if (data.posts.length > 0) {
-        postsText = data.posts.slice(0, 15).join("\n---\n");
+        postsText = data.posts.slice(0, POSTS_CAP).join("\n---\n");
+        if (data.posts.length > POSTS_CAP) {
+          const dropped = data.posts.length - POSTS_CAP;
+          truncatedNote = ` — ${POSTS_CAP} retenus, ${dropped} ignorés (vous pouvez en coller plus à la main)`;
+          console.warn(`[scrape] truncated posts: kept ${POSTS_CAP}, dropped ${dropped} of ${data.posts.length}`);
+        }
       }
-      scrapeStatus = `${data.profile.name} : profil et ${data.postCount} posts récupérés`;
+      scrapeStatus = `${data.profile.name} : profil et ${data.postCount} posts récupérés${truncatedNote}`;
       scrapeSuccess = true;
     } catch (err) {
       if (err.status === 501) {
