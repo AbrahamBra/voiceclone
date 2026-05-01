@@ -11,10 +11,11 @@
   function pickPersona(personas) {
     if (!Array.isArray(personas) || personas.length === 0) return null;
     try {
-      const lastId = localStorage.getItem("vc_last_persona");
+      const lastId = localStorage.getItem("setclone_last_persona") || localStorage.getItem("vc_last_persona");
       if (lastId) {
         const match = personas.find((p) => p.id === lastId);
         if (match) return match;
+        localStorage.removeItem("setclone_last_persona");
         localStorage.removeItem("vc_last_persona");
       }
     } catch {}

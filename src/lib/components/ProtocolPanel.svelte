@@ -64,11 +64,6 @@
     }, 50);
   }
 
-  function selectArtifact(_artifactId) {
-    // Future hook for Chunk 4 — pour l'instant on ne fait rien (le clic
-    // sur une row du Registre ne devrait pas ouvrir un panel détail
-    // tant que celui-ci n'existe pas).
-  }
 </script>
 
 {#if !useNewProtocolUi}
@@ -123,7 +118,6 @@
         <ProtocolRegistry
           sections={docMeta.sections}
           onJumpToSection={jumpToSection}
-          onSelectArtifact={selectArtifact}
         />
       {:else if activeView === "propositions"}
         {#if docMeta.id}

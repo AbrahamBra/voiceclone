@@ -21,10 +21,9 @@
    * @type {{
    *   sections: Array<object>,
    *   onJumpToSection?: (sectionId:string) => void,
-   *   onSelectArtifact?: (artifactId:string) => void,
    * }}
    */
-  let { sections = [], onJumpToSection, onSelectArtifact } = $props();
+  let { sections = [], onJumpToSection } = $props();
 
   let kindFilter = $state(/** @type {string[]} */ ([]));
   let sevFilter = $state(/** @type {string[]} */ ([]));
@@ -180,7 +179,7 @@
             class="pr-row"
             class:hard={row.severity === "hard"}
             class:strong={row.severity === "strong"}
-            onclick={() => onSelectArtifact?.(row.artifact_id)}
+            onclick={() => onJumpToSection?.(row.section_id)}
           >
             <td class="td-sev">{severityIcon(row.severity)}</td>
             <td class="td-kind">{row.kind}</td>

@@ -38,12 +38,21 @@ function emitImplicitAccept(supabase, messageId, conversationId, personaId) {
         conversation_id: conversationId,
         intensity: "implicit",
       };
-      const { data: leData } = await supabase
+      const { data: leData, error: leErr } = await supabase
         .from("learning_events")
         .insert({ persona_id: personaId, event_type: "positive_reinforcement", payload: lePayload })
         .select("id").single();
+      if (leErr) {
+        console.log(JSON.stringify({
+          event: "implicit_accept_error",
+          ts: new Date().toISOString(),
+          stage: "learning_events_insert",
+          message_id: messageId,
+          error: leErr.message, code: leErr.code, details: leErr.details,
+        }));
+      }
 
-      await supabase.from("feedback_events").insert({
+      const { error: feErr } = await supabase.from("feedback_events").insert({
         conversation_id: conversationId,
         message_id: messageId,
         persona_id: personaId,
@@ -51,12 +60,22 @@ function emitImplicitAccept(supabase, messageId, conversationId, personaId) {
         rules_fired: [],
         learning_event_id: leData?.id || null,
       });
+      if (feErr) {
+        console.log(JSON.stringify({
+          event: "implicit_accept_error",
+          ts: new Date().toISOString(),
+          stage: "feedback_events_insert",
+          message_id: messageId,
+          error: feErr.message, code: feErr.code, details: feErr.details,
+        }));
+      }
 
       await resolveFirings({ supabase, messageId, outcome: "helpful" });
     } catch (err) {
       console.log(JSON.stringify({
         event: "implicit_accept_error",
         ts: new Date().toISOString(),
+        stage: "exception",
         message_id: messageId,
         error: err?.message || "Unknown",
       }));

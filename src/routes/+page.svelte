@@ -14,10 +14,11 @@
   function pickPersona(personas) {
     if (!Array.isArray(personas) || personas.length === 0) return null;
     try {
-      const lastId = localStorage.getItem("vc_last_persona");
+      const lastId = localStorage.getItem("setclone_last_persona") || localStorage.getItem("vc_last_persona");
       if (lastId) {
         const match = personas.find((p) => p.id === lastId);
         if (match) return match;
+        localStorage.removeItem("setclone_last_persona");
         localStorage.removeItem("vc_last_persona");
       }
     } catch {}
@@ -56,7 +57,7 @@
     {
       tag: "01 · FORMATION",
       title: "Trop de docs pour former un setter",
-      promise: "Le clone EST la doc. Setter productif en 3 jours."
+      promise: "Le clone retient ce qui est dans la doc. Plus de manuel à lire avant de drafter."
     },
     {
       tag: "02 · COPIER-COLLER",
@@ -66,12 +67,12 @@
     {
       tag: "03 · MANAGEMENT",
       title: "Vous relisez tout, vous recadrez tout",
-      promise: "Vous pilotez 30 min/jour. Le système propose, vous arbitrez."
+      promise: "Vous arbitrez les propositions du système. Le copier-coller, c'est plus votre problème."
     },
     {
       tag: "04 · DRIFT",
       title: "Vos setters sortent des règles sans que vous le voyiez",
-      promise: "Règles client + agence opposables, traçables, dans le marbre."
+      promise: "Règles client et agence écrites une fois, vérifiables, qui ne bougent qu'avec votre accord."
     }
   ];
 
@@ -86,22 +87,22 @@
     },
     {
       q: "Que se passe-t-il si un clone dérape sur un client ?",
-      a: "Trois garde-fous bloquent en amont : score shadow sur chaque draft, alerte soft sur dérive douce, blocage hard si une règle agence est violée. Aucun message ne sort sans avoir passé les 3 filtres."
+      a: "Trois lectures avant chaque envoi : score shadow sur chaque draft, alerte soft sur dérive douce, blocage hard si une règle agence est violée. Aucun message ne sort sans avoir passé les 3 filtres."
     },
     {
-      q: "ROI à combien de semaines ?",
-      a: "Onboarding clone en 3 à 5 jours. Premiers gains de productivité visibles à 2 semaines (corrections capturées, plus jamais à réexpliquer). ROI complet sur le temps de management entre 4 et 8 semaines selon la taille de l'équipe."
+      q: "À partir de quand on voit l'effet ?",
+      a: "Dès les premières corrections. Chaque règle ajoutée par un setter s'applique au draft suivant — c'est l'effet immédiat. Pour le ROI sur le temps de management, on publiera les chiffres quand la cohorte bêta sera assez large pour être représentative."
     },
     {
       q: "Confidentialité des conversations client ?",
-      a: "Les données restent par client, isolées dans une base européenne. Les corrections de votre agence ne fuitent jamais vers les clones d'autres agences. RGPD compliant."
+      a: "Les données sont stockées sur Supabase (région EU) et hébergées sur Vercel (région EU). Les corrections de votre agence restent isolées : elles ne fuitent jamais vers les clones d'autres agences."
     }
   ];
 </script>
 
 <svelte:head>
-  <title>Setclone — capitalisez le travail de vos setters dans des clones qui apprennent</title>
-  <meta name="description" content="Setclone enregistre les corrections de vos setters dans des clones qui se calent sur la voix du client et vos playbooks. Pour les agences (ghostwriting, branding, growth) qui font aussi du setting LinkedIn." />
+  <title>Setclone — un protocole vivant par clone, pour les agences multi-clients</title>
+  <meta name="description" content="Un protocole vivant par clone : voix du client, playbooks de votre agence, arbitrages de vos setters. Versionné, vérifiable. Pour les agences ghostwriting, branding, growth qui pilotent une cellule setting LinkedIn sur plusieurs clients." />
 </svelte:head>
 
 <a href="#hero" class="skip-link">Aller au contenu</a>
@@ -120,46 +121,69 @@
     </nav>
   </header>
 
-  <!-- ═══════ HERO ═══════ -->
+  <!-- ═══════ HERO — protocole-first ═══════ -->
   <section class="hero" id="hero">
     <div class="overline mono">
-      ◇ pour les agences ghostwriting · branding · growth — quand vous faites aussi du setting LinkedIn
+      ◇ ghostwriting · branding · growth — quand vos setters tournent sur plusieurs clients en parallèle
     </div>
 
     <h1 class="headline">
-      Vos setters ont l'envie.<br />
-      Ils ont l'ambition.
+      Un protocole par clone.<br />
+      Il s'épaissit à chaque correction.<br />
+      Le prochain DM le respecte.
     </h1>
 
-    <p class="lede">
-      Mais leur journée se perd dans :
-    </p>
-    <ul class="lede-list">
-      <li>la doc qui s'empile</li>
-      <li>le copier-coller qui se répète</li>
-      <li>les incohérences qui passent en prod</li>
-    </ul>
-
     <p class="sub">
-      <strong>Setclone</strong> enregistre leurs corrections dans le clone du client.
-      Plus ils corrigent, plus le clone se cale sur sa voix et sur vos playbooks.
+      <strong>Voix du client</strong>, <strong>playbooks de votre agence</strong>, <strong>arbitrages de vos setters</strong> : tout converge dans un protocole versionné. Chaque correction l'enrichit, le draft suivant la respecte. Plus dans la tête d'un setter qui peut partir.
     </p>
 
     <div class="hero-cta">
       <a class="btn-primary" href={FOUNDER_CTA}>📅 30 min avec le founder</a>
-      <a class="btn-ghost" href="#demo">▶ voir une journée type</a>
+      <a class="btn-ghost" href="#demo">▶ voir une boucle d'apprentissage</a>
     </div>
 
     <div class="trust-band">
-      <span class="trust-label mono">— premiers utilisateurs · NDA —</span>
-      <div class="trust-logos" aria-hidden="true">
-        <span class="logo-blank"></span>
-        <span class="logo-blank"></span>
-        <span class="logo-blank"></span>
-        <span class="logo-blank"></span>
-        <span class="logo-blank"></span>
+      <span class="trust-label mono">— bêta privée · agences partenaires sous NDA · logos affichés à la sortie de bêta —</span>
+    </div>
+  </section>
+
+  <!-- ═══════ 3 COUCHES — promu position #2 ═══════ -->
+  <section class="asset" id="ontology" aria-labelledby="asset-title">
+    <div class="section-kicker mono">◇ ce qu'il y a dedans</div>
+    <h2 class="section-title" id="asset-title">
+      Trois couches. Une seule voix par client.
+    </h2>
+
+    <div class="asset-layers">
+      <div class="layer">
+        <span class="layer-num mono">1</span>
+        <div class="layer-body">
+          <h3 class="layer-title">La voix du <span class="layer-actor">CLIENT</span></h3>
+          <p>Captée à l'onboarding (90 min). Règles, ouvertures, cadence, signature, ton. N'évolue qu'avec son accord. C'est son bien, pas le vôtre.</p>
+        </div>
+      </div>
+
+      <div class="layer layer-strong">
+        <span class="layer-num mono">2</span>
+        <div class="layer-body">
+          <h3 class="layer-title">Les playbooks de l'<span class="layer-actor">AGENCE</span></h3>
+          <p>Par <strong>type d'action outbound</strong> : DM, ajout de contact, interaction de contenu, listes outbound, spy, visite de profil. Construits par <strong>vous</strong>, à <strong>vous</strong>. Le savoir-faire que vous accumulez reste à l'agence, pas chez le client.</p>
+        </div>
+      </div>
+
+      <div class="layer">
+        <span class="layer-num mono">3</span>
+        <div class="layer-body">
+          <h3 class="layer-title">Les arbitrages du <span class="layer-actor">SETTER</span></h3>
+          <p>Chaque correction quotidienne durcit le protocole. Plus jamais de « j'ai déjà dit ça la semaine dernière ». Le savoir-faire de votre meilleur setter devient celui de toute l'équipe.</p>
+        </div>
       </div>
     </div>
+
+    <p class="asset-punch">
+      → Ce que vos setters apprennent reste chez <strong>vous</strong>.
+      <br />Pas chez le client, pas dans la tête d'un setter qui peut partir.
+    </p>
   </section>
 
   <!-- ═══════ 4 PAINS ═══════ -->
@@ -180,15 +204,14 @@
     </div>
   </section>
 
-  <!-- ═══════ DÉMO ═══════ -->
+  <!-- ═══════ DÉMO — boucle d'apprentissage avec diff de protocole ═══════ -->
   <section class="demo" id="demo" aria-labelledby="demo-title">
-    <div class="section-kicker mono">◇ une journée de setter</div>
+    <div class="section-kicker mono">◇ une boucle d'apprentissage, en 3 temps</div>
     <h2 class="section-title" id="demo-title">
-      Regardez ce qui se passe quand un setter corrige un message.
+      Une correction de setter. Une règle dans le protocole. Un draft suivant qui s'aligne.
     </h2>
     <p class="demo-lede">
-      Le setter corrige un message. Le clone lui demande la raison.
-      La règle entre dans le protocole, et le prochain DM la suit.
+      Le setter corrige un draft. Le clone demande pourquoi. La règle entre dans le protocole, datée et portée. Le prochain DM la respecte sans qu'on la rappelle.
     </p>
 
     <div class="demo-flow">
@@ -208,12 +231,23 @@
       <div class="flow-step">
         <span class="flow-num mono">02</span>
         <div class="flow-card">
-          <div class="flow-frame-bar mono"><span>◎</span><span>protocole · règle apprise</span></div>
+          <div class="flow-frame-bar mono"><span>◎</span><span>protocole · diff</span></div>
           <div class="flow-frame-body">
-            <div class="flow-rule">
-              <span class="flow-rule-tag mono">+ règle</span>
-              <p class="flow-rule-body">Pas de « n'hésitez pas ». Pas de « je voulais juste ». En relance, on propose 2 hypothèses précises au prospect.</p>
-              <span class="flow-rule-meta mono">portée : tous les setters de cette agence · à partir de maintenant</span>
+            <div class="flow-diff">
+              <span class="flow-diff-meta mono">ce qui change</span>
+              <div class="flow-diff-row removed">
+                <span class="marker">−</span>
+                <span>« N'hésitez pas » : toléré en relance.</span>
+              </div>
+              <div class="flow-diff-row added">
+                <span class="marker">+</span>
+                <span><strong>« N'hésitez pas »</strong> : interdit en relance.</span>
+              </div>
+              <div class="flow-diff-row added">
+                <span class="marker">+</span>
+                <span>Pattern relance : 2 hypothèses précises au prospect.</span>
+              </div>
+              <span class="flow-diff-meta mono">portée : agence · à partir de maintenant</span>
             </div>
           </div>
         </div>
@@ -237,71 +271,35 @@
     </p>
   </section>
 
-  <!-- ═══════ 3 GARDE-FOUS ═══════ -->
+  <!-- ═══════ 3 LECTURES (recadré : pas trois censures, trois angles) ═══════ -->
   <section class="guards" aria-labelledby="guards-title">
-    <div class="section-kicker mono">◇ filets de sécurité</div>
+    <div class="section-kicker mono">◇ trois lectures, en parallèle</div>
     <h2 class="section-title" id="guards-title">
-      3 garde-fous avant chaque message qui sort.
+      Avant chaque envoi, le système relit trois fois.
     </h2>
+    <p class="guards-lede">
+      Trois angles, pas trois censures : score, voix, règle. Le setter décide. Le système l'a déjà relu.
+    </p>
 
     <div class="guards-grid">
       <article class="guard-card">
         <div class="guard-tag mono">SHADOW</div>
-        <h3 class="guard-title">Score chaque draft, sans bloquer</h3>
-        <p class="guard-body">Chaque draft est noté en arrière-plan. Aucun blocage, juste une trace que le système relit ensuite pour ajuster.</p>
+        <h3 class="guard-title">Score, sans bloquer.</h3>
+        <p class="guard-body">Chaque draft est noté en arrière-plan. Aucun blocage : juste une trace que le système relit ensuite pour ajuster les drafts suivants.</p>
       </article>
 
       <article class="guard-card">
         <div class="guard-tag mono">🔓 SOFT</div>
-        <h3 class="guard-title">Alerte si dérive douce</h3>
+        <h3 class="guard-title">Alerte, si la voix dérive.</h3>
         <p class="guard-body">Quand un draft commence à s'écarter de la voix du client (cliché IA, tournure générique), le setter voit l'alerte et choisit : ignorer, réécrire, ou ajouter une règle.</p>
       </article>
 
       <article class="guard-card">
         <div class="guard-tag mono">🔒 HARD</div>
-        <h3 class="guard-title">Bloque et rewrite si règle agence violée</h3>
-        <p class="guard-body">Si une règle agence est violée (mot interdit, tournure bannie, signature mal placée), le système bloque l'envoi et propose une réécriture. La règle est opposable.</p>
+        <h3 class="guard-title">Bloque et propose un rewrite, si une règle agence est violée.</h3>
+        <p class="guard-body">Mot interdit, tournure bannie, signature mal placée : le système bloque l'envoi et propose une réécriture. La règle est tracée et vérifiable.</p>
       </article>
     </div>
-  </section>
-
-  <!-- ═══════ VOTRE SAVOIR-FAIRE DEVIENT UN ASSET ═══════ -->
-  <section class="asset" aria-labelledby="asset-title">
-    <div class="section-kicker mono">◇ comment ça scale</div>
-    <h2 class="section-title" id="asset-title">
-      Votre savoir-faire reste à l'agence.
-    </h2>
-
-    <div class="asset-layers">
-      <div class="layer">
-        <span class="layer-num mono">1</span>
-        <div class="layer-body">
-          <h3 class="layer-title">La voix du <span class="layer-actor">CLIENT</span></h3>
-          <p>Captée à l'onboarding (90 min). Règles, ouvertures, cadence, signature, ton. N'évolue qu'avec son accord. Reste son bien — pas le vôtre, pas le nôtre.</p>
-        </div>
-      </div>
-
-      <div class="layer layer-strong">
-        <span class="layer-num mono">2</span>
-        <div class="layer-body">
-          <h3 class="layer-title">Les playbooks de l'<span class="layer-actor">AGENCE</span></h3>
-          <p>Par <strong>type d'action outbound</strong> : DM, ajout de contact, interaction de contenu, listes outbound, spy, visite de profil. Construits par <strong>vous</strong>, à <strong>vous</strong>. La sophistication accumulée chez l'agence, pas chez le client.</p>
-        </div>
-      </div>
-
-      <div class="layer">
-        <span class="layer-num mono">3</span>
-        <div class="layer-body">
-          <h3 class="layer-title">La discipline du <span class="layer-actor">SETTER</span></h3>
-          <p>Chaque correction quotidienne durcit le clone. Plus jamais de « j'ai déjà dit ça la semaine dernière ». Le savoir-faire de votre meilleur setter devient celui de tous les autres.</p>
-        </div>
-      </div>
-    </div>
-
-    <p class="asset-punch">
-      → Ce que vos setters apprennent reste chez <strong>vous</strong>.
-      <br />Pas chez le client, pas dans la tête d'un setter qui peut partir.
-    </p>
   </section>
 
   <!-- ═══════ MÉTRIQUES (placeholder honnête) ═══════ -->
@@ -322,12 +320,12 @@
 
   <!-- ═══════ TESTIMONIAL ═══════ -->
   <section class="testimonial" aria-labelledby="testimonial-title">
-    <div class="section-kicker mono">◇ retour terrain</div>
+    <div class="section-kicker mono">◇ ce qu'on entend en discovery</div>
     <blockquote class="testimonial-quote">
-      <p>« Avant, je relisais tout. Six setters, six voix, je passais mes journées à recadrer. Maintenant je pilote au lieu de corriger. Mes setters apprennent plus vite, mes clients ne sentent plus la différence entre eux. »</p>
+      <p>« Avant : recadrer plusieurs versions de la même relance, semaine après semaine. La cadence J+3/J+7, les ouvertures, les signatures. Aujourd'hui chaque clone a son protocole. La règle est posée une fois, le draft suivant l'applique. Mes setters tapent dedans. Mes clients ne sentent plus la différence entre eux. »</p>
       <footer>
-        <span class="testimonial-who">Head of Setter</span>
-        <span class="testimonial-where mono">— agence ghostwriting + setting LinkedIn, Paris</span>
+        <span class="testimonial-who">Scénario type</span>
+        <span class="testimonial-where mono">synthèse de plusieurs discoveries — vrais témoignages affichés en sortie de bêta</span>
       </footer>
     </blockquote>
   </section>
@@ -352,7 +350,7 @@
 
       <article class="offre-card offre-highlight">
         <header class="offre-head">
-          <h3 class="offre-name">Cell</h3>
+          <h3 class="offre-name">Cellule</h3>
           <span class="offre-meta mono">3-5 setters · 5-15 clones</span>
         </header>
         <p class="offre-body">Pour les agences qui scalent. Vos setters montent en autonomie, vous reprenez la main sur le pilotage.</p>
@@ -406,7 +404,7 @@
       <a href="/login" class="foot-login">déjà client ? →</a>
     </div>
     <div class="foot-legal mono">
-      Édité par AhmetA SAS · Paris · ↗
+      Setclone · Paris
     </div>
   </footer>
 </main>
@@ -506,35 +504,8 @@
     line-height: 1.05;
     letter-spacing: -0.022em;
     color: var(--ink);
-    margin: 0 0 20px;
-    max-width: 18ch;
-  }
-  .lede {
-    font-size: 17px;
-    color: var(--ink-70);
-    line-height: 1.55;
-    margin: 0 0 6px;
-  }
-  .lede-list {
-    list-style: none;
-    padding: 0;
-    margin: 0 0 28px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .lede-list li {
-    font-size: 17px;
-    color: var(--ink);
-    line-height: 1.5;
-    padding-left: 22px;
-    position: relative;
-  }
-  .lede-list li::before {
-    content: "—";
-    position: absolute;
-    left: 0;
-    color: var(--vermillon);
+    margin: 0 0 24px;
+    max-width: 22ch;
   }
 
   .sub {
@@ -598,18 +569,6 @@
     letter-spacing: 0.12em;
     text-transform: uppercase;
   }
-  .trust-logos {
-    display: flex;
-    gap: 18px;
-    flex-wrap: wrap;
-  }
-  .logo-blank {
-    width: 96px;
-    height: 28px;
-    background: var(--paper-subtle, #f6f5f1);
-    border: 1px dashed var(--rule);
-  }
-
   /* ───────── PAINS ───────── */
   .pains {
     padding: 56px 28px;
@@ -734,30 +693,44 @@
     letter-spacing: 0.04em;
     margin-top: 4px;
   }
-  .flow-rule {
+  /* DIFF de protocole (V2 — remplace flow-rule en step 02) */
+  .flow-diff {
     padding: 12px;
     background: var(--paper-subtle, #f6f5f1);
     border-left: 2px solid var(--vermillon);
     display: flex;
     flex-direction: column;
+    gap: 6px;
+  }
+  .flow-diff-row {
+    display: grid;
+    grid-template-columns: 14px 1fr;
     gap: 8px;
+    font-size: 13px;
+    line-height: 1.45;
+    align-items: baseline;
   }
-  .flow-rule-tag {
+  .flow-diff-row .marker {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    text-align: center;
+  }
+  .flow-diff-row.removed {
+    color: var(--ink-70);
+    text-decoration: line-through;
+    text-decoration-color: var(--ink-40);
+    text-decoration-thickness: 1px;
+  }
+  .flow-diff-row.removed .marker { color: var(--ink-40); }
+  .flow-diff-row.added { color: var(--ink); }
+  .flow-diff-row.added .marker { color: var(--vermillon); }
+  .flow-diff-row.added strong { color: var(--vermillon); font-weight: 600; }
+  .flow-diff-meta {
     font-size: 10.5px;
-    color: var(--vermillon);
-    letter-spacing: 0.08em;
+    color: var(--ink-70);
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-  }
-  .flow-rule-body {
-    font-size: 13.5px;
-    color: var(--ink);
-    line-height: 1.5;
-    margin: 0;
-  }
-  .flow-rule-meta {
-    font-size: 10.5px;
-    color: var(--ink-40);
-    letter-spacing: 0.04em;
+    margin-top: 2px;
   }
   .demo-foot {
     margin-top: 24px;
@@ -772,13 +745,20 @@
   }
   .demo-link:hover { color: var(--vermillon); }
 
-  /* ───────── GUARDS ───────── */
+  /* ───────── GUARDS / 3 LECTURES ───────── */
   .guards {
     padding: 56px 28px;
     max-width: var(--max-width, 1200px);
     margin: 0 auto;
     width: 100%;
     border-top: 1px solid var(--rule-strong);
+  }
+  .guards-lede {
+    font-size: 15.5px;
+    color: var(--ink-70);
+    line-height: 1.6;
+    max-width: 60ch;
+    margin: 0 0 28px;
   }
   .guards-grid {
     display: grid;

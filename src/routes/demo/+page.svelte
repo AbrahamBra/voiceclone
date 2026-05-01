@@ -12,7 +12,7 @@
 
   import { onMount } from "svelte";
 
-  const STORAGE_KEY = "voiceclone_demo_v1";
+  const STORAGE_KEY = "setclone_demo_v1";
   const POST_MIN = 60;
   const POST_MAX = 3000;
   const BRIEF_MIN = 20;
@@ -172,7 +172,7 @@
 
 <svelte:head>
   <title>Essaie en 5 min — Setclone</title>
-  <meta name="description" content="Colle 3 de tes posts LinkedIn, un brief prospect, reçois un DM drafté dans ta voix. Sans inscription, sans stocker tes données." />
+  <meta name="description" content="Collez 3 de vos posts LinkedIn, un brief prospect, recevez un DM drafté dans votre voix. Sans inscription, pas de stockage." />
 </svelte:head>
 
 <div class="demo-root">
@@ -189,11 +189,11 @@
     {#if step === 1}
       <section class="step">
         <div class="kicker mono">◇ étape 1</div>
-        <h1 class="title">Colle 3 de tes posts LinkedIn.</h1>
+        <h1 class="title">Collez 3 de vos posts LinkedIn.</h1>
         <p class="sub">
-          N'importe lesquels, du moment qu'ils sonnent <em>toi</em>.
-          Le clone apprend ton rythme, ton vocabulaire, tes tics.
-          Le copier-coller suffit — pas de scraping.
+          N'importe lesquels, du moment qu'ils sonnent <em>vous</em>.
+          Le clone apprend votre rythme, votre vocabulaire, vos tics.
+          Le copier-coller suffit, pas de scraping.
         </p>
 
         <div class="posts-grid">
@@ -204,7 +204,7 @@
                 bind:value={posts[i]}
                 rows="7"
                 maxlength={POST_MAX + 200}
-                placeholder="Colle le texte brut de ton post ici…"
+                placeholder="Collez le texte brut de votre post ici…"
                 class="post-textarea"
               ></textarea>
               <span class="count mono {lengthClass(postsLen[i], POST_MIN, POST_MAX)}">
@@ -300,7 +300,7 @@
             <p class="error-text">{errorMsg}</p>
             <p class="error-sub mono">
               La démo est limitée à 3 essais / 24h pour cadrer les coûts.
-              Pour y accéder sans limite, rejoins la waitlist.
+              Pour y accéder sans limite, rejoignez la waitlist.
             </p>
             <a class="btn-primary" href="/#cta">rejoindre la waitlist →</a>
           </div>
@@ -328,8 +328,8 @@
               <div class="post-demo-cta">
                 <p class="post-demo-text">
                   Ce draft est généré avec les règles anti-IA FR <em>universelles</em>.
-                  Ton vrai clone apprend <em>tes</em> corrections à toi,
-                  retient les règles, et ne te les redemande jamais.
+                  Votre vrai clone apprend <em>vos</em> corrections à vous,
+                  retient les règles, et ne vous les redemande jamais.
                 </p>
                 <div class="actions">
                   <a class="btn-primary" href="/#cta">rejoindre la waitlist →</a>
@@ -344,7 +344,7 @@
 
     <footer class="foot mono">
       <span>démo stateless · haiku-4-5 · règles anti-IA FR baseline</span>
-      <span class="privacy">tes posts quittent ton navigateur le temps d'une requête, puis sont effacés</span>
+      <span class="privacy">vos posts quittent votre navigateur le temps d'une requête, puis sont effacés</span>
     </footer>
   </main>
 </div>
