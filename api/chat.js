@@ -1,4 +1,4 @@
-import { rateLimit } from "./_rateLimit.js";
+import { rateLimit, getClientIp } from "./_rateLimit.js";
 import { waitUntil } from "@vercel/functions";
 import { buildSystemPrompt } from "../lib/prompt.js";
 import { runPipeline } from "../lib/pipeline.js";
@@ -144,7 +144,11 @@ export default async function handler(req, res) {
   // source of truth). Missing `await` here meant `rl` was a Promise and
   // `rl.allowed === undefined`, so the guard always tripped → every POST
   // /api/chat returned 429 since 2026-04-17.
-  const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress || "unknown";
+  // Use getClientIp() — prefers x-real-ip / x-vercel-forwarded-for (set by
+  // Vercel edge) over client-spoofable x-forwarded-for. Without this, an
+  // attacker rotating X-Forwarded-For: 1.2.3.<n> bypasses the 20 req/min
+  // cap and amplifies platform Anthropic-key cost.
+  const ip = getClientIp(req);
   const rl = await rateLimit(ip);
   if (!rl.allowed) { res.status(429).json({ error: "Too many requests", retryAfter: rl.retryAfter }); return; }
 
