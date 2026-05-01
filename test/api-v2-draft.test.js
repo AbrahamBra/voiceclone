@@ -26,11 +26,12 @@ function baseDeps(overrides = {}) {
   return {
     rateLimit: async () => ({ allowed: true }),
     authenticateRequest: async () => ({ client: { id: "c1" }, isAdmin: false }),
+    resolveApiKey: async () => null,
     checkBudget: () => ({ allowed: true, remaining_cents: 1000 }),
     getApiKey: () => "test-key",
     hasPersonaAccess: async () => true,
     setCors: () => {},
-    supabase: {},
+    supabase: null,
     logUsage: async () => {},
     getPersonaFromDb: async () => PERSONA,
     loadScenarioFromDb: async () => "scenario content",
@@ -53,6 +54,8 @@ function baseDeps(overrides = {}) {
       content: [{ type: "text", text: "Salut, j'ai vu ton post sur l'IA. T'es en exploration ou déjà en prod ?" }],
       usage: { input_tokens: 1500, output_tokens: 50 },
     }),
+    scrapeLinkedInProfile: async () => null,
+    formatScrapeAsContextBlock: () => "",
     ...overrides,
   };
 }
@@ -238,15 +241,16 @@ describe("POST /api/v2/draft", () => {
     assert.equal(res._body.confidence, 1.0);
   });
 
-  it("502 when generate throws", async () => {
+  it("503 + fallback_message when generate throws", async () => {
     const { default: handler } = await import("../api/v2/draft.js");
     const req = { method: "POST", headers: {}, body: { personaId: "p1", prospectContext: "ctx" } };
     const res = makeRes();
     await handler(req, res, baseDeps({
       generate: async () => { throw new Error("anthropic 500"); },
     }));
-    assert.equal(res.statusCode, 502);
+    assert.equal(res.statusCode, 503);
     assert.match(res._body.error, /Generation failed/);
+    assert.match(res._body.fallback_message, /VoiceClone unavailable/);
   });
 
   it("survives partial DB failures (corrections + entities)", async () => {
@@ -269,4 +273,376 @@ describe("POST /api/v2/draft", () => {
     assert.equal(computeConfidence([], { drifted: true }), 0.75);
     assert.equal(computeConfidence([{ severity: "hard" }], { drifted: true }), 0.35);
   });
+
+  // ── V3.6.5 — qualification envelope ──────────────────────────
+  it("parseQualificationEnvelope returns null + raw text on plain text", async () => {
+    const { parseQualificationEnvelope } = await import("../api/v2/draft.js");
+    const r = parseQualificationEnvelope("Salut, simple message");
+    assert.equal(r.qualification, null);
+    assert.equal(r.draft, "Salut, simple message");
+  });
+
+  it("parseQualificationEnvelope parses clean JSON envelope", async () => {
+    const { parseQualificationEnvelope } = await import("../api/v2/draft.js");
+    const json = JSON.stringify({
+      qualification: { verdict: "in", reason: "Founder PME 50p", confidence: 0.85 },
+      draft: "Salut Alex, vu ton post sur l'IA.",
+    });
+    const r = parseQualificationEnvelope(json);
+    assert.equal(r.qualification.verdict, "in");
+    assert.equal(r.qualification.reason, "Founder PME 50p");
+    assert.equal(r.qualification.confidence, 0.85);
+    assert.equal(r.draft, "Salut Alex, vu ton post sur l'IA.");
+  });
+
+  it("parseQualificationEnvelope strips ```json fences", async () => {
+    const { parseQualificationEnvelope } = await import("../api/v2/draft.js");
+    const fenced = '```json\n{"qualification":{"verdict":"out","reason":"Early stage","confidence":0.2},"draft":"skip"}\n```';
+    const r = parseQualificationEnvelope(fenced);
+    assert.equal(r.qualification.verdict, "out");
+    assert.equal(r.draft, "skip");
+  });
+
+  it("parseQualificationEnvelope normalizes bad verdict to uncertain", async () => {
+    const { parseQualificationEnvelope } = await import("../api/v2/draft.js");
+    const json = JSON.stringify({
+      qualification: { verdict: "MAYBE", reason: "x", confidence: 0.5 },
+      draft: "ok",
+    });
+    const r = parseQualificationEnvelope(json);
+    assert.equal(r.qualification.verdict, "uncertain");
+  });
+
+  it("parseQualificationEnvelope clamps confidence to [0,1]", async () => {
+    const { parseQualificationEnvelope } = await import("../api/v2/draft.js");
+    const high = parseQualificationEnvelope(JSON.stringify({
+      qualification: { verdict: "in", reason: "x", confidence: 1.5 }, draft: "d",
+    }));
+    assert.equal(high.qualification.confidence, 1);
+    const low = parseQualificationEnvelope(JSON.stringify({
+      qualification: { verdict: "in", reason: "x", confidence: -0.3 }, draft: "d",
+    }));
+    assert.equal(low.qualification.confidence, 0);
+  });
+
+  it("response includes parsed qualification when generate emits envelope", async () => {
+    const { default: handler } = await import("../api/v2/draft.js");
+    const req = { method: "POST", headers: {}, body: { personaId: "p1", prospectContext: "ctx" } };
+    const res = makeRes();
+    const envelope = JSON.stringify({
+      qualification: { verdict: "in", reason: "PME 50p", confidence: 0.9 },
+      draft: "Salut Alex.",
+    });
+    await handler(req, res, baseDeps({
+      generate: async () => ({ content: [{ type: "text", text: envelope }], usage: { input_tokens: 100, output_tokens: 30 } }),
+    }));
+    assert.equal(res.statusCode, 200);
+    assert.equal(res._body.draft, "Salut Alex.");
+    assert.equal(res._body.qualification.verdict, "in");
+    assert.equal(res._body.qualification.confidence, 0.9);
+  });
+
+  // ── V3.6.5 — body shape v2 (snake_case + prospect_data) ──────
+  it("accepts persona_id + prospect_data shape", async () => {
+    const { default: handler } = await import("../api/v2/draft.js");
+    const req = {
+      method: "POST", headers: {},
+      body: { persona_id: "p1", prospect_data: { context: "Alex DG PME" } },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps());
+    assert.equal(res.statusCode, 200);
+    assert.ok(res._body.draft.length > 0);
+  });
+
+  it("warnings includes notice when source_core absent", async () => {
+    const { default: handler } = await import("../api/v2/draft.js");
+    const req = { method: "POST", headers: {}, body: { personaId: "p1", prospectContext: "ctx ctx" } };
+    const res = makeRes();
+    await handler(req, res, baseDeps());
+    assert.equal(res.statusCode, 200);
+    assert.ok(Array.isArray(res._body.warnings));
+    assert.match(res._body.warnings[0], /source_core/);
+  });
+
+  it("no source_core warning when valid value provided", async () => {
+    const { default: handler } = await import("../api/v2/draft.js");
+    const req = {
+      method: "POST", headers: {},
+      body: { personaId: "p1", prospectContext: "ctx", source_core: "visite_profil" },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps());
+    assert.equal(res.statusCode, 200);
+    assert.equal(res._body.warnings, undefined);
+  });
+
+  // ── V3.6.5 — auto-scrape from linkedin_url ──────────────────
+  it("auto-scrape fires when linkedin_url + no inline context", async () => {
+    const { default: handler } = await import("../api/v2/draft.js");
+    const req = {
+      method: "POST", headers: {},
+      body: {
+        personaId: "p1",
+        prospect_data: { linkedin_url: "https://linkedin.com/in/alexdg" },
+      },
+    };
+    const res = makeRes();
+    let scrapeCalled = false;
+    await handler(req, res, baseDeps({
+      scrapeLinkedInProfile: async (url) => {
+        scrapeCalled = true;
+        assert.match(url, /alexdg/);
+        return { profile: { name: "Alex DG", headline: "Founder", text: "Profile body" }, posts: [], postCount: 0 };
+      },
+      formatScrapeAsContextBlock: (s) => `[Contexte lead — ${s.profile.name}]\n${s.profile.headline}`,
+    }));
+    assert.equal(res.statusCode, 200);
+    assert.ok(scrapeCalled, "scrapeLinkedInProfile should have been called");
+  });
+
+  it("auto-scrape skipped when prospectContext already has [Contexte lead] block", async () => {
+    const { default: handler } = await import("../api/v2/draft.js");
+    const req = {
+      method: "POST", headers: {},
+      body: {
+        personaId: "p1",
+        prospect_data: {
+          linkedin_url: "https://linkedin.com/in/alexdg",
+          context: "[Contexte lead — Alex DG]\nFounder of X",
+        },
+      },
+    };
+    const res = makeRes();
+    let scrapeCalled = false;
+    await handler(req, res, baseDeps({
+      scrapeLinkedInProfile: async () => { scrapeCalled = true; return null; },
+    }));
+    assert.equal(res.statusCode, 200);
+    assert.equal(scrapeCalled, false, "scrape skipped when block already present");
+  });
+
+  it("503 when scrape fails AND no manual context provided", async () => {
+    const { default: handler } = await import("../api/v2/draft.js");
+    const req = {
+      method: "POST", headers: {},
+      body: { personaId: "p1", prospect_data: { linkedin_url: "https://linkedin.com/in/x" } },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps({
+      scrapeLinkedInProfile: async () => null,
+    }));
+    assert.equal(res.statusCode, 503);
+    assert.match(res._body.error, /scrape failed/);
+    assert.match(res._body.fallback_message, /VoiceClone unavailable/);
+  });
+
+  // ── V3.6.5 — idempotency via external_lead_ref ──────────────
+  it("idempotency: returns existing conv when external_lead_ref maps to one", async () => {
+    const { default: handler } = await import("../api/v2/draft.js");
+    let generateCalled = false;
+    const fakeSupabase = makeFakeSupabase({
+      conversations: [{ id: "conv-existing", persona_id: "p1", external_lead_ref: "breakcold:abc" }],
+      messages: [{ id: "msg-existing", conversation_id: "conv-existing", role: "assistant", content: "Salut Alex (existing).", created_at: "2026-05-01T10:00:00Z" }],
+    });
+    const req = {
+      method: "POST", headers: {},
+      body: {
+        personaId: "p1",
+        prospectContext: "ctx",
+        external_lead_ref: "breakcold:abc",
+      },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps({
+      supabase: fakeSupabase,
+      generate: async () => { generateCalled = true; return { content: [{ type: "text", text: "shouldnotcall" }], usage: {} }; },
+    }));
+    assert.equal(res.statusCode, 200);
+    assert.equal(res._body.idempotent, true);
+    assert.equal(res._body.conversation_id, "conv-existing");
+    assert.equal(res._body.draft_id, "msg-existing");
+    assert.equal(res._body.draft, "Salut Alex (existing).");
+    assert.equal(generateCalled, false, "generate must NOT be called on idempotent hit");
+  });
+
+  it("idempotency: 409 when external_lead_ref maps to a different persona", async () => {
+    const { default: handler } = await import("../api/v2/draft.js");
+    const fakeSupabase = makeFakeSupabase({
+      conversations: [{ id: "conv-other", persona_id: "p-OTHER", external_lead_ref: "breakcold:abc" }],
+      messages: [],
+    });
+    const req = {
+      method: "POST", headers: {},
+      body: { personaId: "p1", prospectContext: "ctx", external_lead_ref: "breakcold:abc" },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps({ supabase: fakeSupabase }));
+    assert.equal(res.statusCode, 409);
+    assert.match(res._body.error, /different persona/);
+  });
+
+  // ── V3.6.5 — conv creation when external_lead_ref + no existing ──
+  it("creates conv with lifecycle_state='awaiting_send' when external_lead_ref new", async () => {
+    const { default: handler } = await import("../api/v2/draft.js");
+    const fakeSupabase = makeFakeSupabase({ conversations: [], messages: [] });
+    const req = {
+      method: "POST", headers: {},
+      body: {
+        personaId: "p1",
+        prospectContext: "Alex DG PME 50p",
+        external_lead_ref: "breakcold:newlead",
+        source_core: "visite_profil",
+      },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps({ supabase: fakeSupabase }));
+    assert.equal(res.statusCode, 200);
+    assert.ok(res._body.conversation_id, "conversation_id must be returned");
+    assert.ok(res._body.draft_id, "draft_id (assistant message id) must be returned");
+    const inserted = fakeSupabase.tables.conversations[0];
+    assert.equal(inserted.external_lead_ref, "breakcold:newlead");
+    assert.equal(inserted.lifecycle_state, "awaiting_send");
+    assert.equal(inserted.source_core, "visite_profil");
+    assert.equal(inserted.persona_id, "p1");
+  });
+
+  // ── V3.6.5 — API key auth path ──────────────────────────────
+  it("API key auth pins persona; rejects mismatched personaId", async () => {
+    const { default: handler } = await import("../api/v2/draft.js");
+    const apiKeyPersona = { ...PERSONA, id: "p-fromkey" };
+    const req = {
+      method: "POST", headers: { "x-api-key": "sk_test" },
+      body: { personaId: "p1", prospectContext: "ctx" },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps({
+      resolveApiKey: async () => ({ persona: apiKeyPersona, client: { id: "c1" }, keyId: "k1", isAdmin: false }),
+    }));
+    assert.equal(res.statusCode, 400);
+    assert.match(res._body.error, /persona pinned by the API key/);
+  });
+
+  it("API key auth: aligned personaId proceeds normally", async () => {
+    const { default: handler } = await import("../api/v2/draft.js");
+    const req = {
+      method: "POST", headers: { "x-api-key": "sk_test" },
+      body: { personaId: "p1", prospectContext: "ctx" },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps({
+      resolveApiKey: async () => ({ persona: PERSONA, client: { id: "c1" }, keyId: "k1", isAdmin: false }),
+    }));
+    assert.equal(res.statusCode, 200);
+  });
 });
+
+// ────────────────────────────────────────────────────────────────────
+// Minimal in-memory fake supabase for the tests that exercise the conv-
+// creation path. Implements just the chain used by the handler :
+//   .from(table).select(cols).eq(col, val).maybeSingle()
+//   .from(table).insert(row).select(cols).single()
+//   .from(table).insert(rows).select(cols)
+//   .from(table).update(patch).eq(col, val) / .then()
+// Returns { data, error } shapes that match @supabase/supabase-js.
+// ────────────────────────────────────────────────────────────────────
+function makeFakeSupabase(seed = {}) {
+  const tables = {
+    conversations: [...(seed.conversations || [])],
+    messages: [...(seed.messages || [])],
+  };
+  let nextId = 1;
+  function newId(prefix) { return `${prefix}-${nextId++}`; }
+  function from(table) {
+    const ctx = { table, filters: [], orderBy: null, limitN: null, selectCols: "*" };
+    const queryable = {
+      select(cols) { ctx.selectCols = cols; return queryable; },
+      eq(col, val) { ctx.filters.push({ col, val }); return queryable; },
+      order(col, opts) { ctx.orderBy = { col, ascending: opts?.ascending !== false }; return queryable; },
+      limit(n) { ctx.limitN = n; return queryable; },
+      maybeSingle: async () => {
+        const rows = applyFilters(tables[table] || [], ctx);
+        return { data: rows[0] || null, error: null };
+      },
+      single: async () => {
+        const rows = applyFilters(tables[table] || [], ctx);
+        if (rows.length === 0) return { data: null, error: { code: "PGRST116", message: "no rows" } };
+        return { data: rows[0], error: null };
+      },
+      // Fallback : when chain ends without single/maybeSingle, used by the
+      // "select many" inserted messages path.
+      then(resolve) {
+        const rows = applyFilters(tables[table] || [], ctx);
+        resolve({ data: rows, error: null });
+      },
+    };
+    function insertable(rows) {
+      const inputs = Array.isArray(rows) ? rows : [rows];
+      const inserted = inputs.map((r) => {
+        // Idempotency: simulate the unique partial index on external_lead_ref.
+        if (table === "conversations" && r.external_lead_ref) {
+          const dup = tables.conversations.find((c) => c.external_lead_ref === r.external_lead_ref);
+          if (dup) return null;
+        }
+        const id = r.id || newId(table.slice(0, 4));
+        const row = { id, created_at: new Date().toISOString(), ...r };
+        tables[table].push(row);
+        return row;
+      });
+      const allOk = inserted.every(Boolean);
+      const insertCtx = {
+        select(cols) {
+          const back = {
+            single: async () => {
+              if (!allOk) return { data: null, error: { code: "23505", message: "duplicate" } };
+              return { data: inserted[0], error: null };
+            },
+            then(resolve) {
+              if (!allOk) return resolve({ data: null, error: { code: "23505", message: "duplicate" } });
+              resolve({ data: inserted, error: null });
+            },
+          };
+          return back;
+        },
+        then(resolve) {
+          if (!allOk) return resolve({ data: null, error: { code: "23505", message: "duplicate" } });
+          resolve({ data: inserted, error: null });
+        },
+      };
+      return insertCtx;
+    }
+    function updatable(patch) {
+      const updateCtx = {
+        eq(col, val) {
+          for (const row of tables[table]) {
+            if (row[col] === val) Object.assign(row, patch);
+          }
+          updateCtx._ran = true;
+          return updateCtx;
+        },
+        then(resolve) { resolve({ data: null, error: null }); },
+      };
+      return updateCtx;
+    }
+    return {
+      ...queryable,
+      insert: insertable,
+      update: updatable,
+    };
+  }
+  function applyFilters(rows, ctx) {
+    let out = rows;
+    for (const { col, val } of ctx.filters) out = out.filter((r) => r[col] === val);
+    if (ctx.orderBy) {
+      out = [...out].sort((a, b) => {
+        const av = a[ctx.orderBy.col]; const bv = b[ctx.orderBy.col];
+        if (av < bv) return ctx.orderBy.ascending ? -1 : 1;
+        if (av > bv) return ctx.orderBy.ascending ? 1 : -1;
+        return 0;
+      });
+    }
+    if (ctx.limitN != null) out = out.slice(0, ctx.limitN);
+    return out;
+  }
+  return { from, tables };
+}

@@ -8,6 +8,7 @@
   import IntelligencePanel from "$lib/components/IntelligencePanel.svelte";
   import ProtocolPanel from "$lib/components/ProtocolPanel.svelte";
   import SettingsPanel from "$lib/components/SettingsPanel.svelte";
+  import ApiKeysPanel from "$lib/components/ApiKeysPanel.svelte";
 
   let { data } = $props();
   let personaId = $derived(data.personaId);
@@ -16,6 +17,7 @@
     { id: "connaissance", label: "connaissance", hint: "la matière brute" },
     { id: "protocole",    label: "protocole",    hint: "les règles dures" },
     { id: "intelligence", label: "intelligence", hint: "ce que l'usage révèle" },
+    { id: "integrations", label: "intégrations", hint: "API keys + workflows externes (Breakcold, n8n)" },
     { id: "reglages",     label: "réglages",     hint: "les paramètres persona" },
   ];
 
@@ -108,6 +110,8 @@
       <ProtocolPanel {personaId} />
     {:else if activeTab === "intelligence"}
       <IntelligencePanel {personaId} extracting={intelligenceExtracting} />
+    {:else if activeTab === "integrations"}
+      <ApiKeysPanel {personaId} />
     {:else if activeTab === "reglages"}
       <SettingsPanel embedded={true} {personaId} onClose={goBack} />
     {/if}

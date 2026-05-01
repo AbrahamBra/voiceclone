@@ -26,10 +26,33 @@
   // Delete confirmation state
   let deletingId = $state(null);
 
+  // V3.6.5 — lifecycle filter. "all" = no filter (legacy view).
+  // The other values mirror conversations.lifecycle_state. The filter is
+  // local-only — the conversations store holds the full set already.
+  /** @type {"all" | "awaiting_send" | "awaiting_reply" | "active" | "closed"} */
+  let lifecycleFilter = $state("all");
+
+  // Counts per bucket — surfaced as small numbers next to each tab so the
+  // setter sees at a glance "12 drafts à envoyer" without clicking.
+  let lifecycleCounts = $derived.by(() => {
+    const out = { all: 0, awaiting_send: 0, awaiting_reply: 0, active: 0, closed: 0 };
+    for (const c of $conversations) {
+      out.all++;
+      const state = c.lifecycle_state;
+      if (state && Object.hasOwn(out, state)) out[state]++;
+    }
+    return out;
+  });
+
+  let filteredConversations = $derived.by(() => {
+    if (lifecycleFilter === "all") return $conversations;
+    return $conversations.filter((c) => c.lifecycle_state === lifecycleFilter);
+  });
+
   let grouped = $derived(
     searchResults
       ? null
-      : groupByDate($conversations, "last_message_at")
+      : groupByDate(filteredConversations, "last_message_at")
   );
 
   function handleSearch(e) {
@@ -148,6 +171,62 @@
       value={searchQuery}
       oninput={handleSearch}
     />
+    <div class="conv-filter-tabs" role="tablist" aria-label="Filtre lifecycle">
+      <button
+        class="conv-filter-tab"
+        class:active={lifecycleFilter === "all"}
+        role="tab"
+        aria-selected={lifecycleFilter === "all"}
+        onclick={() => (lifecycleFilter = "all")}
+      >
+        Toutes
+        <span class="conv-filter-count">{lifecycleCounts.all}</span>
+      </button>
+      <button
+        class="conv-filter-tab"
+        class:active={lifecycleFilter === "awaiting_send"}
+        role="tab"
+        aria-selected={lifecycleFilter === "awaiting_send"}
+        onclick={() => (lifecycleFilter = "awaiting_send")}
+        title="Drafts générés, pas encore envoyés au prospect"
+      >
+        À envoyer
+        <span class="conv-filter-count">{lifecycleCounts.awaiting_send}</span>
+      </button>
+      <button
+        class="conv-filter-tab"
+        class:active={lifecycleFilter === "awaiting_reply"}
+        role="tab"
+        aria-selected={lifecycleFilter === "awaiting_reply"}
+        onclick={() => (lifecycleFilter = "awaiting_reply")}
+        title="Message envoyé, en attente de réponse"
+      >
+        En attente
+        <span class="conv-filter-count">{lifecycleCounts.awaiting_reply}</span>
+      </button>
+      <button
+        class="conv-filter-tab"
+        class:active={lifecycleFilter === "active"}
+        role="tab"
+        aria-selected={lifecycleFilter === "active"}
+        onclick={() => (lifecycleFilter = "active")}
+        title="Le prospect a répondu, conversation en cours"
+      >
+        Actives
+        <span class="conv-filter-count">{lifecycleCounts.active}</span>
+      </button>
+      <button
+        class="conv-filter-tab"
+        class:active={lifecycleFilter === "closed"}
+        role="tab"
+        aria-selected={lifecycleFilter === "closed"}
+        onclick={() => (lifecycleFilter = "closed")}
+        title="Conversation terminée (RDV, hors-cible, abandon)"
+      >
+        Closed
+        <span class="conv-filter-count">{lifecycleCounts.closed}</span>
+      </button>
+    </div>
   </div>
 
   <div class="conv-list">
@@ -173,6 +252,11 @@
         </div>
       {/if}
     {:else if grouped}
+      {#if filteredConversations.length === 0 && lifecycleFilter !== "all"}
+        <div class="conv-empty-bucket">
+          Aucune conversation dans ce filtre.
+        </div>
+      {/if}
       {#each Object.entries(grouped) as [label, items]}
         {#if items.length > 0}
           <div class="conv-group-label">{label}</div>
@@ -277,6 +361,57 @@
   }
   .conv-search::placeholder { color: var(--ink-20); }
   .conv-search:focus { border-color: var(--vermillon); }
+
+  /* ─── Lifecycle filter tabs (V3.6.5) ─── */
+  .conv-filter-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-top: 2px;
+  }
+  .conv-filter-tab {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 5px 6px;
+    background: transparent;
+    border: 1px solid var(--rule-strong);
+    color: var(--ink-70);
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+  }
+  .conv-filter-tab:hover {
+    background: var(--paper);
+    color: var(--ink);
+  }
+  .conv-filter-tab.active {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+  .conv-filter-count {
+    font-size: 0.85em;
+    opacity: 0.7;
+  }
+  .conv-filter-tab.active .conv-filter-count {
+    opacity: 1;
+  }
+  .conv-empty-bucket {
+    padding: 14px 12px;
+    color: var(--ink-40);
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    text-align: center;
+  }
 
   .conv-list {
     flex: 1;

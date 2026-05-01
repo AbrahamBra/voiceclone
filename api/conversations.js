@@ -166,18 +166,31 @@ export default async function handler(req, res) {
 
   // --- 3. List conversations for a persona ---
   if (persona) {
-    let listQuery = supabase
-      .from("conversations")
-      .select("id, persona_id, scenario, title, prospect_name, last_message_at, created_at")
-      .eq("persona_id", persona)
-      .order("last_message_at", { ascending: false })
-      .limit(50);
+    // V3.6.5 (PR-1) introduced lifecycle_state + external_lead_ref. Until
+    // migration 060 is applied to the target DB, those columns don't exist
+    // and PostgREST returns a 400. Try the V3.6.5 shape first, fall back to
+    // the V3.6.4 shape on schema-related errors so the sidebar keeps
+    // working during the migration window. Degradation : the lifecycle
+    // tabs all show 0 counts until the migration lands.
+    const V365_COLS = "id, persona_id, scenario, title, prospect_name, last_message_at, created_at, lifecycle_state, external_lead_ref";
+    const V364_COLS = "id, persona_id, scenario, title, prospect_name, last_message_at, created_at";
 
-    if (!isAdmin) {
-      listQuery = listQuery.eq("client_id", client.id);
+    function buildList(cols) {
+      let q = supabase
+        .from("conversations")
+        .select(cols)
+        .eq("persona_id", persona)
+        .order("last_message_at", { ascending: false })
+        .limit(50);
+      if (!isAdmin) q = q.eq("client_id", client.id);
+      return q;
     }
 
-    const { data: convs, error: listErr } = await listQuery;
+    let { data: convs, error: listErr } = await buildList(V365_COLS);
+    if (listErr && /lifecycle_state|external_lead_ref|column/.test(listErr.message || "")) {
+      // Migration not applied yet — fall back gracefully.
+      ({ data: convs, error: listErr } = await buildList(V364_COLS));
+    }
     if (listErr) { res.status(500).json({ error: listErr.message }); return; }
 
     const conversations = convs || [];
