@@ -16,9 +16,16 @@
 //     Detail view used by the edit form to pre-fill prose+heading.
 //
 //   POST /api/v2/protocol/source-playbooks
-//     body: { persona_id, source_core, prose, heading? }
-//     → { document_id, section_id, candidates_total, artifacts_created,
-//          low_confidence_dropped }
+//     Two shapes (discriminated by body) :
+//       a) Create new playbook :
+//          body: { persona_id, source_core, prose, heading? }
+//          → { document_id, section_id, candidates_total, artifacts_created,
+//               low_confidence_dropped }
+//       b) Append a new section to existing playbook (V2.2 — for spyer's
+//          5 named instances and similar multi-section sources) :
+//          body: { playbook_id, prose, heading? }
+//          → { document_id, section_id, order, candidates_total,
+//               artifacts_created, low_confidence_dropped }
 //
 //   PATCH /api/v2/protocol/source-playbooks?id=<uuid>
 //     body: { prose, heading? }
@@ -104,6 +111,19 @@ export default async function handler(req, res, deps) {
     return handleList({ req, res, supabase, client, isAdmin, hasPersonaAccess });
   }
   if (req.method === "POST") {
+    // Body discriminator : `playbook_id` → append section to existing playbook ;
+    // otherwise (default) → create a new playbook.
+    const body = req.body || {};
+    if (body.playbook_id !== undefined && body.persona_id !== undefined) {
+      res.status(400).json({ error: "specify EITHER playbook_id (append section) OR persona_id (create playbook), not both" });
+      return;
+    }
+    if (body.playbook_id !== undefined) {
+      return handleAppendSection({
+        req, res, supabase, client, isAdmin, hasPersonaAccess,
+        routeAndExtract, extractionTimeoutMs, killSwitch,
+      });
+    }
     return handleCreate({
       req, res, supabase, client, isAdmin, hasPersonaAccess,
       routeAndExtract, extractionTimeoutMs, killSwitch,
@@ -198,8 +218,11 @@ function bucket(rows, key) {
   return out;
 }
 
-// Detail of a single playbook, includes the first section's prose+heading
-// so the edit form can pre-fill. Active or archived — both fetchable.
+// Detail of a single playbook : V2.1 returned only `section` (first one).
+// V2.2 returns `sections[]` so multi-instance playbooks (typically spyer with
+// 5 instances) can be displayed and edited per-section. The legacy `section`
+// field is kept as an alias for the lowest-order section (back-compat with
+// any client that pinned to V2.1's shape).
 async function handleDetail({ req, res, supabase, client, isAdmin, hasPersonaAccess, docId }) {
   if (!UUID_RE.test(docId)) {
     res.status(400).json({ error: "id must be a uuid" });
@@ -224,11 +247,10 @@ async function handleDetail({ req, res, supabase, client, isAdmin, hasPersonaAcc
   }
   const { data: sections } = await supabase
     .from("protocol_section")
-    .select("id, heading, prose, kind, order")
+    .select("id, heading, prose, kind, order, updated_at")
     .eq("document_id", docId)
-    .order("order", { ascending: true })
-    .limit(1);
-  const section = (sections && sections[0]) || null;
+    .order("order", { ascending: true });
+  const sectionsList = sections || [];
   res.status(200).json({
     playbook: {
       id: doc.id,
@@ -238,7 +260,9 @@ async function handleDetail({ req, res, supabase, client, isAdmin, hasPersonaAcc
       parent_template_id: doc.parent_template_id,
       created_at: doc.created_at,
       updated_at: doc.updated_at,
-      section,
+      sections: sectionsList,
+      // V2.1 back-compat alias.
+      section: sectionsList[0] || null,
     },
   });
 }
@@ -456,8 +480,12 @@ function raceWithTimeout(promise, ms, errorMsg) {
 // fires, last_fired_at, accuracy) instead of trashing them on every save.
 // Existing artifacts stay active ; new ones are added incrementally.
 //
+// V2.2 : optional `section_id` in the body targets a specific section. When
+// omitted, defaults to the lowest-order section (V2.1 behavior preserved for
+// callers that don't yet know about multi-section playbooks).
+//
 // Doesn't deactivate artifacts that "disappeared" from the new prose. That
-// would require a separate UI for the user to confirm the deletion (V2.2+).
+// would require a separate UI for the user to confirm the deletion (V2.3+).
 async function handleEdit({
   req, res, supabase, client, isAdmin, hasPersonaAccess,
   routeAndExtract, extractionTimeoutMs, killSwitch,
@@ -468,7 +496,7 @@ async function handleEdit({
     return;
   }
 
-  const { prose, heading } = req.body || {};
+  const { prose, heading, section_id } = req.body || {};
   if (typeof prose !== "string" || !prose.trim()) {
     res.status(400).json({ error: "prose is required (non-empty string)" });
     return;
@@ -479,6 +507,10 @@ async function handleEdit({
   }
   if (heading !== undefined && (typeof heading !== "string" || heading.length > 200)) {
     res.status(400).json({ error: "heading must be a string ≤ 200 chars" });
+    return;
+  }
+  if (section_id !== undefined && (typeof section_id !== "string" || !UUID_RE.test(section_id))) {
+    res.status(400).json({ error: "section_id must be a uuid" });
     return;
   }
 
@@ -507,20 +539,39 @@ async function handleEdit({
     return;
   }
 
-  // 2. Fetch the (single) section of this playbook (V2 creates 1 section
-  // per playbook ; multi-section management lands V2.2). If multiple
-  // sections exist, we patch the lowest-order one — the others stay intact.
-  const { data: sections } = await supabase
-    .from("protocol_section")
-    .select("id, document_id, order, heading, prose")
-    .eq("document_id", documentId)
-    .order("order", { ascending: true })
-    .limit(1);
-  if (!sections || sections.length === 0) {
-    res.status(422).json({ error: "playbook has no section to edit" });
-    return;
+  // 2. Fetch the targeted section. When `section_id` is provided, fetch that
+  // exact one (and verify it belongs to this doc). When omitted, fall back
+  // to the lowest-order section for V2.1 back-compat with single-section
+  // callers.
+  let section = null;
+  if (section_id) {
+    const { data: oneSection } = await supabase
+      .from("protocol_section")
+      .select("id, document_id, order, heading, prose")
+      .eq("id", section_id)
+      .maybeSingle();
+    if (!oneSection) {
+      res.status(404).json({ error: "section not found" });
+      return;
+    }
+    if (oneSection.document_id !== documentId) {
+      res.status(403).json({ error: "section does not belong to this playbook" });
+      return;
+    }
+    section = oneSection;
+  } else {
+    const { data: sections } = await supabase
+      .from("protocol_section")
+      .select("id, document_id, order, heading, prose")
+      .eq("document_id", documentId)
+      .order("order", { ascending: true })
+      .limit(1);
+    if (!sections || sections.length === 0) {
+      res.status(422).json({ error: "playbook has no section to edit" });
+      return;
+    }
+    section = sections[0];
   }
-  const section = sections[0];
   const finalHeading = (heading !== undefined ? heading : section.heading) || `${DEFAULT_HEADING_PREFIX} ${doc.source_core}`;
 
   // 3. Update prose + heading on the section.
@@ -647,6 +698,226 @@ async function handleEdit({
   res.status(200).json({
     document_id: documentId,
     section_id: section.id,
+    candidates_total: (candidates || []).length,
+    artifacts_created: artifactsCreated,
+    artifacts_dedup_skipped: dedupSkipped,
+    low_confidence_dropped: lowConfDropped,
+    extraction_error: extractionError,
+  });
+}
+
+// ── POST (alt) — append a section to an existing playbook ────────
+//
+// V2.2 : enables multi-section playbooks. Spyer with 5 instances
+// (Alec/Nina/Margo/Franck/Max) is the canonical use case — each instance
+// becomes its own section under the single `spyer` playbook doc, with its
+// own prose + extracted artifacts. The doc-level (persona, source_core)
+// uniqueness invariant stays untouched : we don't create a new doc, we add
+// a section to the existing one.
+//
+// New section order = max(existing orders) + 1. The 1st section (order=0)
+// stays the V2.1 "default" target for PATCH without section_id.
+async function handleAppendSection({
+  req, res, supabase, client, isAdmin, hasPersonaAccess,
+  routeAndExtract, extractionTimeoutMs, killSwitch,
+}) {
+  const { playbook_id, prose, heading } = req.body || {};
+
+  if (!playbook_id || !UUID_RE.test(playbook_id)) {
+    res.status(400).json({ error: "playbook_id is required (uuid)" });
+    return;
+  }
+  if (typeof prose !== "string" || !prose.trim()) {
+    res.status(400).json({ error: "prose is required (non-empty string)" });
+    return;
+  }
+  if (prose.length > MAX_PROSE_LEN) {
+    res.status(400).json({ error: `prose too long (max ${MAX_PROSE_LEN} chars)` });
+    return;
+  }
+  if (heading !== undefined && (typeof heading !== "string" || heading.length > 200)) {
+    res.status(400).json({ error: "heading must be a string ≤ 200 chars" });
+    return;
+  }
+
+  // 1. Verify playbook exists, is source-specific, and is active.
+  const { data: doc } = await supabase
+    .from("protocol_document")
+    .select("id, owner_kind, owner_id, source_core, status")
+    .eq("id", playbook_id)
+    .maybeSingle();
+  if (!doc) {
+    res.status(404).json({ error: "playbook not found" });
+    return;
+  }
+  if (doc.owner_kind !== "persona" || !doc.source_core) {
+    res.status(422).json({ error: "this endpoint only appends sections to source-specific persona playbooks" });
+    return;
+  }
+  if (doc.status !== "active") {
+    res.status(409).json({ error: "playbook is not active (status=" + doc.status + ")" });
+    return;
+  }
+  if (!isAdmin && !(await hasPersonaAccess(client?.id, doc.owner_id))) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  // 2. Compute next order = max(existing order) + 1.
+  // Compute via JS Math.max rather than DESC+limit so the result doesn't
+  // depend on Supabase row ordering for tiny lists. Section IDs are also
+  // captured here for the dedup query at step 6 — saves a round-trip.
+  const { data: existingSections } = await supabase
+    .from("protocol_section")
+    .select("id, order")
+    .eq("document_id", playbook_id);
+  const orderValues = (existingSections || [])
+    .map((s) => (typeof s.order === "number" ? s.order : -1))
+    .filter((n) => n >= 0);
+  const nextOrder = orderValues.length > 0 ? Math.max(...orderValues) + 1 : 0;
+  const allSectionIds = (existingSections || []).map((s) => s.id).filter(Boolean);
+
+  // 3. Insert the new section.
+  const sectionId = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const finalHeading = (heading || `${DEFAULT_HEADING_PREFIX} ${doc.source_core} #${nextOrder + 1}`).slice(0, 200);
+  const { error: secErr } = await supabase.from("protocol_section").insert({
+    id: sectionId,
+    document_id: playbook_id,
+    order: nextOrder,
+    kind: "custom",
+    heading: finalHeading,
+    prose: prose.trim(),
+    structured: null,
+    client_visible: false,
+    client_editable: false,
+    author_kind: "user",
+  });
+  if (secErr) {
+    res.status(500).json({ error: "section insert failed", detail: secErr.message });
+    return;
+  }
+  await supabase.from("protocol_document").update({ updated_at: now }).eq("id", playbook_id);
+
+  // 4. Killswitch off → save section only, no extraction.
+  if (killSwitch === "off") {
+    res.status(201).json({
+      document_id: playbook_id,
+      section_id: sectionId,
+      order: nextOrder,
+      candidates_total: 0,
+      artifacts_created: 0,
+      low_confidence_dropped: 0,
+      extraction_skipped: true,
+    });
+    return;
+  }
+
+  // 5. Run extraction on the new section's prose.
+  let candidates = [];
+  let extractionError = null;
+  try {
+    const signal = {
+      source_type: "prose_edit",
+      source_text: prose,
+      context: {
+        section_kind: "custom",
+        section_heading: finalHeading,
+        source_core: doc.source_core,
+      },
+    };
+    candidates = await raceWithTimeout(
+      routeAndExtract(signal),
+      extractionTimeoutMs,
+      "extraction_timeout",
+    );
+  } catch (err) {
+    extractionError = err?.message || "extraction_failed";
+  }
+
+  // 6. Auto-accept high-conf candidates. Dedup against ALL artifacts of the
+  // playbook (not just this section) — instance-specific artifacts that are
+  // identical across sections (e.g. shared cadence rule) only need to be
+  // injected once into the system_prompt anyway. We use the section IDs we
+  // already collected at step 2 ; if there are no existing sections the
+  // dedup pool is empty.
+  let existingHashes = new Set();
+  if (allSectionIds.length > 0) {
+    const { data: docArtifacts } = await supabase
+      .from("protocol_artifact")
+      .select("content_hash")
+      .in("source_section_id", allSectionIds);
+    existingHashes = new Set(
+      (docArtifacts || []).map((a) => a.content_hash).filter(Boolean),
+    );
+  }
+
+  let artifactsCreated = 0;
+  let dedupSkipped = 0;
+  let lowConfDropped = 0;
+  for (const candidate of candidates || []) {
+    const conf = candidate?.proposal?.confidence;
+    const text = (candidate?.proposal?.proposed_text || "").trim();
+    if (!text) continue;
+    if (typeof conf !== "number" || conf < MIN_CONFIDENCE_AUTO_ACCEPT) {
+      lowConfDropped++;
+      continue;
+    }
+    const hash = computeArtifactHash(text);
+    if (!hash) continue;
+    if (existingHashes.has(hash)) {
+      dedupSkipped++;
+      continue;
+    }
+    const targetKind = candidate.target_kind;
+    const artifactKindMeta = TARGET_KIND_TO_ARTIFACT[targetKind] || TARGET_KIND_TO_ARTIFACT.custom;
+
+    const propId = crypto.randomUUID();
+    const { error: propErr } = await supabase.from("proposition").insert({
+      id: propId,
+      document_id: playbook_id,
+      source: "manual",
+      source_ref: null,
+      source_refs: [],
+      count: 1,
+      intent: candidate.proposal.intent || "add_rule",
+      target_kind: targetKind,
+      target_section_id: sectionId,
+      proposed_text: text,
+      rationale: candidate.proposal.rationale || null,
+      confidence: conf,
+      status: "accepted",
+      resolved_at: now,
+      created_at: now,
+    });
+    if (propErr) continue;
+
+    const { error: artErr } = await supabase.from("protocol_artifact").insert({
+      source_section_id: sectionId,
+      source_quote: candidate.proposal.rationale || null,
+      kind: artifactKindMeta.kind,
+      content: {
+        text,
+        intent: candidate.proposal.intent || "add_rule",
+        source_proposition_id: propId,
+        source_kind: targetKind,
+        confidence: conf,
+      },
+      severity: artifactKindMeta.severity,
+      content_hash: hash,
+      is_active: true,
+      is_manual_override: false,
+      stats: { fires: 0, last_fired_at: null, accuracy: null },
+    });
+    if (artErr) continue;
+    existingHashes.add(hash);
+    artifactsCreated++;
+  }
+
+  res.status(201).json({
+    document_id: playbook_id,
+    section_id: sectionId,
+    order: nextOrder,
     candidates_total: (candidates || []).length,
     artifacts_created: artifactsCreated,
     artifacts_dedup_skipped: dedupSkipped,
