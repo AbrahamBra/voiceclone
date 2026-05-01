@@ -1,11 +1,17 @@
 #!/usr/bin/env node
-// Smoke test for the V3.6.5 PR-1 Breakcold integration. Hits a deployed
-// Setclone instance over HTTP with x-api-key auth, exactly like n8n does.
+// Smoke test for the V3.6.5 Breakcold integration (PR-1 + PR-2). Hits a
+// deployed Setclone over HTTP with x-api-key auth, exactly like n8n does.
+//
+// Covers :
+//   - POST /api/v2/draft  (Workflow 1) — fresh draft, idempotency, warnings
+//   - POST /api/v2/feedback (Workflow 3) — rdv_signed outcome, idempotency,
+//     404 on unknown lead
 //
 // Use this BEFORE setting up Breakcold + n8n to confirm the API key works,
-// drafts come back in the right voice, and idempotency holds. If this passes,
-// the only thing left to debug end-to-end is the n8n template + Breakcold
-// automation wiring (those don't depend on Setclone).
+// drafts come back in the right voice, idempotency holds on both surfaces,
+// and the feedback endpoint can land an outcome on a freshly created conv.
+// If this passes, the only thing left to debug end-to-end is the n8n
+// templates + Breakcold automation wiring (those don't depend on Setclone).
 //
 // Required env :
 //   SETCLONE_API_KEY     sk_… minted from /brain/<persona>/intégrations
@@ -114,6 +120,58 @@ else if (Array.isArray(r3.json.warnings) && r3.json.warnings.some((w) => /source
 } else {
   ko(`expected source_core warning in response.warnings`, r3.json?.warnings);
 }
+
+// ── 4. Feedback loop — Workflow 3 (V3.6.5 PR-2) ────────────────
+async function postFeedback(body) {
+  const t0 = Date.now();
+  const res = await fetch(`${BASE_URL}/api/v2/feedback`, {
+    method: "POST",
+    headers: { "x-api-key": API_KEY, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const ms = Date.now() - t0;
+  let json = null;
+  try { json = await res.json(); } catch { /* leave null */ }
+  return { status: res.status, json, ms };
+}
+
+console.log(`\n[4] Feedback rdv_signed on Phase-1 conv — Workflow 3`);
+const fb1 = await postFeedback({
+  external_lead_ref: LEAD_REF,
+  outcome: "rdv_signed",
+  value: 1500,
+  note: `smoke run ${RUN_ID}`,
+});
+if (fb1.status !== 200) {
+  ko(`expected 200, got ${fb1.status}`, fb1.json);
+} else {
+  ok(`status=200 (${fb1.ms}ms), outcome=${fb1.json.outcome}, duplicate=${fb1.json.duplicate}`);
+  if (fb1.json.outcome_id) ok(`outcome_id: ${fb1.json.outcome_id}`);
+  else ko("outcome_id missing");
+  if (fb1.json.conversation_id === r1.json.conversation_id) ok("conversation_id matches Phase 1");
+  else ko(`conv id drift: phase1=${r1.json.conversation_id} feedback=${fb1.json.conversation_id}`);
+}
+
+// Idempotent re-fire: same conv + outcome must come back as duplicate=true.
+console.log(`\n[5] Feedback idempotent re-fire — same outcome`);
+const fb2 = await postFeedback({
+  external_lead_ref: LEAD_REF,
+  outcome: "rdv_signed",
+});
+if (fb2.status === 200 && fb2.json.duplicate === true) {
+  ok(`status=200, duplicate=true (${fb2.ms}ms)`);
+} else {
+  ko(`expected 200 + duplicate=true, got ${fb2.status} duplicate=${fb2.json?.duplicate}`, fb2.json);
+}
+
+// 404 sanity: feedback against an unknown lead must not silently pass.
+console.log(`\n[6] Feedback against unknown lead must 404`);
+const fb3 = await postFeedback({
+  external_lead_ref: `smoke:no-such-lead-${Date.now()}`,
+  outcome: "rdv_lost",
+});
+if (fb3.status === 404) ok(`status=404 as expected`);
+else ko(`expected 404, got ${fb3.status}`, fb3.json);
 
 // ── Recap ──────────────────────────────────────────────────────
 console.log(`\n── Result: ${pass} pass / ${fail} fail ──`);

@@ -157,11 +157,63 @@ Une seule note Breakcold est créée, pas de pollution.
 
 ---
 
-## Workflow 3 (à venir) — Feedback loop sur RDV
+## Workflow 3 — Feedback loop sur RDV (V3.6.5 PR-2)
 
-Quand le statut Breakcold du lead passe à "RDV obtenu", un futur PR-2 V3.6.5 ajoutera un workflow `breakcold-feedback-on-rdv-status` qui appellera `POST /api/v2/feedback` Setclone pour boucler l'apprentissage sur les drafts qui ont produit un RDV.
+Quand le statut Breakcold d'un lead change ("RDV demandé", "RDV signé", "no show", "deal perdu"), ce 2ème workflow appelle `POST /api/v2/feedback` Setclone pour enregistrer le résultat business contre la conversation. Setclone associe l'outcome à la conv via `external_lead_ref` (le même que Workflow 1) ; aucun risque de doublon — un re-fire renvoie `200 + duplicate=true`.
 
-Pour l'instant, le draft est généré une fois et oublié — la boucle d'apprentissage se ferme via les corrections explicites dans Setclone Studio.
+C'est ce workflow qui ferme la boucle d'apprentissage : les `business_outcomes` rentrent dans les pipelines critic / proposition pour valider quels drafts ont produit des RDV.
+
+### Étape A — Importer le template
+
+1. Télécharge `templates/n8n/breakcold-feedback-on-rdv-status.json`.
+2. n8n → Workflows → **+ Add workflow** → **Import from file**.
+3. Le workflow apparaît avec 5 nodes (webhook → config map → resolve outcome → IF → Setclone feedback). Aucun node Breakcold-side : ce workflow n'écrit pas de note Breakcold.
+
+### Étape B — Mapping statut → outcome
+
+Édite le node **Config map (Breakcold status → outcome)** pour matcher le **nom EXACT** de tes statuts Breakcold sur les 4 outcomes Setclone :
+
+| outcome Setclone | Champ à éditer | Exemple Breakcold |
+|---|---|---|
+| `rdv_triggered` | `status_to_outcome_rdv_triggered` | `Premier RDV demandé` |
+| `rdv_signed` | `status_to_outcome_rdv_signed` | `RDV signé` |
+| `rdv_no_show` | `status_to_outcome_rdv_no_show` | `No show` |
+| `rdv_lost` | `status_to_outcome_rdv_lost` | `Deal perdu` |
+
+Si un statut Breakcold n'a pas d'équivalent Setclone, laisse le champ vide — le node `Resolve outcome` renverra `null` et le IF stoppera le workflow sans appel API.
+
+### Étape C — Configurer Breakcold
+
+Settings → Automations → **+ New automation**.
+
+1. **Trigger** : `Lead status changed`. Sélectionne tous les statuts qui doivent remonter (a minima ceux mappés à l'étape B).
+2. **Action** : `Send webhook` :
+   - URL = `https://votre-n8n.com/webhook/breakcold-rdv-status`
+   - Method = `POST`
+   - Body JSON minimal : `{ "lead_id": "{{lead.id}}", "status_name": "{{status.name}}" }`
+   - Optionnels (utiles pour le critic) : `"deal_value": {{lead.deal_value}}`, `"note": "{{notes.last}}"`, `"message_id": "<uuid d'un msg Setclone>"` (rare — seulement si ton flow connaît la corrélation message-niveau).
+3. Active l'automation.
+
+### Étape D — Smoke test
+
+1. Bascule manuellement un lead test (déjà passé dans Workflow 1) vers le statut Breakcold mappé à `rdv_signed`.
+2. n8n → Executions : 5 verts.
+3. Vérifie côté Setclone DB que la ligne est bien créée :
+   ```sql
+   SELECT outcome, value, note, created_at
+   FROM business_outcomes
+   WHERE conversation_id = '<conv_id du Workflow 1>';
+   ```
+4. Re-trigger le même statut → la 2ème exécution doit aussi remonter `200`, mais `duplicate: true` dans la réponse n8n et **aucune nouvelle ligne** en DB.
+
+### Failure modes (Workflow 3)
+
+| Symptôme | Diagnostic |
+|---|---|
+| `404 — No conversation matches` | Le `lead.id` Breakcold n'a jamais déclenché Workflow 1 (donc pas de conv Setclone associée). Re-process ce lead via Workflow 1, ou ignore l'outcome. |
+| `409 — different persona` | Le `external_lead_ref` est associé à un autre clone Setclone. Indique généralement que la même `SETCLONE_API_KEY` est utilisée pour 2 comptes Breakcold différents — mauvaise config. |
+| `400 — Invalid message_id` | Le `message_id` envoyé par n8n n'existe pas en DB ou ne correspond pas à la conv. Soit retire le champ (rdv_signed ne l'exige pas), soit corrige la corrélation côté n8n. |
+| `outcome=null` dans le node `Resolve outcome` | Statut Breakcold pas mappé. Édite le node `Config map`. |
 
 ---
 
