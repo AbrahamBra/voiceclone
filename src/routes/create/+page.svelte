@@ -58,6 +58,18 @@
   let scraping = $state(false);
   let scrapeStatus = $state("");
   let scrapeSuccess = $state(false);
+  // null = unknown (probe pending), true = available, false = LINKDAPI_KEY absente
+  // côté serveur. On affiche le scrape row uniquement quand true ; sinon on
+  // indique clairement qu'il faut remplir à la main, pour ne pas laisser
+  // l'utilisateur cliquer "Auto-remplir" et hit un 501.
+  let scrapeAvailable = $state(/** @type {boolean|null} */(null));
+  $effect(() => {
+    if (typeof window === "undefined") return;
+    fetch("/api/scrape", { method: "GET" })
+      .then((r) => r.ok ? r.json() : { available: false })
+      .then((d) => { scrapeAvailable = !!d.available; })
+      .catch(() => { scrapeAvailable = false; });
+  });
   let personaName = $state(initialDraft?.personaName ?? "");
   let personaTitle = $state(initialDraft?.personaTitle ?? "");
   let profileText = $state(initialDraft?.profileText ?? "");
@@ -130,6 +142,10 @@
   let generating = $state(false);
   let generatingPhase = $state(""); // "clone" | "files" | ""
   let generateStatus = $state("");
+  // Tracks the most recent failed createClone() call so we can render a clear
+  // "Réessayer" / "Retour étape précédente" pair instead of dropping the user
+  // on a red error message with the same primary CTA.
+  let creationFailed = $state(false);
   let ingestProgress = $state({ current: 0, total: 0 });
   let cloneStepMessage = $state("");
   let currentFileLabel = $state("");
@@ -223,6 +239,7 @@
     generating = true;
     generatingPhase = "clone";
     generateStatus = "";
+    creationFailed = false;
     cloneStepMessage = CLONE_STEPS[0].msg;
     ingestProgress = { current: 0, total: 0 };
 
@@ -266,6 +283,7 @@
       }
       generating = false;
       generatingPhase = "";
+      creationFailed = true;
       return;
     }
     clearInterval(stepTimer);
@@ -510,14 +528,20 @@
               <span>Qui est ce clone ?</span>
             </div>
 
-            <div class="scrape-row">
-              <input type="text" placeholder="URL LinkedIn (optionnel, auto-remplit tout)" bind:value={linkedinUrl} disabled={scraping} />
-              <button class="btn-secondary" onclick={scrapeLinkedIn} disabled={scraping || !linkedinUrl.trim()}>
-                {scraping ? "..." : "Auto-remplir"}
-              </button>
-            </div>
-            {#if scrapeStatus}
-              <div class="scrape-status" class:scrape-status-success={scrapeSuccess}>{scrapeStatus}</div>
+            {#if scrapeAvailable === true}
+              <div class="scrape-row">
+                <input type="text" placeholder="URL LinkedIn (optionnel, auto-remplit tout)" bind:value={linkedinUrl} disabled={scraping} />
+                <button class="btn-secondary" onclick={scrapeLinkedIn} disabled={scraping || !linkedinUrl.trim()}>
+                  {scraping ? "..." : "Auto-remplir"}
+                </button>
+              </div>
+              {#if scrapeStatus}
+                <div class="scrape-status" class:scrape-status-success={scrapeSuccess}>{scrapeStatus}</div>
+              {/if}
+            {:else if scrapeAvailable === false}
+              <div class="scrape-status">
+                Auto-remplissage LinkedIn indisponible sur cette instance. Remplis le prénom, le titre et la bio à la main ci-dessous — le clone fonctionne aussi bien (tu pourras coller des posts à l'étape suivante).
+              </div>
             {/if}
 
             <label>Prénom</label>
@@ -578,6 +602,11 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
 
             <div class="create-actions">
               <button class="btn-secondary" onclick={prevStep}>← Retour</button>
+              {#if dmIssues.length > 0}
+                <button class="btn-secondary" onclick={() => { dmsText = ""; nextStep(); }} title="Passer cette étape sans DMs — tu pourras en ajouter plus tard">
+                  Ignorer et continuer
+                </button>
+              {/if}
               <button onclick={nextStep} disabled={dmIssues.length > 0}>
                 {#if dmIssues.length > 0}Corrige les conversations ci-dessus
                 {:else if !dmsText.trim()}Passer →
@@ -704,7 +733,7 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
             </div>
 
             <button class="generate-btn" onclick={createClone} disabled={generating}>
-              {generating ? "Génération en cours..." : "Générer le clone"}
+              {generating ? "Génération en cours..." : creationFailed ? "Réessayer la génération" : "Générer le clone"}
             </button>
 
             {#if generatingPhase === "clone"}
@@ -730,7 +759,7 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
             {/if}
 
             <div class="create-actions">
-              <button class="btn-secondary" onclick={prevStep} disabled={generating}>← Retour</button>
+              <button class="btn-secondary" onclick={prevStep} disabled={generating}>← Retour à l'étape précédente</button>
             </div>
           </div>
         {/if}

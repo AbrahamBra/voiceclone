@@ -364,6 +364,16 @@
         throw new Error("Failed to load config");
       }
 
+      // Half-created clone guard: if voice is missing, the API will 422 every
+      // chat call. Send the user back to /create with the persona prefilled
+      // so they can finish onboarding instead of staring at a blank chat.
+      // Mirrors the api/chat.js + api/config.js voice_complete check.
+      if (config && config.voice_complete === false) {
+        showToast("Ce clone n'a pas été finalisé. Reprends sa création.", 5000);
+        goto(`/create?persona=${pid}`);
+        return;
+      }
+
       let convList = Array.isArray(cached?.convList) ? cached.convList : [];
       if (listResp?.ok) {
         const d = await listResp.json();

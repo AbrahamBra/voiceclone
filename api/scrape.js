@@ -24,8 +24,18 @@ function extractUsername(input) {
 }
 
 export default async function handler(req, res) {
-  setCors(res, "POST, OPTIONS");
+  setCors(res, "GET, POST, OPTIONS");
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
+
+  // Pre-flight availability probe used by the wizard so we can hide the
+  // LinkedIn auto-fill row up-front when the env var is missing instead of
+  // letting the user paste a URL, click Auto-remplir, then hit a 501. No
+  // auth required — it leaks zero information beyond "the route exists".
+  if (req.method === "GET") {
+    res.status(200).json({ available: !!LINKDAPI_KEY });
+    return;
+  }
+
   if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
 
   try {
