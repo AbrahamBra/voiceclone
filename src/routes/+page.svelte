@@ -401,6 +401,8 @@
     <div class="foot-links">
       <a href={FOUNDER_CTA}>contact</a>
       <a href="/lab">le pipeline</a>
+      <a href="/privacy">confidentialité</a>
+      <a href="/terms">CGU</a>
       <a href="/login" class="foot-login">déjà client ? →</a>
     </div>
     <div class="foot-legal mono">
