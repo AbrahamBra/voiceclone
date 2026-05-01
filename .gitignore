@@ -10,5 +10,6 @@ data/rhythm-gold-candidates.json
 data/crm-parsed.json
 .claude/settings.local.json
 .claude/worktrees/
+.claire/
 .svelte-kit
 .superpowers/
