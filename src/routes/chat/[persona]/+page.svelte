@@ -1165,6 +1165,7 @@
 
   function handleSwitchToClone(newId) {
     if (!newId || newId === personaId) return;
+    track("clone_switched", { from: personaId, to: newId });
     // On NE vide plus l'UI ici : l'effet sur personaId va snapshotter l'état
     // courant dans le cache persona, puis init() swappera vers la nouvelle
     // persona (instantané si cache hit, sinon fetch avec UI sortante toujours
@@ -1177,6 +1178,7 @@
     if (!window.confirm(`Supprimer le clone "${name}" ? Cette action est irréversible.`)) return;
     try {
       await api(`/api/personas?id=${personaId}`, { method: "DELETE" });
+      track("persona_deleted", { persona_id: personaId });
       invalidatePersonaCache(personaId);
       goto("/");
     } catch {
@@ -1257,7 +1259,11 @@
             isEmptyConversation={lastTurnKind === null}
             onDraftNext={handleDraftNext}
             onSwitchScenario={handleScenarioChange}
-            onAnalyzeProspect={(url) => { leadInitialUrl = url; leadOpen = true; }}
+            onAnalyzeProspect={(url) => {
+              track("prospect_analyzed_opened", { source: "composer_paste" });
+              leadInitialUrl = url;
+              leadOpen = true;
+            }}
             onAddProspectReply={handleAddProspectReply}
             {lastTurnKind}
             onPasteDismiss={handlePasteDismiss}
@@ -1330,10 +1336,10 @@
     <CommandPalette
       conversations={$conversations}
       commands={[
-        { id: "new-conv", label: "Nouvelle conversation", hint: "⌘N", action: handleNewConversation },
-        { id: "analyse-prospect", label: "Analyser un prospect", hint: "URL LinkedIn", action: () => { leadInitialUrl = ""; leadOpen = true; } },
-        { id: "open-brain", label: "Cerveau du clone", hint: "persona", action: () => goto(`/brain/${personaId}`) },
-        { id: "switch-clone", label: "Changer de clone", hint: "⌘⇧C", action: () => { switcherOpen = true; } },
+        { id: "new-conv", label: "Nouvelle conversation", hint: "⌘N", action: () => { track("command_palette_action", { command_id: "new-conv" }); handleNewConversation(); } },
+        { id: "analyse-prospect", label: "Analyser un prospect", hint: "URL LinkedIn", action: () => { track("command_palette_action", { command_id: "analyse-prospect" }); track("prospect_analyzed_opened", { source: "command_palette" }); leadInitialUrl = ""; leadOpen = true; } },
+        { id: "open-brain", label: "Cerveau du clone", hint: "persona", action: () => { track("command_palette_action", { command_id: "open-brain" }); goto(`/brain/${personaId}`); } },
+        { id: "switch-clone", label: "Changer de clone", hint: "⌘⇧C", action: () => { track("command_palette_action", { command_id: "switch-clone" }); switcherOpen = true; } },
       ]}
       onselect={(id) => { showCommandPalette = false; handleSelectConversation(id); }}
       onclose={() => (showCommandPalette = false)}

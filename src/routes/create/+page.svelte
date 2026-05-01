@@ -56,7 +56,9 @@
   function removeProtocolFile() { protocolFile = null; }
 
   // Detect conversations with < 2 distinct speakers (monologue = useless for cloning turn-taking).
-  // A "speaker" = a line starting with "Name:" (letters up to 30 chars then colon).
+  // A "speaker" = a line starting with "Name:" (letters up to 60 chars then colon).
+  // 60 chars accommodates compound first+last names (ex : "François Darmouville:" = 33 chars)
+  // tout en restant assez court pour rejeter une phrase entière mal ponctuée.
   // Same tolerant split as createClone : `---` ou triple-newline.
   const SPLIT_RE = /\n[\s]*---+[\s]*\n|\n\s*\n\s*\n+/;
   let dmIssues = $derived.by(() => {
@@ -66,7 +68,7 @@
     convs.forEach((conv, i) => {
       if (conv.trim().length < 20) return;
       const speakers = new Set();
-      const lineRegex = /^([A-Za-zÀ-ÿ][^:\n]{0,30}):/gm;
+      const lineRegex = /^([A-Za-zÀ-ÿ][^:\n]{0,60}):/gm;
       let m;
       while ((m = lineRegex.exec(conv)) !== null) speakers.add(m[1].trim());
       if (speakers.size < 2) issues.push({ idx: i + 1, speakers: speakers.size });
@@ -117,7 +119,7 @@
       scrapeSuccess = true;
     } catch (err) {
       if (err.status === 501) {
-        scrapeStatus = "Scraping non disponible. Remplissez manuellement.";
+        scrapeStatus = "Scraping LinkedIn non disponible. Remplissez le nom et le titre ci-dessous, et collez 5 à 10 posts dans le champ \"posts\" plus bas.";
       } else {
         scrapeStatus = err.data?.error || err.message || "Erreur de scraping";
       }
