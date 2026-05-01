@@ -33,7 +33,7 @@
       <li>L'accès est nominatif et non-cessible. Vous êtes responsable de la confidentialité de votre code d'accès.</li>
       <li>Vous garantissez que les données fournies (posts, DMs, doctrine client) sont licites et que vous disposez des droits nécessaires pour les téléverser.</li>
       <li>L'éditeur peut suspendre un compte en cas d'usage manifestement abusif (spam, scraping massif tiers, contenu illicite) avec un préavis raisonnable sauf urgence.</li>
-      <li>Vous pouvez désactiver votre compte à tout moment via <code>POST /api/account/delete</code> ou en écrivant à <a href="mailto:contact@setclone.app">contact@setclone.app</a>. Voir la <a href="/privacy">politique de confidentialité</a> pour la conservation des données après désactivation.</li>
+      <li>Vous pouvez désactiver votre compte à tout moment via <code>POST /api/account/delete</code> ou en écrivant à <a href="mailto:a.brakha@challengerslab.com">a.brakha@challengerslab.com</a>. Voir la <a href="/privacy">politique de confidentialité</a> pour la conservation des données après désactivation.</li>
     </ul>
   </section>
 
@@ -94,7 +94,7 @@
   <section>
     <h2>9. Contact</h2>
     <p>
-      Pour toute question sur les présentes conditions : <a href="mailto:contact@setclone.app">contact@setclone.app</a>.
+      Pour toute question sur les présentes conditions : <a href="mailto:a.brakha@challengerslab.com">a.brakha@challengerslab.com</a>.
     </p>
   </section>
 

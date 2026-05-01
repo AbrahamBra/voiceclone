@@ -30,7 +30,7 @@
     <h2>Responsable de traitement</h2>
     <p>
       <strong>Setclone</strong>, basé à Paris, France.<br>
-      Contact général et exercice des droits : <a href="mailto:contact@setclone.app">contact@setclone.app</a><br>
+      Contact général et exercice des droits : <a href="mailto:a.brakha@challengerslab.com">a.brakha@challengerslab.com</a><br>
       L'identité juridique complète (forme sociale, RCS, SIREN) sera publiée à la sortie de la bêta privée. Disponible sur demande à l'adresse ci-dessus pendant la phase bêta.
     </p>
   </section>
@@ -75,7 +75,7 @@
       </tbody>
     </table>
     <p class="footnote">
-      La liste à jour des sous-traitants est tenue à disposition sur demande à <a href="mailto:contact@setclone.app">contact@setclone.app</a>.
+      La liste à jour des sous-traitants est tenue à disposition sur demande à <a href="mailto:a.brakha@challengerslab.com">a.brakha@challengerslab.com</a>.
     </p>
   </section>
 
@@ -91,7 +91,7 @@
   <section>
     <h2>Vos droits</h2>
     <p>
-      Au titre du RGPD, vous disposez des droits suivants. Pour les exercer, écrivez à <a href="mailto:contact@setclone.app">contact@setclone.app</a> en précisant le compte concerné.
+      Au titre du RGPD, vous disposez des droits suivants. Pour les exercer, écrivez à <a href="mailto:a.brakha@challengerslab.com">a.brakha@challengerslab.com</a> en précisant le compte concerné.
     </p>
     <ul>
       <li><strong>Droit d'accès</strong> et de rectification (articles 15 et 16).</li>
