@@ -15,6 +15,7 @@ lead, avec un deep link vers Setclone pour les ajustements / l'envoi.
 - Un compte Breakcold avec une API key (Settings → Developers → API).
 - Un clone Setclone créé et calibré (page `/create` puis `/calibrate`).
 - Une URL Setclone (preview Vercel ou prod) — par défaut `https://voiceclone-lake.vercel.app`.
+- Le persona Setclone doit avoir un **client_id** assigné — sans ça, l'endpoint `/api/v2/draft` renvoie `500 { code: "no_client_id" }` parce qu'il n'arrive pas à persister la conv. La création via `/create` règle ça automatiquement ; pour les personas seedés ou anciens, vérifier en DB avec `SELECT slug, client_id FROM personas WHERE slug = '<ton-slug>'`. Si null, patcher avec le client owner.
 
 ---
 

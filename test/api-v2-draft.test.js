@@ -577,6 +577,51 @@ describe("POST /api/v2/draft", () => {
     assert.match(validate({ prospectContext: "x" }), /personaId is required/);
     assert.equal(validate({ prospect_data: { context: "x" } }, { apiKeyPinsPersona: true }), null);
   });
+
+  it("hard-fails 500 + fallback_draft when API key persona has no client_id", async () => {
+    const { default: handler } = await import("../api/v2/draft.js");
+    // API key resolves the persona but client=null (persona.client_id was null).
+    // Without external_lead_ref the legacy stateless path proceeds — so we
+    // also pass external_lead_ref to enter the persistence branch.
+    const fakeSupabase = makeFakeSupabase({ conversations: [], messages: [] });
+    const req = {
+      method: "POST", headers: { "x-api-key": "sk_test" },
+      body: { prospect_data: { context: "ctx" }, external_lead_ref: "breakcold:noclient" },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps({
+      supabase: fakeSupabase,
+      resolveApiKey: async () => ({ persona: PERSONA, client: null, keyId: "k1", isAdmin: false }),
+    }));
+    assert.equal(res.statusCode, 500);
+    assert.equal(res._body.code, "no_client_id");
+    assert.match(res._body.error, /no owning client/);
+    assert.ok(res._body.fallback_draft, "fallback_draft must be returned for n8n note");
+  });
+
+  it("hard-fails 500 + fallback_draft on conv insert error (non-23505)", async () => {
+    const { default: handler } = await import("../api/v2/draft.js");
+    // Coerce fake supabase to error on insert (simulate FK / NOT NULL).
+    const fakeSupabase = makeFakeSupabase({ conversations: [], messages: [] });
+    const realFrom = fakeSupabase.from.bind(fakeSupabase);
+    fakeSupabase.from = (table) => {
+      const ref = realFrom(table);
+      if (table === "conversations") {
+        return { ...ref, insert: () => ({ select: () => ({ single: async () => ({ data: null, error: { code: "23502", message: "null value in column client_id" } }) }) }) };
+      }
+      return ref;
+    };
+    const req = {
+      method: "POST", headers: {},
+      body: { personaId: "p1", prospectContext: "ctx", external_lead_ref: "breakcold:hardfail" },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps({ supabase: fakeSupabase }));
+    assert.equal(res.statusCode, 500);
+    assert.equal(res._body.code, "23502");
+    assert.match(res._body.error, /Failed to persist conversation/);
+    assert.ok(res._body.fallback_draft, "fallback_draft must be returned for n8n note");
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────
