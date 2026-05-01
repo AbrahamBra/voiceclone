@@ -172,7 +172,7 @@
 <div class="composer" class:composer-locked={scenarioMissing}>
   {#if scenarioMissing}
     <div class="scenario-gate mono" role="status">
-      → Choisis un scénario (haut de la page) avant d'écrire — le draft en dépend.
+      → Choisis un mode ci-dessous (1er message, répondre, relancer, closer) avant d'écrire.
     </div>
   {:else if target}
     <div class="char-counter mono" data-state={countState} aria-live="polite">
