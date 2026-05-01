@@ -105,7 +105,7 @@
     {#if activeTab === "connaissance"}
       <KnowledgePanel {personaId} onupload={handleKnowledgeUpload} />
     {:else if activeTab === "protocole"}
-      <ProtocolPanel {personaId} useNewProtocolUi={data.useNewProtocolUi} />
+      <ProtocolPanel {personaId} />
     {:else if activeTab === "intelligence"}
       <IntelligencePanel {personaId} extracting={intelligenceExtracting} />
     {:else if activeTab === "reglages"}
