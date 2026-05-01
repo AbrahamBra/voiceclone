@@ -6,7 +6,41 @@
   import { track } from "$lib/tracking.js";
   import { fly } from "svelte/transition";
 
-  let step = $state('maturity');
+  // ─── Draft persistence ─────────────────────────────────────────────────
+  // Without this, a refresh mid-onboarding wipes everything the user typed
+  // (LinkedIn URL, scraped profile, posts, DM conversations, protocole upload).
+  // Nicolas onboarding-blocker: refresh = repartir à zéro = perte de confiance
+  // dès le premier contact. localStorage is enough — this is per-device,
+  // not per-account, so no server round-trip needed.
+  const DRAFT_KEY = "setclone:create-draft:v1";
+  const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days, then garbage-collect
+
+  function loadDraft() {
+    if (typeof localStorage === "undefined") return null;
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return null;
+      if (parsed.savedAt && Date.now() - parsed.savedAt > DRAFT_TTL_MS) {
+        localStorage.removeItem(DRAFT_KEY);
+        return null;
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  function clearDraft() {
+    if (typeof localStorage === "undefined") return;
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+  }
+
+  const initialDraft = loadDraft();
+  let draftRestored = $state(!!initialDraft);
+
+  let step = $state(initialDraft?.step ?? 'maturity');
   let direction = $state(1);
 
   // DM-only flow: maturity tier first (L1/L2/L3), then scrape LinkedIn for
@@ -17,26 +51,26 @@
   const TOTAL = steps.length;
 
   // Step 0: Maturité du document source (L1 / L2 / L3, optionnel)
-  let maturityLevel = $state(/** @type {'L1'|'L2'|'L3'|null} */(null));
+  let maturityLevel = $state(/** @type {'L1'|'L2'|'L3'|null} */(initialDraft?.maturityLevel ?? null));
 
   // Step 1: Infos générales
-  let linkedinUrl = $state("");
+  let linkedinUrl = $state(initialDraft?.linkedinUrl ?? "");
   let scraping = $state(false);
   let scrapeStatus = $state("");
   let scrapeSuccess = $state(false);
-  let personaName = $state("");
-  let personaTitle = $state("");
-  let profileText = $state("");
-  let clientLabel = $state("");
+  let personaName = $state(initialDraft?.personaName ?? "");
+  let personaTitle = $state(initialDraft?.personaTitle ?? "");
+  let profileText = $state(initialDraft?.profileText ?? "");
+  let clientLabel = $state(initialDraft?.clientLabel ?? "");
 
   // Voice samples (scraped LinkedIn posts — used as embeddings, not generated)
-  let postsText = $state("");
+  let postsText = $state(initialDraft?.postsText ?? "");
 
   // DMs LinkedIn (training conversations)
-  let dmsText = $state("");
+  let dmsText = $state(initialDraft?.dmsText ?? "");
 
   // Step 4: Protocole opérationnel (optionnel — parsed async après création)
-  let protocolFile = $state(/** @type {{name: string, content: string}|null} */(null));
+  let protocolFile = $state(/** @type {{name: string, content: string}|null} */(initialDraft?.protocolFile ?? null));
   let protoFileInputEl;
   async function handleProtocolFile(e) {
     const file = e.target.files[0];
@@ -78,8 +112,20 @@
 
   // Step 4: Documents + Génération
   // pendingFiles: [{ name, content, status: 'pending'|'uploading'|'done'|'error', error? }]
-  let pendingFiles = $state([]);
-  let showDocs = $state(false);
+  // Restored files come back as 'pending' (uploads from a prior session that
+  // never finished — we don't keep 'done' across reloads since clearDraft fires
+  // on successful creation).
+  let pendingFiles = $state(
+    Array.isArray(initialDraft?.pendingFiles)
+      ? initialDraft.pendingFiles.map((f) => ({
+          name: f.name,
+          content: f.content || "",
+          status: f.status === "error" ? "error" : "pending",
+          error: f.error,
+        }))
+      : [],
+  );
+  let showDocs = $state(!!initialDraft?.showDocs);
   let fileInputEl;
   let generating = $state(false);
   let generatingPhase = $state(""); // "clone" | "files" | ""
@@ -281,6 +327,10 @@
 
     generatingPhase = "";
     generateStatus = `Clone "${persona.name}" créé !`;
+    // Wizard succeeded end-to-end — drop the draft so a fresh /create starts
+    // empty. Note: we keep the draft if creation throws above so the user can
+    // retry without re-typing everything.
+    clearDraft();
     if (protocolFile) {
       showToast("Protocole en cours de parsing. Dispo dans Cerveau → Protocole d'ici ≈10 min", 6000);
     }
@@ -295,6 +345,62 @@
       showToast(msg, 8000);
     }
     setTimeout(() => { goto(`/calibrate/${persona.id}`); }, 800);
+  }
+
+  // ─── Persist draft on every meaningful change ─────────────────────────
+  // Keeps the wizard resumable across refresh / accidental tab close.
+  // Catches QuotaExceededError silently — large pendingFiles can blow past
+  // 5 MB; persistence is best-effort, not a blocker.
+  $effect(() => {
+    if (typeof localStorage === "undefined") return;
+    const payload = {
+      savedAt: Date.now(),
+      step,
+      maturityLevel,
+      linkedinUrl,
+      personaName,
+      personaTitle,
+      profileText,
+      clientLabel,
+      postsText,
+      dmsText,
+      protocolFile: protocolFile
+        ? { name: protocolFile.name, content: protocolFile.content }
+        : null,
+      pendingFiles: pendingFiles
+        .filter((f) => f.status !== "uploading" && f.status !== "done")
+        .map((f) => ({
+          name: f.name,
+          content: f.content,
+          status: f.status,
+          error: f.error,
+        })),
+      showDocs,
+    };
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
+    } catch {
+      // Quota or serialization issue — drop silently.
+    }
+  });
+
+  function startFresh() {
+    clearDraft();
+    draftRestored = false;
+    step = "maturity";
+    maturityLevel = null;
+    linkedinUrl = "";
+    personaName = "";
+    personaTitle = "";
+    profileText = "";
+    clientLabel = "";
+    postsText = "";
+    dmsText = "";
+    protocolFile = null;
+    pendingFiles = [];
+    showDocs = false;
+    scrapeStatus = "";
+    scrapeSuccess = false;
   }
 
   function nextStep() {
@@ -322,6 +428,14 @@
     <p class="create-subtitle">
       Étape {steps.indexOf(step) + 1}/{TOTAL}
     </p>
+    {#if draftRestored}
+      <div class="draft-restored">
+        <span>Brouillon restauré</span>
+        <button class="draft-fresh" onclick={startFresh} type="button">
+          Recommencer à zéro
+        </button>
+      </div>
+    {/if}
     <div class="step-bar">
       {#each steps as _, i}
         <div class="step-bar-item" class:active={steps.indexOf(step) >= i}></div>
@@ -651,6 +765,31 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
     color: var(--text-tertiary);
     margin-bottom: 0.625rem;
   }
+
+  .draft-restored {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+    margin-bottom: 0.5rem;
+    padding: 0.375rem 0.5rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .draft-fresh {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.6875rem;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    font-family: var(--font);
+  }
+  .draft-fresh:hover { color: var(--text); }
 
   .step-bar {
     display: flex;
