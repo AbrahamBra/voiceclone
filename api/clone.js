@@ -358,38 +358,69 @@ ${neverDoes}
     // Embeddings SYNCHRONES avant res.json (fire-and-forget tué par Vercel).
     // Critique : sans ça, table `chunks` vide → fidélité vocale dit "pas assez de posts" + RAG cassé.
     // Un try/catch par source_type : un échec sur les posts ne doit pas bloquer style/document.
+    //
+    // On track outcomes per source pour calculer un embeddings_status final
+    // (ready / partial / failed). Si la fonction Vercel meurt avant le UPDATE
+    // ci-dessous, la row reste à 'pending' (default migration 058) — le UI
+    // peut alors surfacer un warning "indexation incomplète".
+    let embedAttempted = 0;
+    let embedSucceeded = 0;
     if (isEmbeddingAvailable()) {
       if (allPosts.length > 0) {
         // 1 post = 1 chunk (unité sémantique pour la fidélité vocale k-means).
         const postChunks = allPosts.map(p => p.slice(0, 3000).trim()).filter(p => p.length > 30);
         if (postChunks.length > 0) {
+          embedAttempted++;
           try {
             await embedAndStore(supabase, postChunks, persona.id, "linkedin_post");
+            embedSucceeded++;
           } catch (e) {
             console.log(JSON.stringify({ event: "embed_error", persona: persona.id, source_type: "linkedin_post", count: postChunks.length, error: e.message }));
           }
         }
       }
       if (styleBody) {
+        embedAttempted++;
         try {
           await embedAndStore(supabase, chunkText(styleBody), persona.id, "knowledge_file", "topics/style-posts-linkedin.md");
+          embedSucceeded++;
         } catch (e) {
           console.log(JSON.stringify({ event: "embed_error", persona: persona.id, source_type: "knowledge_file", error: e.message }));
         }
       }
       if (allDocuments && allDocuments.length > 50) {
+        embedAttempted++;
         try {
           await embedAndStore(supabase, chunkText(allDocuments), persona.id, "document", "documents/client-docs.md");
+          embedSucceeded++;
         } catch (e) {
           console.log(JSON.stringify({ event: "embed_error", persona: persona.id, source_type: "document", error: e.message }));
         }
       }
-      console.log(JSON.stringify({ event: "chunks_embedded", persona: persona.id }));
+      console.log(JSON.stringify({ event: "chunks_embedded", persona: persona.id, attempted: embedAttempted, succeeded: embedSucceeded }));
+    }
+
+    // Resolve final status. No-attempt case = 'ready' (a persona without any
+    // embedding-eligible content is fine — all-text chat still works, RAG
+    // just has nothing to retrieve). 0/N = 'failed', N/N = 'ready', mixed =
+    // 'partial'. Best-effort UPDATE — if it fails, the wizard sees the persona
+    // in the response and can fall back to assuming pending.
+    const embeddingsStatus =
+      embedAttempted === 0 ? "ready"
+      : embedSucceeded === 0 ? "failed"
+      : embedSucceeded === embedAttempted ? "ready"
+      : "partial";
+    const { error: statusErr } = await supabase
+      .from("personas")
+      .update({ embeddings_status: embeddingsStatus })
+      .eq("id", persona.id);
+    if (statusErr) {
+      console.log(JSON.stringify({ event: "embeddings_status_update_error", persona: persona.id, error: statusErr.message }));
     }
 
     res.json({
       ok: true,
-      persona: { id: persona.id, slug: persona.slug, name: persona.name, title: persona.title, avatar: persona.avatar },
+      persona: { id: persona.id, slug: persona.slug, name: persona.name, title: persona.title, avatar: persona.avatar, embeddings_status: embeddingsStatus },
     });
 
   } catch (err) {
