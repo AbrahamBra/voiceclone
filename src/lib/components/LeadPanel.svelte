@@ -4,6 +4,7 @@
   // lead-context message, and dispatch onAnalyzed(msg) for the chat to send.
 
   import { authHeaders } from "$lib/api.js";
+  import { track } from "$lib/tracking.js";
   import SidePanel from "./SidePanel.svelte";
 
   let { open = false, initialUrl = "", onClose, onAnalyzed } = $props();
@@ -44,6 +45,7 @@
     submitting = true;
     statusError = false;
     status = "Récupération du profil et des posts…";
+    track("prospect_analyze_submitted");
 
     try {
       const resp = await fetch("/api/scrape", {
