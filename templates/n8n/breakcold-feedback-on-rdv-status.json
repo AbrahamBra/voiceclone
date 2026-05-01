@@ -1,0 +1,118 @@
+{
+  "name": "Setclone — Feedback on Breakcold RDV status",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "breakcold-rdv-status",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Webhook (Breakcold status change)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 320],
+      "webhookId": "breakcold-rdv-status"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            { "name": "status_to_outcome_rdv_triggered", "value": "Premier RDV demandé" },
+            { "name": "status_to_outcome_rdv_signed", "value": "RDV signé" },
+            { "name": "status_to_outcome_rdv_no_show", "value": "No show" },
+            { "name": "status_to_outcome_rdv_lost", "value": "Deal perdu" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-map-1",
+      "name": "Config map (Breakcold status → outcome)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [460, 100],
+      "notesInFlow": true,
+      "notes": "Édite ces valeurs pour matcher EXACTEMENT le nom de tes statuts Breakcold (case-insensitive). Si un statut Breakcold n'a pas d'équivalent Setclone, laisse vide — le node 'Resolve outcome' renverra null et le workflow s'arrête sans appel API."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Map Breakcold status name → Setclone outcome value. Returns null when no\n// match — the IF node downstream will skip the API call.\nconst body = $input.first().json.body || $input.first().json;\nconst statusName = (body.status?.name || body.status_name || body.new_status || '').trim();\nconst leadId = body.lead_id || body.lead?.id;\nconst messageId = body.message_id || null;        // optional, only when n8n knows which message triggered\nconst dealValue = body.deal_value ?? null;        // optional numeric\nconst note = body.note || null;\nconst configRow = $('Config map (Breakcold status → outcome)').first().json;\n\nconst MAPPING = {\n  rdv_triggered: configRow.status_to_outcome_rdv_triggered,\n  rdv_signed: configRow.status_to_outcome_rdv_signed,\n  rdv_no_show: configRow.status_to_outcome_rdv_no_show,\n  rdv_lost: configRow.status_to_outcome_rdv_lost,\n};\n\nlet outcome = null;\nfor (const [outcomeKey, breakcoldStatusName] of Object.entries(MAPPING)) {\n  if (breakcoldStatusName && breakcoldStatusName.toLowerCase() === statusName.toLowerCase()) {\n    outcome = outcomeKey;\n    break;\n  }\n}\n\nreturn [{ json: { lead_id: leadId, outcome, status_name: statusName, message_id: messageId, deal_value: dealValue, note } }];"
+      },
+      "id": "resolve-outcome-1",
+      "name": "Resolve outcome",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 320]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "outcome-resolved",
+              "leftValue": "={{ $json.outcome }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "branch-resolved-1",
+      "name": "Branch (outcome resolved)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 320]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SETCLONE_BASE_URL }}/api/v2/feedback",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.SETCLONE_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"external_lead_ref\": \"breakcold:{{ $json.lead_id }}\",\n  \"outcome\": \"{{ $json.outcome }}\",\n  \"message_id\": {{ $json.message_id ? '\"' + $json.message_id + '\"' : 'null' }},\n  \"value\": {{ $json.deal_value ?? 'null' }},\n  \"note\": {{ $json.note ? '\"' + $json.note.replace(/\"/g, '\\\\\"') + '\"' : 'null' }}\n}",
+        "options": { "timeout": 10000 }
+      },
+      "id": "feedback-1",
+      "name": "Setclone feedback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1140, 220],
+      "notesInFlow": true,
+      "notes": "Idempotent : un re-fire pour le même (external_lead_ref, outcome) renvoie 200 + duplicate=true plutôt que de créer une 2ème ligne. Sûr d'activer le retry n8n par défaut."
+    }
+  ],
+  "connections": {
+    "Webhook (Breakcold status change)": {
+      "main": [[{ "node": "Resolve outcome", "type": "main", "index": 0 }]]
+    },
+    "Config map (Breakcold status → outcome)": {
+      "main": [[{ "node": "Resolve outcome", "type": "main", "index": 0 }]]
+    },
+    "Resolve outcome": {
+      "main": [[{ "node": "Branch (outcome resolved)", "type": "main", "index": 0 }]]
+    },
+    "Branch (outcome resolved)": {
+      "main": [
+        [{ "node": "Setclone feedback", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "setclone-breakcold-pr2-v365"
+  }
+}
