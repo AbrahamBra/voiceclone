@@ -23,7 +23,22 @@ export default async function handler(req, res) {
   try {
     const auth = await authenticateRequest(req);
     if (auth.isAdmin) {
-      client = null; // admin can create freely
+      // Admin-created personas must own a client_id — null breaks
+      // api/personas.js listing (filtered by client_id) and api/v2/draft
+      // persistence (PR #195 hard-fail). Fallback to the __admin__ client row.
+      // Migration 062 enforces NOT NULL at the DB level; this is the
+      // app-side guarantee.
+      if (auth.client) {
+        client = auth.client;
+      } else {
+        const { data: adminClient } = await supabase
+          .from("clients").select("*").eq("access_code", "__admin__").single();
+        if (!adminClient) {
+          res.status(500).json({ error: "Admin client row missing — cannot create persona without owner" });
+          return;
+        }
+        client = adminClient;
+      }
     } else {
       client = auth.client;
       // Check clone limit
