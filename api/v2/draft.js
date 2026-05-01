@@ -26,6 +26,7 @@ export const maxDuration = 30;
 
 import Anthropic from "@anthropic-ai/sdk";
 import { rateLimit as _rateLimit } from "../_rateLimit.js";
+import { rateLimitApiKey as _rateLimitApiKey } from "../../lib/_rateLimitApiKey.js";
 import {
   authenticateRequest as _authenticateRequest,
   checkBudget as _checkBudget,
@@ -241,6 +242,7 @@ async function defaultGenerate({ apiKey, model, systemPrompt, messages }) {
 export default async function handler(req, res, deps) {
   const {
     rateLimit = _rateLimit,
+    rateLimitApiKey = _rateLimitApiKey,
     authenticateRequest = _authenticateRequest,
     resolveApiKey = _resolveApiKey,
     checkBudget = _checkBudget,
@@ -286,17 +288,34 @@ export default async function handler(req, res, deps) {
   let client = null;
   let isAdmin = false;
   let apiKeyPersona = null;
+  let apiKeyId = null;
   try {
     const apiKeyAuth = await resolveApiKey(req);
     if (apiKeyAuth) {
       client = apiKeyAuth.client;
       apiKeyPersona = apiKeyAuth.persona;
+      apiKeyId = apiKeyAuth.keyId;
     } else {
       ({ client, isAdmin } = await authenticateRequest(req));
     }
   } catch (err) {
     res.status(err.status || 403).json({ error: err.error || "Auth failed" });
     return;
+  }
+
+  // Per-key rate limit (V3.6.6) — only the machine flow has a keyId. Layered
+  // on top of the IP limit so a single n8n instance with multiple keys is
+  // throttled per-key rather than collectively by IP.
+  if (apiKeyId) {
+    const keyRl = await rateLimitApiKey(apiKeyId);
+    if (!keyRl.allowed) {
+      res.status(429).json({
+        error: `Too many requests (per-key ${keyRl.scope})`,
+        scope: keyRl.scope,
+        retryAfter: keyRl.retryAfter,
+      });
+      return;
+    }
   }
 
   if (!isAdmin) {

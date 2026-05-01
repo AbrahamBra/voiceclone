@@ -19,6 +19,7 @@
 export const maxDuration = 10;
 
 import { rateLimit as _rateLimit } from "../_rateLimit.js";
+import { rateLimitApiKey as _rateLimitApiKey } from "../../lib/_rateLimitApiKey.js";
 import { setCors as _setCors, supabase as _supabase } from "../../lib/supabase.js";
 import { resolveApiKey as _resolveApiKey } from "../../lib/api-key-auth.js";
 import { log as _log } from "../../lib/log.js";
@@ -66,6 +67,7 @@ function validate(body) {
 export default async function handler(req, res, deps) {
   const {
     rateLimit = _rateLimit,
+    rateLimitApiKey = _rateLimitApiKey,
     resolveApiKey = _resolveApiKey,
     setCors = _setCors,
     supabase = _supabase,
@@ -102,6 +104,19 @@ export default async function handler(req, res, deps) {
   }
   const persona = apiKeyAuth.persona;
   const client = apiKeyAuth.client;
+
+  // Per-key rate limit (V3.6.6) — layered on top of the IP limit so a single
+  // n8n instance with multiple keys is throttled per-key rather than
+  // collectively by IP.
+  const keyRl = await rateLimitApiKey(apiKeyAuth.keyId);
+  if (!keyRl.allowed) {
+    res.status(429).json({
+      error: `Too many requests (per-key ${keyRl.scope})`,
+      scope: keyRl.scope,
+      retryAfter: keyRl.retryAfter,
+    });
+    return;
+  }
 
   const validationError = validate(req.body);
   if (validationError) { res.status(400).json({ error: validationError }); return; }
