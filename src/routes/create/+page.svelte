@@ -284,6 +284,16 @@
     if (protocolFile) {
       showToast("Protocole en cours de parsing. Dispo dans Cerveau → Protocole d'ici ≈10 min", 6000);
     }
+    // Surface RAG state. 'ready' is the silent success path. 'partial' / 'failed'
+    // / 'pending' all indicate the clone may answer with degraded retrieval — the
+    // user needs to know upfront so they don't blame the bot in /chat.
+    const ragStatus = persona.embeddings_status;
+    if (ragStatus && ragStatus !== "ready") {
+      const msg = ragStatus === "partial"
+        ? "Indexation partielle : certains documents n'ont pas pu être absorbés. Le clone fonctionne, mais sa mémoire est incomplète."
+        : "Indexation incomplète : la mémoire du clone est vide. Re-créez le clone ou contactez le support pour relancer l'indexation.";
+      showToast(msg, 8000);
+    }
     setTimeout(() => { goto(`/calibrate/${persona.id}`); }, 800);
   }
 
