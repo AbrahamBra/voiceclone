@@ -584,10 +584,28 @@ export default async function handler(req, res, deps) {
   let conversationId = null;
   let draftId = null;
   if (externalLeadRef && supabase) {
+    // The v2 surface relies on persona.client_id to be set (the API key auth
+    // pipeline reads this to resolve the owning client row). When it's null,
+    // conversations.client_id NOT NULL fires a 23502 here ; we used to swallow
+    // that and return a partial 200 with conversation_id=null, which broke
+    // the n8n deep link AND made Workflow 3's feedback lookup-by-ref 404.
+    // Refuse persistence with no client : the operator must associate the
+    // persona before using the API key flow.
+    if (!client?.id) {
+      log("v2_draft_no_client_id", { persona: persona.id, external_lead_ref: externalLeadRef });
+      res.status(500).json({
+        error: "Persona has no owning client — cannot persist conversation",
+        detail: "Set personas.client_id (e.g. via the brain page or admin) before using the API key flow on this persona.",
+        code: "no_client_id",
+        fallback_draft: draftText,
+      });
+      return;
+    }
+
     const title = deriveTitle({ prospectName, prospectMessage: prospectContext });
     const insertConv = {
       persona_id: persona.id,
-      client_id: client?.id || null,
+      client_id: client.id,
       scenario: "default",
       external_lead_ref: externalLeadRef,
       lifecycle_state: "awaiting_send",
@@ -613,11 +631,23 @@ export default async function handler(req, res, deps) {
           .maybeSingle();
         conversationId = raced?.id || null;
       } else {
+        // Anything else (FK violation, constraint, transient DB) is a hard
+        // persistence failure : returning a 200 with conversation_id=null
+        // would silently break the n8n deep link AND the feedback lookup.
+        // Surface the failure instead, with the generated draft so the
+        // caller can still write a fallback note.
         log("v2_draft_conv_insert_error", {
           error: convErr.message,
           code: convErr.code,
           external_lead_ref: externalLeadRef,
         });
+        res.status(500).json({
+          error: "Failed to persist conversation",
+          detail: convErr.message,
+          code: convErr.code || "conv_insert_failed",
+          fallback_draft: draftText,
+        });
+        return;
       }
     } else {
       conversationId = newConv?.id || null;
