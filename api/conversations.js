@@ -168,7 +168,7 @@ export default async function handler(req, res) {
   if (persona) {
     let listQuery = supabase
       .from("conversations")
-      .select("id, persona_id, scenario, title, prospect_name, last_message_at, created_at")
+      .select("id, persona_id, scenario, title, prospect_name, last_message_at, created_at, lifecycle_state, external_lead_ref")
       .eq("persona_id", persona)
       .order("last_message_at", { ascending: false })
       .limit(50);

@@ -1,0 +1,186 @@
+{
+  "name": "Setclone — Draft on Breakcold list add",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "breakcold-list-add",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Webhook (Breakcold list-add)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 320],
+      "webhookId": "breakcold-list-add"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.breakcold.com/rest/lead/{{ $json.body.lead_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "fetch-lead-1",
+      "name": "Fetch Breakcold lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [460, 320],
+      "credentials": {
+        "httpHeaderAuth": { "id": "BREAKCOLD_API_KEY", "name": "Breakcold API key" }
+      }
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            { "name": "list_to_source_core_visite_profil", "value": "Visite profil" },
+            { "name": "list_to_source_core_dr_recue", "value": "DR reçue" },
+            { "name": "list_to_source_core_interaction_contenu", "value": "Interaction contenu" },
+            { "name": "list_to_source_core_premier_degre", "value": "Premier degré" },
+            { "name": "list_to_source_core_spyer", "value": "Spyer" },
+            { "name": "list_to_source_core_sales_nav", "value": "Sales Nav" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-map-1",
+      "name": "Config map (Breakcold list → source_core)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [680, 100],
+      "notesInFlow": true,
+      "notes": "Édite ces valeurs pour matcher EXACTEMENT le nom de tes listes Breakcold. Le résolveur cherche la valeur dans la liste où le lead a été ajouté."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Map Breakcold list name → Setclone source_core. Returns null when no\n// match — Setclone draft handler will fall back to global protocol only.\nconst lead = $input.first().json;\nconst listName = (lead.list?.name || lead.list_name || '').trim();\nconst configRow = $('Config map (Breakcold list → source_core)').first().json;\n\nconst MAPPING = {\n  visite_profil: configRow.list_to_source_core_visite_profil,\n  dr_recue: configRow.list_to_source_core_dr_recue,\n  interaction_contenu: configRow.list_to_source_core_interaction_contenu,\n  premier_degre: configRow.list_to_source_core_premier_degre,\n  spyer: configRow.list_to_source_core_spyer,\n  sales_nav: configRow.list_to_source_core_sales_nav,\n};\n\nlet sourceCore = null;\nfor (const [core, breakcoldListName] of Object.entries(MAPPING)) {\n  if (breakcoldListName && breakcoldListName.toLowerCase() === listName.toLowerCase()) {\n    sourceCore = core;\n    break;\n  }\n}\n\nreturn [{ json: { ...lead, _resolved_source_core: sourceCore } }];"
+      },
+      "id": "resolve-source-core-1",
+      "name": "Resolve source_core",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 320]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SETCLONE_BASE_URL }}/api/v2/draft",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.SETCLONE_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"prospect_data\": {\n    \"linkedin_url\": \"{{ $json.linkedin_url || '' }}\",\n    \"name\": \"{{ $json.first_name }} {{ $json.last_name }}\",\n    \"context\": \"{{ $json.notes || '' }}\"\n  },\n  \"source_core\": \"{{ $json._resolved_source_core }}\",\n  \"external_lead_ref\": \"breakcold:{{ $json.id }}\"\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "draft-1",
+      "name": "Setclone draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1140, 320],
+      "notesInFlow": true,
+      "notes": "Append le deep link Setclone à la note Breakcold pour permettre au setter d'aller corriger / envoyer depuis l'app si besoin. Idempotent : un re-fire renvoie la conv existante."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "verdict-not-out",
+              "leftValue": "={{ $json.qualification?.verdict || 'in' }}",
+              "rightValue": "out",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "branch-verdict-1",
+      "name": "Branch on qualification verdict",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1380, 320]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.breakcold.com/rest/note",
+        "method": "POST",
+        "sendHeaders": true,
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"lead_id\": \"{{ $('Fetch Breakcold lead').item.json.id }}\",\n  \"body\": \"{{ $json.draft }}\\n\\n— qualification: {{ $json.qualification?.verdict || 'unknown' }} ({{ $json.qualification?.reason || '—' }})\\n— Setclone link: {{ $env.SETCLONE_BASE_URL }}/chat/{{ $json.persona_id || '' }}/{{ $json.conversation_id }}\"\n}",
+        "options": {}
+      },
+      "id": "write-note-1",
+      "name": "Write Breakcold note (draft + deep link)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1600, 220],
+      "credentials": {
+        "httpHeaderAuth": { "id": "BREAKCOLD_API_KEY", "name": "Breakcold API key" }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.breakcold.com/rest/note",
+        "method": "POST",
+        "sendHeaders": true,
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"lead_id\": \"{{ $('Fetch Breakcold lead').item.json.id }}\",\n  \"body\": \"⚠️ Lead probablement hors-cible: {{ $json.qualification?.reason || 'verdict=out' }} — vérifier avant d'envoyer un message.\"\n}",
+        "options": {}
+      },
+      "id": "write-warn-1",
+      "name": "Write Breakcold warn (verdict=out)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1600, 420],
+      "credentials": {
+        "httpHeaderAuth": { "id": "BREAKCOLD_API_KEY", "name": "Breakcold API key" }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook (Breakcold list-add)": {
+      "main": [[{ "node": "Fetch Breakcold lead", "type": "main", "index": 0 }]]
+    },
+    "Fetch Breakcold lead": {
+      "main": [[{ "node": "Resolve source_core", "type": "main", "index": 0 }]]
+    },
+    "Config map (Breakcold list → source_core)": {
+      "main": [[{ "node": "Resolve source_core", "type": "main", "index": 0 }]]
+    },
+    "Resolve source_core": {
+      "main": [[{ "node": "Setclone draft", "type": "main", "index": 0 }]]
+    },
+    "Setclone draft": {
+      "main": [[{ "node": "Branch on qualification verdict", "type": "main", "index": 0 }]]
+    },
+    "Branch on qualification verdict": {
+      "main": [
+        [{ "node": "Write Breakcold note (draft + deep link)", "type": "main", "index": 0 }],
+        [{ "node": "Write Breakcold warn (verdict=out)", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "setclone-breakcold-pr1-v365"
+  }
+}
