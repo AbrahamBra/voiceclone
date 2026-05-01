@@ -654,17 +654,6 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
               bot_message_id: dbBot?.id || null,
             });
           }
-          // Link rhythm_shadow row to the assistant message id (post-fix for
-          // critic-prod-coverage bug : shadow rows used to land with message_id=null
-          // because the pipeline persisted them before the message existed).
-          if (dbBot?.id && result.shadowRowIdPromise) {
-            try {
-              const shadowId = await result.shadowRowIdPromise;
-              if (shadowId) {
-                await supabase.from("rhythm_shadow").update({ message_id: dbBot.id }).eq("id", shadowId);
-              }
-            } catch { /* best-effort linking — never fail the chat for this */ }
-          }
           // Chantier 2bis — log a rule_firing row per artifact that made it
           // into the system prompt. Outcome='pending' until the user resolves
           // the message (helpful/harmful), which Chantier 3 will wire.
