@@ -1,5 +1,7 @@
 # Audit — Protocol underutilization (2026-05-01)
 
+> **Correction 2026-05-01 (Sprint A préparation)** : la section §3 "Mort certain à couper" listait `Source-specific playbooks (mig 055) — 0 rows`. **C'est faux.** La requête initiale cherchait `owner_kind=source` mais les playbooks sont en fait stockés comme `protocol_document` avec `owner_kind=persona, source_core=<X>, status=active`. Nicolas a 5 playbooks source-specific actifs (dr_recue, interaction_contenu, premier_degre, spyer, visite_profil), seedés via PR #189 + #158, lus par `getActivePlaybookForSource` depuis chat.js et draft.js. **À conserver — Sprint A ne touche pas cette infra.**
+
 **Contexte** : ta mémoire dit "~30% du layer protocole utilisé". J'ai inventorié toutes les surfaces (DB + code) et requêté la prod pour confirmer/infirmer. Ce doc est le matériau d'entrée pour la design V3.
 
 **Méthode** :
