@@ -24,6 +24,7 @@ import { config } from "dotenv";
 config({ path: ".env.local" });
 config();
 
+import { randomUUID } from "node:crypto";
 import { log } from "../lib/log.js";
 import {
   embedForProposition,
@@ -37,6 +38,91 @@ const DEFAULT_LOOKBACK_MS = 30 * 60 * 1000; // 30 min
 const DEFAULT_LIMIT = 50;
 const MIN_CONFIDENCE_INSERT = 0.75;
 const MIN_COUNT_INSERT = 2;
+
+// ─── Atomic claim helpers (idempotency vs overlapping cron runs) ───────────
+// Each cron run grabs N rows via an RPC that does UPDATE ... FOR UPDATE SKIP
+// LOCKED, stamping claimed_at + claim_token. A concurrent run sees the locked
+// set and skips it. Stale claims (>5 min, drained_at still null) are
+// re-claimable to recover from a run that crashed mid-flight.
+//
+// Fallback path: when supabase.rpc is unavailable (test stubs without rpc()
+// or pre-migration deployments), the helpers fall back to the legacy SELECT
+// without claiming. Behavior is identical to pre-057, so nothing breaks; the
+// idempotency guarantee just isn't yet in effect.
+
+async function claimEventsViaRpc(supabase, { since, limit }) {
+  if (typeof supabase?.rpc !== "function") return null;
+  const token = randomUUID();
+  const { data, error } = await supabase.rpc("claim_undrained_feedback_events", {
+    p_token: token,
+    p_since: since,
+    p_limit: limit,
+  });
+  if (error) {
+    log("protocol_v2_cron_claim_rpc_error", { message: error.message });
+    return null;
+  }
+  return { rows: Array.isArray(data) ? data : [], token };
+}
+
+async function claimEventsViaSelect(supabase, { since, limit }) {
+  const { data, error } = await supabase
+    .from("feedback_events")
+    .select("*")
+    .is("drained_at", null)
+    .gte("created_at", since)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) {
+    log("protocol_v2_cron_query_error", { message: error.message });
+    return { rows: [], token: null };
+  }
+  return { rows: data ?? [], token: null };
+}
+
+export async function defaultClaimEvents(supabase, opts) {
+  const viaRpc = await claimEventsViaRpc(supabase, opts);
+  if (viaRpc) return viaRpc;
+  return claimEventsViaSelect(supabase, opts);
+}
+
+async function claimCorrectionsViaRpc(supabase, { since, limit, eligibleChannels }) {
+  if (typeof supabase?.rpc !== "function") return null;
+  const token = randomUUID();
+  const { data, error } = await supabase.rpc("claim_undrained_corrections", {
+    p_token: token,
+    p_since: since,
+    p_limit: limit,
+    p_eligible_channels: eligibleChannels,
+  });
+  if (error) {
+    log("protocol_v2_cron_corrections_claim_rpc_error", { message: error.message });
+    return null;
+  }
+  return { rows: Array.isArray(data) ? data : [], token };
+}
+
+async function claimCorrectionsViaSelect(supabase, { since, limit, eligibleChannels }) {
+  const { data, error } = await supabase
+    .from("corrections")
+    .select("*")
+    .is("proposition_drained_at", null)
+    .in("source_channel", eligibleChannels)
+    .gte("created_at", since)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) {
+    log("protocol_v2_cron_corrections_query_error", { message: error.message });
+    return { rows: [], token: null };
+  }
+  return { rows: data ?? [], token: null };
+}
+
+export async function defaultClaimCorrections(supabase, opts) {
+  const viaRpc = await claimCorrectionsViaRpc(supabase, opts);
+  if (viaRpc) return viaRpc;
+  return claimCorrectionsViaSelect(supabase, opts);
+}
 
 const PROPOSITION_INSERT_COLUMNS =
   "id, document_id, source, source_ref, source_refs, count, intent, " +
@@ -316,6 +402,7 @@ export async function drainEventsToProposition(args) {
     embed = embedForProposition,
     findSimilar = findSimilarProposition,
     runRouteAndExtract = routeAndExtract,
+    claimEvents = defaultClaimEvents,
     limit = DEFAULT_LIMIT,
     lookbackMs = DEFAULT_LOOKBACK_MS,
     dryRun = false,
@@ -325,18 +412,7 @@ export async function drainEventsToProposition(args) {
 
   const since = new Date(Date.now() - lookbackMs).toISOString();
 
-  const { data: events, error: queryErr } = await supabase
-    .from("feedback_events")
-    .select("*")
-    .is("drained_at", null)
-    .gte("created_at", since)
-    .order("created_at", { ascending: true })
-    .limit(limit);
-
-  if (queryErr) {
-    log("protocol_v2_cron_query_error", { message: queryErr.message });
-    return { processed: 0, merged: 0, inserted: 0, silenced: 0, skipped: 0, results: [] };
-  }
+  const { rows: events } = await claimEvents(supabase, { since, limit });
 
   const summary = { processed: 0, merged: 0, inserted: 0, silenced: 0, skipped: 0, results: [] };
 
@@ -442,6 +518,7 @@ export async function drainCorrectionsToProposition(args) {
     embed = embedForProposition,
     findSimilar = findSimilarProposition,
     runRouteAndExtract = routeAndExtract,
+    claimCorrections = defaultClaimCorrections,
     limit = DEFAULT_LIMIT,
     lookbackMs = DEFAULT_LOOKBACK_MS,
     dryRun = false,
@@ -451,19 +528,11 @@ export async function drainCorrectionsToProposition(args) {
 
   const since = new Date(Date.now() - lookbackMs).toISOString();
 
-  const { data: rows, error: queryErr } = await supabase
-    .from("corrections")
-    .select("*")
-    .is("proposition_drained_at", null)
-    .in("source_channel", ELIGIBLE_CORRECTION_CHANNELS)
-    .gte("created_at", since)
-    .order("created_at", { ascending: true })
-    .limit(limit);
-
-  if (queryErr) {
-    log("protocol_v2_cron_corrections_query_error", { message: queryErr.message });
-    return { processed: 0, merged: 0, inserted: 0, silenced: 0, skipped: 0, results: [] };
-  }
+  const { rows } = await claimCorrections(supabase, {
+    since,
+    limit,
+    eligibleChannels: ELIGIBLE_CORRECTION_CHANNELS,
+  });
 
   const summary = { processed: 0, merged: 0, inserted: 0, silenced: 0, skipped: 0, results: [] };
 
