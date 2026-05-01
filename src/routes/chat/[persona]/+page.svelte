@@ -314,8 +314,12 @@
         messages.set(cached.lastConv.messages);
       } else {
         currentConversationId.set(null);
-        currentScenario.set(scn || "");
-        currentScenarioType.set(scnType || null);
+        // Cold-start with no conv → default to DM_1st so the composer is
+        // active immediately. Without this, scenarioType is null, the
+        // composer locks itself, and the user sees "Choisis un scénario"
+        // pointing to a picker that doesn't exist on this surface.
+        currentScenario.set(scn || "dm");
+        currentScenarioType.set(isScenarioId(scnType) ? scnType : "DM_1st");
         currentSourceCore.set(srcCore || null);
         showWelcome();
       }
@@ -324,14 +328,14 @@
       // Premier chargement de la session : pas de cache et rien à l'écran →
       // loading dot classique.
       loading = true;
-      currentScenario.set(scn || "");
-      currentScenarioType.set(scnType || null);
+      currentScenario.set(scn || "dm");
+      currentScenarioType.set(isScenarioId(scnType) ? scnType : "DM_1st");
       currentSourceCore.set(srcCore || null);
     } else {
       // Cache miss pendant un switch : on garde l'UI du clone précédent
       // visible, et on swappera quand les données arrivent.
-      currentScenario.set(scn || "");
-      currentScenarioType.set(scnType || null);
+      currentScenario.set(scn || "dm");
+      currentScenarioType.set(isScenarioId(scnType) ? scnType : "DM_1st");
       currentSourceCore.set(srcCore || null);
     }
 
