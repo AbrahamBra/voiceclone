@@ -35,6 +35,12 @@ export default async function handler(req, res) {
     // DM-only app: post scenario is never exposed, even on legacy 'posts'/'both' personas.
     delete scenarios.post;
 
+    // Mirror api/chat.js voice guard so the client can redirect *before*
+    // sending a chat request. We expose only a boolean, never the voice
+    // payload itself (kept private as the comment above states).
+    const voice = persona.voice;
+    const voiceComplete = !!voice && typeof voice === "object" && Object.keys(voice).length > 0;
+
     res.json({
       id: persona.id,
       name: persona.name,
@@ -42,6 +48,7 @@ export default async function handler(req, res) {
       avatar: persona.avatar,
       scenarios,
       theme: persona.theme,
+      voice_complete: voiceComplete,
     });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.error || "Server error" });

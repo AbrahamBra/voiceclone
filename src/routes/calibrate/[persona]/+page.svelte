@@ -174,8 +174,13 @@
 
     <div class="cal-actions">
       <button class="btn-ghost mono" onclick={skip}>Passer</button>
-      <button class="btn-solid mono" onclick={submitCalibration} disabled={submitting || loading}>
-        {submitting ? "envoi…" : "valider la calibration →"}
+      <button
+        class="btn-solid mono"
+        onclick={submitCalibration}
+        disabled={submitting || loading || messages.length === 0}
+        title={messages.length === 0 ? "Aucun essai à valider — passe l'étape" : ""}
+      >
+        {submitting ? "envoi…" : messages.length === 0 ? "rien à valider" : "valider la calibration →"}
       </button>
     </div>
   </main>

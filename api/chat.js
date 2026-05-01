@@ -201,6 +201,23 @@ export default async function handler(req, res) {
     if (!hasAccess) { res.status(403).json({ error: "Access denied" }); return; }
   }
 
+  // Guard against half-created clones: persona.voice is the carrier for
+  // tone/personality/signature_phrases/etc. — if missing, buildSystemPrompt
+  // silently falls back to baseline, which produces generic drafts that look
+  // broken to the user. 422 tells the client to redirect to /create instead
+  // of streaming a useless draft.
+  const voice = persona.voice;
+  const voiceComplete = !!voice && typeof voice === "object" && Object.keys(voice).length > 0;
+  if (!voiceComplete) {
+    res.status(422).json({
+      error: "persona_incomplete",
+      detail: "Ce clone n'a pas de voix configurée. Recréez-le ou complétez le wizard.",
+      action: "redirect_to_create",
+      persona_id: personaId,
+    });
+    return;
+  }
+
   // Resolve conversation
   let convId = conversation_id || null;
   let messages;
