@@ -1,4 +1,5 @@
 import { rateLimit } from "./_rateLimit.js";
+import { waitUntil } from "@vercel/functions";
 import { buildSystemPrompt } from "../lib/prompt.js";
 import { runPipeline } from "../lib/pipeline.js";
 import { initSSE } from "../lib/sse.js";
@@ -16,10 +17,14 @@ import { recordFiring, resolveFirings } from "../lib/protocol-v2-rule-counters.j
  * corresponding rule_firings to outcome='helpful'. Skips if the message
  * already has any feedback_event (avoids overwriting explicit signal).
  *
- * Fire-and-forget — never awaited so chat latency is unchanged. Errors logged.
+ * Wrapped in `waitUntil` so the inserts survive even when the SSE stream
+ * finishes before the DB writes complete. Without this, a fast LLM response
+ * (cached / short) ended the function before the implicit-accept inserts
+ * landed → signal silently lost. Latency-free for the user (the work runs
+ * after res.end, not blocking the stream).
  */
 function emitImplicitAccept(supabase, messageId, conversationId, personaId) {
-  (async () => {
+  const work = (async () => {
     try {
       // Skip if any feedback_event already exists for this message — explicit
       // signal wins over implicit, and we don't want duplicate inserts when a
@@ -81,6 +86,15 @@ function emitImplicitAccept(supabase, messageId, conversationId, personaId) {
       }));
     }
   })();
+  // waitUntil tells Vercel to keep the function alive until `work` settles,
+  // even after the response stream closes. No-op if the helper isn't running
+  // on Vercel's platform — pre-existing fire-and-forget semantics preserved
+  // for vercel dev / local node runs.
+  try {
+    waitUntil(work);
+  } catch {
+    // Outside the Vercel runtime → fall through; the IIFE is already in flight.
+  }
 }
 import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, detectMetacognitiveInsights, looksLikeDirectInstruction, looksLikeNegativeFeedback, detectNegativeFeedback, classifyMessage, looksLikeHorsCible } from "../lib/feedback-detect.js";
 import { selectModel } from "../lib/model-router.js";
