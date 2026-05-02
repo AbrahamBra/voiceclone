@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import handler, { chunkDoc } from "../api/v2/protocol/import-doc.js";
+import handler, { chunkDoc, appendToIdentitySection } from "../api/v2/protocol/import-doc.js";
 
 const VALID_PERSONA = "00000000-0000-0000-0000-000000000010";
 const VALID_DOC = "00000000-0000-0000-0000-000000000020";
@@ -27,6 +27,7 @@ function makeRes() {
 
 function makeSupabase({
   document = { id: VALID_DOC },
+  identitySection = { id: "identity-1", prose: "" },
   insertResult = (row) => ({
     data: {
       id: `prop-${Math.random().toString(36).slice(2, 8)}`,
@@ -42,9 +43,11 @@ function makeSupabase({
 } = {}) {
   const inserts = [];
   const updates = [];
+  const sectionUpdates = [];
   return {
     inserts,
     updates,
+    sectionUpdates,
     from(table) {
       if (table === "protocol_document") {
         return {
@@ -57,6 +60,25 @@ function makeSupabase({
               ? { data: document, error: null }
               : { data: null, error: null },
           ),
+        };
+      }
+      if (table === "protocol_section") {
+        return {
+          select() { return this; },
+          eq() { return this; },
+          maybeSingle: () => Promise.resolve(
+            identitySection
+              ? { data: identitySection, error: null }
+              : { data: null, error: null },
+          ),
+          update(payload) {
+            return {
+              eq: (col, val) => {
+                sectionUpdates.push({ payload, [col]: val });
+                return Promise.resolve({ error: null });
+              },
+            };
+          },
         };
       }
       if (table === "proposition") {
@@ -93,6 +115,7 @@ const baseDeps = (overrides = {}) => ({
   hasPersonaAccess: async () => true,
   setCors: () => {},
   routeAndExtract: async () => [],
+  runExtractors: async () => [],
   embedForProposition: async () => [0.1, 0.2, 0.3],
   findSimilarProposition: async () => [],
   ...overrides,
@@ -371,5 +394,255 @@ describe("POST /api/v2/protocol/import-doc — happy path", () => {
     await handler(req, res, baseDeps());
     assert.equal(res.statusCode, 400);
     assert.match(res.body.error, /no extractable/);
+  });
+});
+
+describe("appendToIdentitySection helper", () => {
+  function fakeSb({ section, queryError = null, updateError = null }) {
+    const updates = [];
+    return {
+      updates,
+      from() {
+        return {
+          select() { return this; },
+          eq() { return this; },
+          maybeSingle: () => Promise.resolve(
+            queryError ? { data: null, error: { message: queryError } } : { data: section, error: null },
+          ),
+          update(payload) {
+            return {
+              eq: () => {
+                updates.push(payload);
+                return Promise.resolve(
+                  updateError ? { error: { message: updateError } } : { error: null },
+                );
+              },
+            };
+          },
+        };
+      },
+    };
+  }
+
+  it("appends with separator when prose already has content", async () => {
+    const sb = fakeSb({ section: { id: "s1", prose: "Existing prose." } });
+    const out = await appendToIdentitySection(sb, VALID_DOC, "background.odt", "New content");
+    assert.equal(out.appended, true);
+    assert.equal(out.chars_added, "New content".length);
+    assert.match(sb.updates[0].prose, /Existing prose\.\n\n--- background\.odt ---\n\nNew content/);
+  });
+
+  it("writes raw text when prose is empty (no leading separator)", async () => {
+    const sb = fakeSb({ section: { id: "s1", prose: "" } });
+    const out = await appendToIdentitySection(sb, VALID_DOC, "bg.odt", "First content");
+    assert.equal(out.appended, true);
+    assert.equal(sb.updates[0].prose, "First content");
+  });
+
+  it("returns no_identity_section when missing (graceful pre-067)", async () => {
+    const sb = fakeSb({ section: null });
+    const out = await appendToIdentitySection(sb, VALID_DOC, "bg.odt", "x");
+    assert.equal(out.appended, false);
+    assert.equal(out.reason, "no_identity_section");
+  });
+
+  it("surfaces update errors", async () => {
+    const sb = fakeSb({ section: { id: "s1", prose: "" }, updateError: "boom" });
+    const out = await appendToIdentitySection(sb, VALID_DOC, "bg.odt", "x");
+    assert.equal(out.appended, false);
+    assert.match(out.reason, /update_error.*boom/);
+  });
+});
+
+describe("POST /api/v2/protocol/import-doc — doc_kind routing", () => {
+  const longProse =
+    "Le dirigeant Nicolas a vingt-cinq ans de parcours, alternant salariat tech et entrepreneuriat. " +
+    "Il a monté Ludik Factory jusqu'à 5 millions d'euros de chiffre d'affaires et 100 000 clients. " +
+    "Sa conviction principale : le vrai plafond, c'est le dirigeant lui-même. Architecture, pas effort.";
+
+  it("persona_context: appends to identity, runs zero extractors", async () => {
+    const supabase = makeSupabase();
+    let routeCalls = 0, runCalls = 0;
+    const req = {
+      method: "POST",
+      body: {
+        persona_id: VALID_PERSONA,
+        doc_text: longProse,
+        doc_filename: "background.odt",
+        doc_kind: "persona_context",
+      },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps({
+      supabase,
+      routeAndExtract: async () => { routeCalls++; return []; },
+      runExtractors: async () => { runCalls++; return []; },
+    }));
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.identity_appended, true);
+    assert.equal(res.body.identity_chars_added, longProse.length);
+    assert.equal(res.body.propositions_created, 0);
+    assert.equal(routeCalls, 0, "router must not be called");
+    assert.equal(runCalls, 0, "runExtractors must not be called");
+    assert.equal(supabase.sectionUpdates.length, 1);
+    // Empty existing prose → no leading separator. Just the doc text.
+    assert.equal(supabase.sectionUpdates[0].payload.prose, longProse);
+  });
+
+  it("persona_context with EXISTING identity prose: appends with filename separator", async () => {
+    const supabase = makeSupabase({
+      identitySection: { id: "identity-1", prose: "First doc content already there." },
+    });
+    const req = {
+      method: "POST",
+      body: {
+        persona_id: VALID_PERSONA,
+        doc_text: longProse,
+        doc_filename: "background.odt",
+        doc_kind: "persona_context",
+      },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps({ supabase }));
+    assert.equal(res.statusCode, 200);
+    assert.match(supabase.sectionUpdates[0].payload.prose, /First doc content already there\.\n\n--- background\.odt ---\n\n/);
+  });
+
+  it("icp_audience: bypasses router, runs only icp_patterns + process via runExtractors", async () => {
+    const supabase = makeSupabase();
+    let routeCalls = 0;
+    const seenRoutes = [];
+    const req = {
+      method: "POST",
+      body: {
+        persona_id: VALID_PERSONA,
+        doc_text: longProse,
+        doc_filename: "audience.odt",
+        doc_kind: "icp_audience",
+      },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps({
+      supabase,
+      routeAndExtract: async () => { routeCalls++; return []; },
+      runExtractors: async (signal, routes) => {
+        seenRoutes.push(routes.map((r) => r.target_kind).sort());
+        return [
+          {
+            target_kind: "icp_patterns",
+            proposal: {
+              intent: "add_paragraph",
+              proposed_text: "ICP P1 : infopreneurs avec équipe ≥5.",
+              rationale: "From audience doc",
+              confidence: 0.85,
+            },
+          },
+        ];
+      },
+    }));
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.identity_appended, false);
+    assert.equal(routeCalls, 0, "router bypassed");
+    assert(seenRoutes.length > 0);
+    for (const r of seenRoutes) {
+      assert.deepEqual(r, ["icp_patterns", "process"]);
+    }
+    assert.equal(supabase.inserts.length, seenRoutes.length);
+  });
+
+  it("positioning: BOTH appends to identity AND runs explicit extractors", async () => {
+    const supabase = makeSupabase();
+    let runCalls = 0;
+    const seenRoutes = [];
+    const req = {
+      method: "POST",
+      body: {
+        persona_id: VALID_PERSONA,
+        doc_text: longProse,
+        doc_filename: "positionnement.odt",
+        doc_kind: "positioning",
+      },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps({
+      supabase,
+      runExtractors: async (signal, routes) => {
+        runCalls++;
+        seenRoutes.push(routes.map((r) => r.target_kind).sort());
+        return [];
+      },
+    }));
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.identity_appended, true);
+    assert(runCalls > 0, "runExtractors should be called for positioning");
+    for (const r of seenRoutes) {
+      assert.deepEqual(r, ["icp_patterns", "process"]);
+    }
+  });
+
+  it("operational_playbook: uses LLM router (current default behavior)", async () => {
+    const supabase = makeSupabase();
+    let routeCalls = 0;
+    const req = {
+      method: "POST",
+      body: {
+        persona_id: VALID_PERSONA,
+        doc_text: longProse,
+        doc_kind: "operational_playbook",
+      },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps({
+      supabase,
+      routeAndExtract: async () => { routeCalls++; return []; },
+    }));
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.identity_appended, false);
+    assert(routeCalls > 0, "router should be called for operational_playbook");
+  });
+
+  it("invalid doc_kind silently degrades to generic (LLM router)", async () => {
+    const supabase = makeSupabase();
+    let routeCalls = 0;
+    const req = {
+      method: "POST",
+      body: {
+        persona_id: VALID_PERSONA,
+        doc_text: longProse,
+        doc_kind: "wat",
+      },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps({
+      supabase,
+      routeAndExtract: async () => { routeCalls++; return []; },
+    }));
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.doc_kind, "generic");
+    assert(routeCalls > 0);
+  });
+
+  it("identity-append failure does not block extraction", async () => {
+    // Pre-067 persona without identity section: appendToIdentity returns
+    // {appended:false, reason:"no_identity_section"} but extraction still
+    // runs.
+    const supabase = makeSupabase({ identitySection: null });
+    let runCalls = 0;
+    const req = {
+      method: "POST",
+      body: {
+        persona_id: VALID_PERSONA,
+        doc_text: longProse,
+        doc_kind: "positioning",
+      },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps({
+      supabase,
+      runExtractors: async () => { runCalls++; return []; },
+    }));
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.identity_appended, false);
+    assert(runCalls > 0, "extraction continues even when identity append fails");
   });
 });

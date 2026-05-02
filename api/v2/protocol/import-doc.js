@@ -51,7 +51,10 @@ import {
   supabase as _supabase,
   setCors as _setCors,
 } from "../../../lib/supabase.js";
-import { routeAndExtract as _routeAndExtract } from "../../../lib/protocol-v2-extractor-router.js";
+import {
+  routeAndExtract as _routeAndExtract,
+  runExtractors as _runExtractors,
+} from "../../../lib/protocol-v2-extractor-router.js";
 import {
   embedForProposition as _embedForProposition,
   findSimilarProposition as _findSimilarProposition,
@@ -66,13 +69,44 @@ const MAX_CHUNK_LEN = 3500;
 const MIN_CHUNK_LEN = 80;
 const MIN_CONFIDENCE_INSERT = 0.5;
 
-const VALID_DOC_KINDS = new Set([
-  "persona_context",
-  "operational_playbook",
-  "icp_audience",
-  "positioning",
-  "generic",
-]);
+// Routing strategy per doc_kind. Two orthogonal axes :
+//   - appendToIdentity: dump the whole doc text into the identity section
+//     prose (with a filename separator). Used when the doc primarily
+//     describes WHO the persona is (background, positioning) — that
+//     content belongs in the system prompt as voice/context, not as
+//     extracted rules.
+//   - extractTargets: which extractors to run on each chunk.
+//       null  = use the LLM router (it picks 0-2 target_kinds via Haiku,
+//               then runs the matching Sonnet extractor) — current
+//               default behavior.
+//       []    = no extractors at all (pure prose append).
+//       array = bypass the router, run only the listed extractors per chunk.
+//
+// Rationale per kind, calibrated on Nicolas' 4 source docs (2026-05-02) :
+//   - persona_context (Background.odt) → identity prose only. The bio,
+//     convictions, ton — meant for the system prompt, not for hard_rules
+//     where the extractor would reject them anyway.
+//   - operational_playbook (Process Setter PDF) → router decides. The doc
+//     is structured exactly like a setter playbook (rules + scoring +
+//     ICP + process + templates), the LLM router will route each chunk
+//     correctly.
+//   - icp_audience (AudienceCible.odt) → only icp_patterns + process.
+//     The doc is mostly P1/P2 targeting + filtering rules; running
+//     hard_rules or templates extractors on it produces noise.
+//   - positioning (Positionnement.odt) → identity prose AND extract
+//     process + icp_patterns (USP, pain points, R1-R4 process). Skip
+//     hard_rules / scoring / templates which would catch transient
+//     stack noise (BreakCold migration, etc).
+//   - generic → router (current behavior).
+const KIND_ROUTING = Object.freeze({
+  persona_context:      { appendToIdentity: true,  extractTargets: [] },
+  operational_playbook: { appendToIdentity: false, extractTargets: null },
+  icp_audience:         { appendToIdentity: false, extractTargets: ["icp_patterns", "process"] },
+  positioning:          { appendToIdentity: true,  extractTargets: ["process", "icp_patterns"] },
+  generic:              { appendToIdentity: false, extractTargets: null },
+});
+
+const VALID_DOC_KINDS = new Set(Object.keys(KIND_ROUTING));
 
 /**
  * Split a long text into prose chunks suitable for the protocol extractors.
@@ -123,6 +157,36 @@ export function chunkDoc(text) {
   return chunks;
 }
 
+/**
+ * Append a doc text to the persona's `identity` section prose.
+ * Returns {appended, chars_added, reason?}. Graceful no-op if the
+ * identity section doesn't exist yet (pre-067 backfill).
+ *
+ * Exported for tests.
+ */
+export async function appendToIdentitySection(supabase, documentId, docFilename, docText) {
+  const { data: section, error } = await supabase
+    .from("protocol_section")
+    .select("id, prose")
+    .eq("document_id", documentId)
+    .eq("kind", "identity")
+    .maybeSingle();
+  if (error) return { appended: false, reason: `query_error: ${error.message}` };
+  if (!section) return { appended: false, reason: "no_identity_section" };
+
+  const separator = docFilename ? `\n\n--- ${docFilename} ---\n\n` : "\n\n---\n\n";
+  const trimmed = (section.prose || "").trim();
+  const newProse = trimmed ? `${trimmed}${separator}${docText}` : docText;
+
+  const { error: updErr } = await supabase
+    .from("protocol_section")
+    .update({ prose: newProse })
+    .eq("id", section.id);
+  if (updErr) return { appended: false, reason: `update_error: ${updErr.message}` };
+
+  return { appended: true, chars_added: docText.length, section_id: section.id };
+}
+
 export default async function handler(req, res, deps) {
   const {
     authenticateRequest = _authenticateRequest,
@@ -130,8 +194,10 @@ export default async function handler(req, res, deps) {
     supabase = _supabase,
     setCors = _setCors,
     routeAndExtract = _routeAndExtract,
+    runExtractors = _runExtractors,
     embedForProposition = _embedForProposition,
     findSimilarProposition = _findSimilarProposition,
+    appendToIdentity = appendToIdentitySection,
   } = deps || {};
 
   setCors(res, "POST, OPTIONS");
@@ -159,7 +225,8 @@ export default async function handler(req, res, deps) {
     res.status(400).json({ error: `doc_text too long (max ${MAX_DOC_LEN} chars)` });
     return;
   }
-  const docKind = typeof doc_kind === "string" && VALID_DOC_KINDS.has(doc_kind) ? doc_kind : null;
+  const docKind = typeof doc_kind === "string" && VALID_DOC_KINDS.has(doc_kind) ? doc_kind : "generic";
+  const routing = KIND_ROUTING[docKind];
   const docFilename =
     typeof doc_filename === "string" && doc_filename.length <= 200 ? doc_filename : null;
 
@@ -210,27 +277,66 @@ export default async function handler(req, res, deps) {
   const batchId = randomUUID();
   const ctx = { doc_filename: docFilename, doc_kind: docKind };
 
-  // Run extraction on every chunk in parallel.
-  const settled = await Promise.allSettled(
-    chunks.map((chunk) =>
-      routeAndExtract(
-        { source_type: "doc_import", source_text: chunk, context: ctx },
-        {},
-      ),
-    ),
-  );
-
-  /** @type {Array<{target_kind:string, proposal:object}>} */
-  const allCandidates = [];
-  for (const s of settled) {
-    if (s.status === "fulfilled" && Array.isArray(s.value)) {
-      allCandidates.push(...s.value);
-    } else if (s.status === "rejected") {
-      log("protocol_v2_import_doc_chunk_error", {
-        message: s.reason?.message || String(s.reason),
-      });
+  // 1. Optional identity-prose append, BEFORE extraction.
+  // We do this first so that even if extraction fails, the persona context
+  // is preserved.
+  let identitySummary = null;
+  if (routing.appendToIdentity) {
+    identitySummary = await appendToIdentity(supabase, documentId, docFilename, doc_text);
+    if (identitySummary && !identitySummary.appended) {
+      log("protocol_v2_import_doc_identity_skip", { reason: identitySummary.reason });
     }
   }
+
+  // 2. Extraction phase. Three branches based on routing.extractTargets :
+  //    null  → router decides (current default)
+  //    []    → skip extraction entirely
+  //    array → bypass router, run only the listed extractors per chunk
+  /** @type {Array<{target_kind:string, proposal:object}>} */
+  const allCandidates = [];
+  if (routing.extractTargets === null) {
+    const settled = await Promise.allSettled(
+      chunks.map((chunk) =>
+        routeAndExtract(
+          { source_type: "doc_import", source_text: chunk, context: ctx },
+          {},
+        ),
+      ),
+    );
+    for (const s of settled) {
+      if (s.status === "fulfilled" && Array.isArray(s.value)) {
+        allCandidates.push(...s.value);
+      } else if (s.status === "rejected") {
+        log("protocol_v2_import_doc_chunk_error", {
+          message: s.reason?.message || String(s.reason),
+        });
+      }
+    }
+  } else if (routing.extractTargets.length > 0) {
+    const explicitRoutes = routing.extractTargets.map((kind) => ({
+      target_kind: kind,
+      confidence: 1.0,
+    }));
+    const settled = await Promise.allSettled(
+      chunks.map((chunk) =>
+        runExtractors(
+          { source_type: "doc_import", source_text: chunk, context: ctx },
+          explicitRoutes,
+          {},
+        ),
+      ),
+    );
+    for (const s of settled) {
+      if (s.status === "fulfilled" && Array.isArray(s.value)) {
+        allCandidates.push(...s.value);
+      } else if (s.status === "rejected") {
+        log("protocol_v2_import_doc_chunk_error", {
+          message: s.reason?.message || String(s.reason),
+        });
+      }
+    }
+  }
+  // routing.extractTargets === [] → no extractors called, allCandidates stays empty.
 
   const created = [];
   let mergedCount = 0;
@@ -302,11 +408,14 @@ export default async function handler(req, res, deps) {
   res.status(200).json({
     document_id: documentId,
     batch_id: batchId,
+    doc_kind: docKind,
     chunks_processed: chunks.length,
     candidates_total: allCandidates.length,
     propositions_created: created.length,
     propositions_merged: mergedCount,
     silenced,
+    identity_appended: !!identitySummary?.appended,
+    identity_chars_added: identitySummary?.appended ? identitySummary.chars_added : 0,
     propositions: created,
   });
 }
