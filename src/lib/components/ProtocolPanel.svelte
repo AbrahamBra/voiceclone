@@ -19,23 +19,59 @@
   let activeView = $state("doctrine");
 
   // ── Import document → propositions across all 6 sections ──────────
-  // Drives the "Importer un doc" button in the header. Reads a file from
-  // disk (txt / md / pdf / docx / odt), extracts text via the shared
-  // helper, posts to /api/v2/protocol/import-doc, then jumps to the
-  // Propositions tab so the user can arbitrate.
+  // Drives the "Importer un doc" button in the header. Two-step UX :
+  //   1. Click "+ importer un doc" → opens a doc-kind picker (5 options
+  //      mapped to KIND_ROUTING in api/v2/protocol/import-doc.js).
+  //   2. Pick a kind → file picker. Reads file (txt / md / pdf / docx /
+  //      odt), POSTs to /api/v2/protocol/import-doc, then jumps to the
+  //      Propositions tab so the user can arbitrate.
+  // Doc-kind drives where the content lands :
+  //   persona_context     → identity prose direct, 0 propositions
+  //   operational_playbook→ all 6 extractors via LLM router (default)
+  //   icp_audience        → only icp_patterns + process extractors
+  //   positioning         → identity prose AND process + icp_patterns
+  //   generic             → router decides (same as operational_playbook)
+  const DOC_KINDS = [
+    { value: "operational_playbook", label: "Playbook opérationnel",  hint: "Process setting / procédure DM. Tape les 6 sections." },
+    { value: "persona_context",      label: "Contexte persona",       hint: "Bio / parcours / convictions / ton. Atterrit dans Identité." },
+    { value: "icp_audience",         label: "ICP / audience cible",   hint: "P1/P2, exclusions, secteurs. Cible icp_patterns + process." },
+    { value: "positioning",          label: "Positionnement",         hint: "USP, pain points, offre. Identité + process + icp." },
+    { value: "generic",              label: "Autre / je ne sais pas", hint: "Le routeur LLM décide chunk par chunk." },
+  ];
+
   let importInputEl;
   let importing = $state(false);
-  let importBatchSummary = $state(/** @type {null|{filename:string, created:number, merged:number, silenced:number}} */(null));
+  let pendingDocKind = $state(/** @type {string|null} */(null));
+  let kindPickerOpen = $state(false);
+  let importBatchSummary = $state(/** @type {null|{filename:string, kind:string, created:number, merged:number, silenced:number, identity:boolean}} */(null));
 
-  async function onImportClick() {
+  function onImportClick() {
     if (importing) return;
-    importInputEl?.click();
+    kindPickerOpen = true;
+  }
+
+  function onCancelKindPicker() {
+    kindPickerOpen = false;
+    pendingDocKind = null;
+  }
+
+  function onPickKind(kind) {
+    pendingDocKind = kind;
+    kindPickerOpen = false;
+    // Defer to the next tick so the modal close paints before the OS file
+    // dialog steals focus — feels less abrupt to the user.
+    setTimeout(() => importInputEl?.click(), 30);
   }
 
   async function onImportFile(e) {
     const file = e.target?.files?.[0];
     e.target.value = "";
-    if (!file) return;
+    if (!file) {
+      pendingDocKind = null;
+      return;
+    }
+    const docKind = pendingDocKind || "generic";
+    pendingDocKind = null;
     importing = true;
     importBatchSummary = null;
     try {
@@ -50,18 +86,23 @@
           persona_id: personaId,
           doc_text: text,
           doc_filename: file.name,
+          doc_kind: docKind,
         }),
       });
       importBatchSummary = {
         filename: file.name,
+        kind: out.doc_kind || docKind,
         created: out.propositions_created || 0,
         merged: out.propositions_merged || 0,
         silenced: out.silenced || 0,
+        identity: !!out.identity_appended,
       };
       // Refresh meta so the Propositions badge picks up the new pending count.
       docMeta = null;
       await loadMeta();
-      activeView = "propositions";
+      // For pure persona_context (0 propositions, only identity append) we
+      // want the user to see the doctrine view, not an empty queue.
+      activeView = importBatchSummary.created > 0 ? "propositions" : "doctrine";
     } catch (err) {
       showToast(`Import échoué : ${err?.message || "erreur inconnue"}`);
     } finally {
@@ -162,9 +203,33 @@
     />
   </nav>
 
+  {#if kindPickerOpen}
+    <div class="ppv2-kind-picker" role="dialog" aria-label="Type de document">
+      <p class="ppv2-kind-picker-title">De quel type de document s'agit-il ?</p>
+      <p class="ppv2-kind-picker-hint">Le type guide l'extraction — où chaque morceau atterrit dans le protocole.</p>
+      <ul class="ppv2-kind-list">
+        {#each DOC_KINDS as k (k.value)}
+          <li>
+            <button type="button" class="ppv2-kind-item" onclick={() => onPickKind(k.value)}>
+              <span class="ppv2-kind-label">{k.label}</span>
+              <span class="ppv2-kind-hint">{k.hint}</span>
+            </button>
+          </li>
+        {/each}
+      </ul>
+      <button type="button" class="ppv2-kind-cancel" onclick={onCancelKindPicker}>annuler</button>
+    </div>
+  {/if}
+
   {#if importBatchSummary}
     <div class="ppv2-import-summary" role="status" aria-live="polite">
-      <strong>{importBatchSummary.filename}</strong> — {importBatchSummary.created} proposition{importBatchSummary.created > 1 ? "s" : ""} créée{importBatchSummary.created > 1 ? "s" : ""}, {importBatchSummary.merged} fusionnée{importBatchSummary.merged > 1 ? "s" : ""}, {importBatchSummary.silenced} silencée{importBatchSummary.silenced > 1 ? "s" : ""} (confiance trop basse).
+      <strong>{importBatchSummary.filename}</strong> ({importBatchSummary.kind}) —
+      {#if importBatchSummary.identity}
+        identité enrichie ·
+      {/if}
+      {importBatchSummary.created} proposition{importBatchSummary.created > 1 ? "s" : ""} créée{importBatchSummary.created > 1 ? "s" : ""},
+      {importBatchSummary.merged} fusionnée{importBatchSummary.merged > 1 ? "s" : ""},
+      {importBatchSummary.silenced} silencée{importBatchSummary.silenced > 1 ? "s" : ""} (confiance trop basse).
       <button type="button" class="ppv2-import-summary-close" onclick={() => (importBatchSummary = null)} aria-label="Fermer">×</button>
     </div>
   {/if}
@@ -300,4 +365,68 @@
     padding: 0 4px;
   }
   .ppv2-import-summary-close:hover { color: var(--ink); }
+
+  .ppv2-kind-picker {
+    border-bottom: 1px solid var(--rule);
+    padding: 14px 16px;
+    background: var(--bg-soft, rgba(0,0,0,0.03));
+  }
+  .ppv2-kind-picker-title {
+    margin: 0 0 4px;
+    font-family: var(--font-mono);
+    font-size: var(--fs-small);
+    color: var(--ink);
+  }
+  .ppv2-kind-picker-hint {
+    margin: 0 0 12px;
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+    color: var(--ink-40);
+  }
+  .ppv2-kind-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .ppv2-kind-item {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 8px 10px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .ppv2-kind-item:hover {
+    background: var(--bg, #fff);
+    border-color: var(--ink);
+  }
+  .ppv2-kind-label {
+    font-family: var(--font-mono);
+    font-size: var(--fs-small);
+    color: var(--ink);
+  }
+  .ppv2-kind-hint {
+    font-family: var(--font-sans, system-ui);
+    font-size: var(--fs-tiny);
+    color: var(--ink-40);
+  }
+  .ppv2-kind-cancel {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+    color: var(--ink-40);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 4px 0;
+  }
+  .ppv2-kind-cancel:hover { color: var(--ink); }
 </style>
