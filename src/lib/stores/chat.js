@@ -17,4 +17,10 @@ export const currentScenarioType = writable(null);
 // playbook artifacts on top of the global protocol doc.
 /** @type {import("svelte/store").Writable<string | null>} */
 export const currentSourceCore = writable(null);
+// V1.0 PlaybookContextPanel — toggle sélectionné manuellement par le setter
+// dans la mini-timeline du panneau playbook. Reset à null au changement de
+// conversation (le panneau retombe sur le default dérivé du scenario_type).
+// Non persisté en DB en V1.0.
+/** @type {import("svelte/store").Writable<number | null>} */
+export const currentToggleOverride = writable(null);
 export const sending = writable(false);
