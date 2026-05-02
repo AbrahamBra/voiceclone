@@ -1,5 +1,5 @@
 <script>
-  import { goto } from "$app/navigation";
+  import { goto, afterNavigate } from "$app/navigation";
   import { api } from "$lib/api.js";
   import { showToast } from "$lib/stores/ui.js";
   import { extractFileText } from "$lib/file-extraction.js";
@@ -460,21 +460,30 @@
     }
   }
 
-  // Sortie du wizard. Priorité 1 : retour navigateur si on a un référent
-  // applicatif (autre que /create lui-même) — ramène à la page d'avant
-  // naturellement. Sinon : home avec ?stop=1 pour court-circuiter
-  // l'auto-redirect logged-in qui boucle sur un chat.
+  // document.referrer ne se met pas à jour pour les navs SPA (goto), donc
+  // on capture le vrai référent applicatif via afterNavigate à l'entrée.
+  let exitTarget = null;
+
+  afterNavigate(({ from }) => {
+    if (exitTarget !== null) return;
+    if (!from) return;
+    const path = from.url.pathname || "";
+    if (path && !path.startsWith("/create")) {
+      exitTarget = path + (from.url.search || "");
+    }
+  });
+
   function exitWizard() {
+    if (exitTarget) {
+      goto(exitTarget);
+      return;
+    }
     try {
-      const ref = document.referrer;
-      if (window.history.length > 1 && ref) {
-        const refUrl = new URL(ref);
-        const sameOrigin = refUrl.origin === window.location.origin;
-        const notSelf = !refUrl.pathname.startsWith("/create");
-        if (sameOrigin && notSelf) {
-          window.history.back();
-          return;
-        }
+      const lastId = localStorage.getItem("setclone_last_persona")
+                  || localStorage.getItem("vc_last_persona");
+      if (lastId) {
+        goto(`/chat/${lastId}`);
+        return;
       }
     } catch {}
     goto("/?stop=1");
