@@ -94,7 +94,7 @@ export default async function handler(req, res) {
   const anthropic = new Anthropic({ apiKey });
 
   try {
-    const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514";
+    const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
 
     const postsContentForStyle = posts?.length > 0
       ? posts.map((p, i) => `--- POST ${i + 1} ---\n${p}`).join("\n\n")

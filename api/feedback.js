@@ -345,7 +345,7 @@ export default async function handler(req, res) {
         : "";
 
       const result = await withTimeout((signal) => anthropic.messages.create({
-        model: process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514",
+        model: process.env.CLAUDE_MODEL || "claude-sonnet-4-6",
         max_tokens: 1024,
         system: regenerateSystem(voiceContext),
         tools: [REGENERATE_TOOL],
@@ -620,7 +620,7 @@ export default async function handler(req, res) {
       const apiKey = getApiKey(client);
       const anthropic = new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY });
       const diffResult = await withTimeout((signal) => anthropic.messages.create({
-        model: process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514",
+        model: process.env.CLAUDE_MODEL || "claude-sonnet-4-6",
         max_tokens: 256,
         system: IMPLICIT_DIFF_SYSTEM,
         messages: [{ role: "user", content: `ORIGINAL :\n${original.slice(0, 500)}\n\nMODIFIE :\n${modified.slice(0, 500)}` }],

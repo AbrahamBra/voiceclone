@@ -3,7 +3,7 @@ import { authenticateRequest, supabase, getApiKey, setCors } from "../lib/supaba
 import { getPersonaFromDb, getCorrectionsFromDb, clearCache } from "../lib/knowledge-db.js";
 import { buildSystemPrompt } from "../lib/prompt.js";
 
-const DEFAULT_MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514";
+const DEFAULT_MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
 
 const CALIBRATION_CONTEXTS = [
   "Quelqu'un te pose une question simple sur ton domaine d'expertise. Reponds naturellement.",

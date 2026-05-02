@@ -81,7 +81,7 @@ export default async function handler(req, res) {
 
   const apiKey = getApiKey(client);
   const anthropic = new Anthropic({ apiKey });
-  const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514";
+  const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
 
   let updatedVoice;
   try {

@@ -208,7 +208,13 @@ async function _fetchRecentPropositions(sb, documentId) {
 
 function _defaultRealtimeFactory(sb, { documentId, onArtifactFired, onPropositionCreated, onPropositionResolved }) {
   if (!sb?.channel) return { close: () => {} };
-  const ch = sb.channel(`protocol-stream-${documentId}`)
+  // Channel name MUST be unique per request. The supabase-js client is a
+  // module-level singleton (see lib/supabase.js); reusing the same topic name
+  // across concurrent SSE handlers makes supabase-js return the existing
+  // already-subscribed channel, and the subsequent `.on(...)` calls throw
+  // "cannot add postgres_changes callbacks ... after subscribe()".
+  const suffix = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const ch = sb.channel(`protocol-stream-${documentId}-${suffix}`)
     .on(
       "postgres_changes",
       { event: "UPDATE", schema: "public", table: "protocol_artifact" },

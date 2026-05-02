@@ -189,7 +189,7 @@ function sanitizeText(text) {
 async function callClaude(system, userContent, maxTokens = 4096) {
   const result = await Promise.race([
     anthropic.messages.create({
-      model: process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514",
+      model: process.env.CLAUDE_MODEL || "claude-sonnet-4-6",
       max_tokens: maxTokens,
       system: sanitizeText(system),
       messages: [{ role: "user", content: sanitizeText(userContent) }],
