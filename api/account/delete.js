@@ -1,25 +1,34 @@
-// POST /api/account/delete — minimal RGPD "right of withdrawal" endpoint.
+// POST /api/account/delete — RGPD Art. 17 right-to-erasure endpoint.
 //
-// Soft-deletes the authenticated client's account :
-//   - clients.is_active = false  (login lockout via partial index)
-//   - personas.is_active = false on all personas owned by this client
-//   - PII scrubbed on clients : name → "[deleted-<short>]", api keys → null
+// Two modes :
 //
-// Hard delete + full RGPD data export are out of scope for the beta : they
-// require a cascade plan across usage_log/learning_events/feedback_events
-// (no FK ON DELETE CASCADE on those today) and a documented dump format.
-// Tracked as Phase 2 work.
+//   1. Soft (default) — reversible deactivation :
+//        - clients.is_active = false      (login lockout via partial index)
+//        - personas.is_active = false     on all personas owned by this client
+//        - PII scrubbed on clients        : name → "[deleted-<short>]", api keys → null
+//
+//   2. Hard (body.hard === true) — irreversible cascade delete :
+//        - DELETE FROM clients WHERE id = ?
+//        - Postgres cascades to: personas, conversations, messages, knowledge_*,
+//          corrections, scenario_files, fidelity_scores, persona_metrics_daily,
+//          learning_events, business_outcomes, feedback_events, sessions,
+//          persona_shares, share_tokens, persona_api_keys, prospect_heat,
+//          operating_protocols, protocol_*, rhythm_*, etc.
+//        - usage_log rows are kept (10-year billing retention) but
+//          client_id / persona_id are set to NULL (anonymized link).
+//        - Migration 067 closed the 5 FK gaps that previously blocked this.
 //
 // Auth : x-session-token or x-access-code (same as the rest of the app).
 // Admin (`__admin__` access code) cannot self-delete via this endpoint —
 // that would brick the platform.
 //
 // Body :
-//   { confirm_access_code: string }   # echo of the user's own access_code
-//                                      # safety against accidental / CSRF calls
+//   { confirm_access_code: string,   # echo of the user's own access_code
+//     hard?: boolean }                # default false → soft delete
 //
 // Returns :
-//   { ok: true, deactivated_at: string, personas_deactivated: number }
+//   Soft : { ok: true, mode: "soft", deactivated_at, personas_deactivated }
+//   Hard : { ok: true, mode: "hard", deleted_at }
 //
 // Handler accepts an optional `deps` 3rd argument for test injection.
 
@@ -60,8 +69,32 @@ export default async function handler(req, res, deps) {
     return;
   }
 
-  // Deactivate personas first — if this fails we still want the client lockout
-  // to apply (better leave orphan personas inactive than leave a live login).
+  // Hard delete — irreversible, cascades the entire account.
+  // Migration 067 wired ON DELETE SET NULL on usage_log + the
+  // contributor / intelligence-source FKs so this DELETE no longer
+  // raises a FK violation.
+  if (body.hard === true) {
+    const { error: dErr } = await supabase
+      .from("clients")
+      .delete()
+      .eq("id", client.id);
+
+    if (dErr) {
+      res.status(500).json({ error: "Failed to hard-delete client: " + dErr.message });
+      return;
+    }
+
+    res.json({
+      ok: true,
+      mode: "hard",
+      deleted_at: new Date().toISOString(),
+    });
+    return;
+  }
+
+  // Soft delete (default) — deactivate personas first; if this fails we
+  // still want the client lockout to apply (better leave orphan personas
+  // inactive than leave a live login).
   const { data: personas, error: pErr } = await supabase
     .from("personas")
     .update({ is_active: false })
@@ -95,6 +128,7 @@ export default async function handler(req, res, deps) {
 
   res.json({
     ok: true,
+    mode: "soft",
     deactivated_at: new Date().toISOString(),
     personas_deactivated: personasDeactivated,
   });
