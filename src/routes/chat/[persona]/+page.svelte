@@ -29,6 +29,7 @@
   import ChatComposer from "$lib/components/ChatComposer.svelte";
   import SourceCorePicker from "$lib/components/SourceCorePicker.svelte";
   import FeedbackRail from "$lib/components/FeedbackRail.svelte";
+  import PlaybookContextPanel from "$lib/components/PlaybookContextPanel.svelte";
   import ConversationSidebar from "$lib/components/ConversationSidebar.svelte";
   import ChatTopBar from "$lib/components/ChatTopBar.svelte";
   import FeedbackPanel from "$lib/components/FeedbackPanel.svelte";
@@ -53,7 +54,12 @@
 
   let loading = $state(true);
   let sidebarOpen = $state(false);
-  let railOpen = $state(false);  // mobile-only: toggles feedback rail drawer below 900px
+  let railOpen = $state(false);  // mobile-only: toggles right column drawer below 900px
+  // V1.0 PlaybookContextPanel — onglet actif de la colonne droite. Default
+  // 'playbook' (plus utile pédagogiquement que feedback qui apparaît déjà
+  // conditionnellement). Persisté dans localStorage par persona pour survivre
+  // au reload sans figer l'arbitrage UX entre les deux tabs.
+  let rightTab = $state("playbook");
   let messagesEl = $state(undefined);
   let scrollAnchor = $state(undefined);
 
@@ -1284,13 +1290,43 @@
           />
         </div>
 
-        <FeedbackRail
-          bind:this={feedbackRailRef}
-          conversationId={$currentConversationId}
-          preloadedEvents={preloadedFeedbackEvents}
-          {activeRules}
-          onHighlightMessage={handleHighlightMessage}
-        />
+        <div class="right-col" role="region" aria-label="Contexte conversation">
+          <div class="right-tabs mono" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={rightTab === "playbook"}
+              class="right-tab"
+              class:active={rightTab === "playbook"}
+              onclick={() => (rightTab = "playbook")}
+            >playbook</button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={rightTab === "feedback"}
+              class="right-tab"
+              class:active={rightTab === "feedback"}
+              onclick={() => (rightTab = "feedback")}
+            >feedback</button>
+          </div>
+
+          <!-- Les deux panels restent montés (display:none sur l'inactif) pour
+               préserver l'état (events feedback, fetch playbook) et la ref
+               feedbackRailRef nécessaire aux appendEvent depuis les handlers
+               de correction/validation hors-panel. -->
+          <div class="right-panel-wrap" class:hidden={rightTab !== "playbook"}>
+            <PlaybookContextPanel {personaId} />
+          </div>
+          <div class="right-panel-wrap" class:hidden={rightTab !== "feedback"}>
+            <FeedbackRail
+              bind:this={feedbackRailRef}
+              conversationId={$currentConversationId}
+              preloadedEvents={preloadedFeedbackEvents}
+              {activeRules}
+              onHighlightMessage={handleHighlightMessage}
+            />
+          </div>
+        </div>
 
         {#if railOpen}
           <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -1405,11 +1441,63 @@
     display: none;
   }
 
+  .right-col {
+    width: 320px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--rule);
+    background: var(--paper-subtle);
+    min-height: 0;
+    overflow: hidden;
+  }
+  .right-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--rule);
+    flex-shrink: 0;
+  }
+  .right-tab {
+    flex: 1;
+    background: transparent;
+    border: none;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-60);
+    border-bottom: 2px solid transparent;
+    transition: color 0.12s, border-color 0.12s;
+    font-family: inherit;
+  }
+  .right-tab:hover { color: var(--ink); }
+  .right-tab.active {
+    color: var(--ink);
+    border-bottom-color: var(--ink);
+  }
+  .right-panel-wrap {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .right-panel-wrap.hidden { display: none; }
+  /* Le panel enfant (FeedbackRail / PlaybookContextPanel) gère lui-même son
+     overflow et sa border-left ; on neutralise sa border-left ici car celle
+     du .right-col fait déjà la séparation avec le chat. */
+  .right-panel-wrap :global(.feedback-rail),
+  .right-panel-wrap :global(.playbook-panel) {
+    width: 100%;
+    border-left: none;
+    flex: 1;
+  }
+
   @media (max-width: 900px) {
-    /* Mobile: rail becomes an overlay drawer. Hidden by default, slides in
-       when the parent gets .rail-open (toggled from the header's correction
-       count button). Backdrop click or ESC closes it. */
-    .chat-body :global(.feedback-rail) {
+    /* Mobile: la colonne droite (tabs + panel actif) devient un overlay drawer.
+       Hidden par défaut, slide-in quand .rail-open. Le bouton qui toggle
+       .rail-open vit dans ChatTopBar — il ouvre la colonne (n'importe quel tab). */
+    .chat-body .right-col {
       position: absolute;
       top: 0;
       right: 0;
@@ -1420,7 +1508,7 @@
       transition: transform 0.18s ease-out;
       box-shadow: -2px 0 12px rgba(20, 20, 26, 0.08);
     }
-    .chat-body.rail-open :global(.feedback-rail) {
+    .chat-body.rail-open .right-col {
       transform: translateX(0);
     }
     .chat-body.rail-open .rail-backdrop {
