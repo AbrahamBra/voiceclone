@@ -44,10 +44,12 @@ function makeSupabase({
   const inserts = [];
   const updates = [];
   const sectionUpdates = [];
+  const batchInserts = [];
   return {
     inserts,
     updates,
     sectionUpdates,
+    batchInserts,
     from(table) {
       if (table === "protocol_document") {
         return {
@@ -104,6 +106,14 @@ function makeSupabase({
           },
         };
         return builder;
+      }
+      if (table === "protocol_import_batch") {
+        return {
+          insert(row) {
+            batchInserts.push(row);
+            return Promise.resolve({ error: null });
+          },
+        };
       }
       throw new Error(`unexpected table: ${table}`);
     },

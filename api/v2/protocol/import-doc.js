@@ -405,6 +405,30 @@ export default async function handler(req, res, deps) {
     if (inserted) created.push(inserted);
   }
 
+  // Persist the batch metadata so the calibration view can show "this doc
+  // produced N propositions, enriched identity by M chars". Best-effort —
+  // a failure here doesn't invalidate the propositions already in the
+  // queue, just hides this batch from the calibration view.
+  const batchRow = {
+    id: batchId,
+    document_id: documentId,
+    doc_filename: docFilename,
+    doc_kind: docKind,
+    identity_appended: !!identitySummary?.appended,
+    identity_chars_added: identitySummary?.appended ? identitySummary.chars_added : 0,
+    chunks_processed: chunks.length,
+    candidates_total: allCandidates.length,
+    propositions_created: created.length,
+    propositions_merged: mergedCount,
+    silenced,
+  };
+  const { error: batchErr } = await supabase
+    .from("protocol_import_batch")
+    .insert(batchRow);
+  if (batchErr) {
+    log("protocol_v2_import_doc_batch_insert_error", { message: batchErr.message });
+  }
+
   res.status(200).json({
     document_id: documentId,
     batch_id: batchId,
