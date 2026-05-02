@@ -56,6 +56,65 @@ function extractToolInput(result, toolName) {
   return null;
 }
 
+// ── Chantier 3 leak fix ──────────────────────────────────────
+// Emit a feedback_events row in parallel with the corrections write for
+// regen_rejection / copy_paste_out signals so that :
+//   - FeedbackRail UI displays the implicit signal on the message
+//   - protocol-v2-rule-counters resolveFirings is triggered (helpful for
+//     copy_paste_out, harmful for regen_rejection)
+//   - drain protocol-v2 sees these signals via the drainable feedback_events
+//     path, not only via the corrections drain bridge
+//
+// Back-compat : if conversationId / messageId not provided in body (old
+// front-end), we silently no-op. Once the front passes them, the row inserts.
+// Best-effort : never throws to caller — corrections insert + entity boost
+// are the primary side-effects.
+async function maybeEmitFeedbackEventForImplicit({ supabase, body, intellId, eventType }) {
+  const conversationId = body?.conversationId || body?.conversation_id;
+  const messageId = body?.messageId || body?.message_id;
+  if (!conversationId || !messageId) return; // silent no-op
+
+  try {
+    // Verify message_id belongs to conversation_id (security parity with
+    // /api/feedback-events). Cheap check, prevents cross-conversation
+    // injection if the front passes a stale messageId.
+    const { data: msg } = await supabase
+      .from("messages").select("conversation_id").eq("id", messageId).maybeSingle();
+    if (!msg || msg.conversation_id !== conversationId) {
+      console.warn(`[feedback] feedback_event emit skipped: message_id ${messageId} not in conversation ${conversationId}`);
+      return;
+    }
+
+    // Emit a learning_events row first so we can back-link via learning_event_id
+    // (parity with /api/feedback-events.js:136-147).
+    const intensity = eventType === "regen_rejection" ? "implicit_negative" : "implicit_copy";
+    const learningType = eventType === "regen_rejection" ? "correction_saved" : "positive_reinforcement";
+    const { data: leData } = await supabase
+      .from("learning_events")
+      .insert({
+        persona_id: intellId,
+        event_type: learningType,
+        payload: { source: "feedback_implicit_bridge", fb_event_type: eventType, message_id: messageId, conversation_id: conversationId, intensity },
+      })
+      .select("id").single();
+
+    await supabase.from("feedback_events").insert({
+      conversation_id: conversationId,
+      message_id: messageId,
+      persona_id: intellId,
+      event_type: eventType,
+      correction_text: null,
+      diff_before: null,
+      diff_after: null,
+      rules_fired: [],
+      learning_event_id: leData?.id || null,
+    });
+  } catch (err) {
+    // Never propagate — the corrections write is the contract for /api/feedback.
+    console.warn(`[feedback] feedback_event emit failed for ${eventType}: ${err?.message || err}`);
+  }
+}
+
 export default async function handler(req, res) {
   setCors(res, "GET, POST, DELETE, OPTIONS");
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
@@ -576,6 +635,14 @@ export default async function handler(req, res) {
       intensity: "low", boost: 0.03, matched_entities: matchedCount, source: "copy_paste_out",
     });
 
+    // Chantier 3 leak fix : émettre aussi feedback_event pour FeedbackRail UI
+    // + drain protocol-v2 helpful_count. Best-effort, ne bloque pas la
+    // réponse principale si message_id / conversation_id absents (back-compat
+    // pour les anciens callers du front qui ne les passent pas encore).
+    await maybeEmitFeedbackEventForImplicit({
+      supabase, body: req.body, intellId, eventType: "copy_paste_out",
+    });
+
     clearIntelligenceCache(intellId);
     res.json({ ok: true, signal: "copy_paste_out" });
     return;
@@ -602,6 +669,14 @@ export default async function handler(req, res) {
 
     await logLearningEvent(intellId, "entity_demote", {
       intensity: "low", demote: 0.03, matched_entities: matchedCount, source: "regen_rejection",
+    });
+
+    // Chantier 3 leak fix : émettre aussi feedback_event pour FeedbackRail UI
+    // + drain protocol-v2 harmful_count. Best-effort, ne bloque pas la
+    // réponse principale si message_id / conversation_id absents (back-compat
+    // pour les anciens callers du front qui ne les passent pas encore).
+    await maybeEmitFeedbackEventForImplicit({
+      supabase, body: req.body, intellId, eventType: "regen_rejection",
     });
 
     clearIntelligenceCache(intellId);

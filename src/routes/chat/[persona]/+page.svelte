@@ -1051,6 +1051,9 @@
   // 📋 copy : user copied a bot draft out (LinkedIn, notes…). Implicit
   // positive signal, weight 0.6. Fires for both full-message and per-block
   // copies. Non-blocking.
+  // Chantier 3 leak fix : pass messageId + conversationId so the backend
+  // can emit a feedback_event in addition to the correction (powers
+  // FeedbackRail UI + protocol-v2 helpful_count).
   function handleCopyOut(message, copiedText) {
     if (!message || message.role !== "bot" || !copiedText) return;
     api("/api/feedback", {
@@ -1059,6 +1062,8 @@
         type: "copy_paste_out",
         botMessage: copiedText,
         persona: get(currentPersonaId),
+        messageId: message.id,
+        conversationId: get(currentConversationId),
       }),
     }).catch(() => { /* secondary signal; non-blocking */ });
     track("copy_paste_out", { len: copiedText.length });
@@ -1074,12 +1079,18 @@
       });
       // Implicit negative signal — the rejected draft becomes training data
       // with weight 0.5, orthogonal to the turn_kind flip above.
+      // Chantier 3 leak fix : pass messageId + conversationId so the backend
+      // emits a feedback_event in addition to the correction (powers
+      // FeedbackRail UI + protocol-v2 harmful_count for rules that fired
+      // on the rejected draft).
       api("/api/feedback", {
         method: "POST",
         body: JSON.stringify({
           type: "regen_rejection",
           botMessage: message.content,
           persona: get(currentPersonaId),
+          messageId: message.id,
+          conversationId: get(currentConversationId),
         }),
       }).catch(() => { /* secondary signal; non-blocking */ });
       messages.update(msgs => msgs.filter(m => m.id !== message.id));
