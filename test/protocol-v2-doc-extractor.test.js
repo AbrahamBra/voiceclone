@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import { normalizeBatchOutput } from "../lib/protocol-v2-doc-extractor.js";
+import { normalizeBatchOutput, EXTRACTOR_TOOL, EXTRACTOR_SYSTEM_PROMPT } from "../lib/protocol-v2-doc-extractor.js";
 
 describe("normalizeBatchOutput", () => {
   it("returns [] for null/non-object input", () => {
@@ -60,5 +60,40 @@ describe("normalizeBatchOutput", () => {
     assert.equal(out[0].proposal.proposed_text, "Founder solo SaaS B2B 1-10 employés");
     assert.equal(out[0].proposal.rationale, "doc cite ICP P1 explicit");
     assert.equal(out[0].proposal.confidence, 0.85);
+  });
+});
+
+describe("EXTRACTOR_TOOL", () => {
+  it("declares one tool named emit_propositions", () => {
+    assert.equal(EXTRACTOR_TOOL.name, "emit_propositions");
+    assert.ok(EXTRACTOR_TOOL.description);
+    assert.ok(EXTRACTOR_TOOL.input_schema);
+  });
+
+  it("input_schema has propositions array of typed objects with enum target_kind", () => {
+    const s = EXTRACTOR_TOOL.input_schema;
+    assert.equal(s.type, "object");
+    assert.ok(s.properties.propositions);
+    assert.equal(s.properties.propositions.type, "array");
+    const item = s.properties.propositions.items;
+    assert.deepEqual(item.required.sort(), ["confidence", "intent", "proposed_text", "target_kind"].sort());
+    assert.deepEqual(
+      item.properties.target_kind.enum.sort(),
+      ["errors", "hard_rules", "icp_patterns", "process", "scoring", "templates"],
+    );
+  });
+});
+
+describe("EXTRACTOR_SYSTEM_PROMPT", () => {
+  it("mentions all 6 target kinds", () => {
+    for (const kind of ["hard_rules", "errors", "icp_patterns", "scoring", "process", "templates"]) {
+      assert.ok(EXTRACTOR_SYSTEM_PROMPT.includes(kind), `missing ${kind} in prompt`);
+    }
+  });
+
+  it("instructs to emit MULTIPLE items per chunk and not skip prose narrative", () => {
+    // Two key bias correctors versus the old Haiku router.
+    assert.match(EXTRACTOR_SYSTEM_PROMPT, /(plusieurs|multiple|N items|tous les items)/i);
+    assert.match(EXTRACTOR_SYSTEM_PROMPT, /(narrati|prose)/i);
   });
 });
