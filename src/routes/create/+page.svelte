@@ -222,7 +222,15 @@
         }
         pendingFiles = [...pendingFiles, { name: file.name, content, status: "pending" }];
       } catch (err) {
-        const msg = /unsupported/i.test(err?.message || "") ? "format" : "illisible";
+        const lname = (file.name || "").toLowerCase();
+        let msg;
+        if (lname.endsWith(".odt")) {
+          msg = ".odt non supporté — convertis en .docx";
+        } else if (/unsupported/i.test(err?.message || "")) {
+          msg = "format non supporté (.txt, .md, .pdf, .docx)";
+        } else {
+          msg = "illisible";
+        }
         pendingFiles = [...pendingFiles, { name: file.name, content: "", status: "error", error: msg }];
       }
     }
@@ -291,6 +299,8 @@
         generateStatus = "Budget dépassé. Ajoutez votre clé API dans les paramètres.";
       } else if (err.status === 403) {
         generateStatus = err.data?.error || "Limite de clones atteinte";
+      } else if (err.status === 409 && err.data?.code === "duplicate_slug") {
+        generateStatus = err.data.error;
       } else {
         generateStatus = "Erreur: " + (err.message || "Server error");
       }

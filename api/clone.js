@@ -8,6 +8,7 @@ import { extractEntitiesFromContent } from "../lib/graph-extraction.js";
 import { rateLimit, getClientIp } from "./_rateLimit.js";
 import { withTimeout } from "../lib/with-timeout.js";
 import { CLONE_SYSTEM_PROMPT, STYLE_ANALYSIS_PROMPT, DM_ANALYSIS_PROMPT, ONTOLOGY_PROMPT } from "../lib/prompts/clone.js";
+import { generateUniqueSlug } from "../lib/persona-slug.js";
 
 export default async function handler(req, res) {
   setCors(res, "POST, OPTIONS");
@@ -150,7 +151,7 @@ export default async function handler(req, res) {
 
     if (name) personaConfig.name = name;
 
-    const slug = personaConfig.name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
+    const slug = await generateUniqueSlug(supabase, client?.id || null, personaConfig.name);
     const cleanLabel = typeof client_label === "string" ? client_label.trim().slice(0, 120) : null;
 
     const { data: persona, error: insertErr } = await supabase
@@ -172,7 +173,20 @@ export default async function handler(req, res) {
       .select()
       .single();
 
-    if (insertErr) throw new Error("Failed to save persona: " + insertErr.message);
+    // 23505 = unique_violation. generateUniqueSlug() shrinks the window but a
+    // concurrent create on the same client+name can still race. Surface it as
+    // 409 with a French message instead of bubbling the raw Postgres string up
+    // to the user (which is what the screenshot caught on 2026-05-02).
+    if (insertErr) {
+      if (insertErr.code === "23505") {
+        res.status(409).json({
+          error: `Un clone "${personaConfig.name}" existe déjà. Choisissez un autre nom ou supprimez le clone existant.`,
+          code: "duplicate_slug",
+        });
+        return;
+      }
+      throw new Error("Failed to save persona: " + insertErr.message);
+    }
 
     // Bootstrap an empty Protocol-v2 document for the new persona, with the
     // 6 canonical sections pre-created. This unblocks the propositions queue
