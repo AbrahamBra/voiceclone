@@ -1,14 +1,16 @@
 <script>
-  // Vue Protocole v2 : Doctrine + Registre + Propositions + Playbooks.
-  // Tab Doctrine = ProtocolDoctrine (TOC + prose + activity feed live).
-  // Tab Registre = ProtocolRegistry (tableau transversal des artifacts).
-  // Tab Propositions = ProtocolPropositionsQueue (queue d'arbitrage).
-  // Tab Playbooks = SourcePlaybooksPanel (playbooks par source).
+  // Vue Protocole v2 : Doctrine + Registre + Propositions + Playbooks + Calibrage.
+  // Tab Doctrine    = ProtocolDoctrine (TOC + prose + activity feed live).
+  // Tab Registre    = ProtocolRegistry (tableau transversal des artifacts).
+  // Tab Propositions= ProtocolPropositionsQueue (queue d'arbitrage).
+  // Tab Playbooks   = SourcePlaybooksPanel (playbooks par source).
+  // Tab Calibrage   = ProtocolCalibration (un import = une carte, croisements docs).
 
   import ProtocolDoctrine from "./protocol-v2/ProtocolDoctrine.svelte";
   import ProtocolRegistry from "./protocol-v2/ProtocolRegistry.svelte";
   import ProtocolPropositionsQueue from "./protocol-v2/ProtocolPropositionsQueue.svelte";
   import SourcePlaybooksPanel from "./protocol-v2/SourcePlaybooksPanel.svelte";
+  import ProtocolCalibration from "./protocol-v2/ProtocolCalibration.svelte";
   import { api } from "$lib/api.js";
   import { extractFileText } from "$lib/file-extraction.js";
   import { showToast } from "$lib/stores/ui.js";
@@ -182,6 +184,12 @@
       class:active={activeView === "playbooks"}
       onclick={() => (activeView = "playbooks")}
     >Playbooks</button>
+    <button
+      type="button"
+      class="ppv2-tab"
+      class:active={activeView === "calibration"}
+      onclick={() => (activeView = "calibration")}
+    >Calibrage</button>
 
     <span class="ppv2-spacer"></span>
 
@@ -239,6 +247,8 @@
       <ProtocolDoctrine {personaId} />
     {:else if activeView === "playbooks"}
       <SourcePlaybooksPanel {personaId} />
+    {:else if activeView === "calibration"}
+      <ProtocolCalibration {personaId} />
     {:else if metaLoading}
       <div class="ppv2-loading">Chargement…</div>
     {:else if metaError}
