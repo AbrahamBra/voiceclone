@@ -10,11 +10,64 @@
   import ProtocolPropositionsQueue from "./protocol-v2/ProtocolPropositionsQueue.svelte";
   import SourcePlaybooksPanel from "./protocol-v2/SourcePlaybooksPanel.svelte";
   import { api } from "$lib/api.js";
+  import { extractFileText } from "$lib/file-extraction.js";
+  import { showToast } from "$lib/stores/ui.js";
 
   /** @type {{ personaId: string }} */
   let { personaId } = $props();
 
   let activeView = $state("doctrine");
+
+  // ── Import document → propositions across all 6 sections ──────────
+  // Drives the "Importer un doc" button in the header. Reads a file from
+  // disk (txt / md / pdf / docx / odt), extracts text via the shared
+  // helper, posts to /api/v2/protocol/import-doc, then jumps to the
+  // Propositions tab so the user can arbitrate.
+  let importInputEl;
+  let importing = $state(false);
+  let importBatchSummary = $state(/** @type {null|{filename:string, created:number, merged:number, silenced:number}} */(null));
+
+  async function onImportClick() {
+    if (importing) return;
+    importInputEl?.click();
+  }
+
+  async function onImportFile(e) {
+    const file = e.target?.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    importing = true;
+    importBatchSummary = null;
+    try {
+      const text = await extractFileText(file);
+      if (!text || !text.trim()) {
+        showToast("Document vide ou illisible");
+        return;
+      }
+      const out = await api("/api/v2/protocol/import-doc", {
+        method: "POST",
+        body: JSON.stringify({
+          persona_id: personaId,
+          doc_text: text,
+          doc_filename: file.name,
+        }),
+      });
+      importBatchSummary = {
+        filename: file.name,
+        created: out.propositions_created || 0,
+        merged: out.propositions_merged || 0,
+        silenced: out.silenced || 0,
+      };
+      // Refresh meta so the Propositions badge picks up the new pending count.
+      docMeta = null;
+      await loadMeta();
+      activeView = "propositions";
+    } catch (err) {
+      showToast(`Import échoué : ${err?.message || "erreur inconnue"}`);
+    } finally {
+      importing = false;
+    }
+  }
 
   // Shared lazy fetch of the protocol document : Registry needs sections,
   // Propositions tab needs document.id. We fetch once when the user switches
@@ -88,7 +141,33 @@
       class:active={activeView === "playbooks"}
       onclick={() => (activeView = "playbooks")}
     >Playbooks</button>
+
+    <span class="ppv2-spacer"></span>
+
+    <button
+      type="button"
+      class="ppv2-import"
+      disabled={importing}
+      onclick={onImportClick}
+      title="Lit un .txt / .md / .pdf / .docx / .odt et l'éclate en propositions par section"
+    >
+      {importing ? "Import en cours…" : "+ importer un doc"}
+    </button>
+    <input
+      type="file"
+      bind:this={importInputEl}
+      accept=".txt,.md,.csv,.pdf,.docx,.odt"
+      style="display:none"
+      onchange={onImportFile}
+    />
   </nav>
+
+  {#if importBatchSummary}
+    <div class="ppv2-import-summary" role="status" aria-live="polite">
+      <strong>{importBatchSummary.filename}</strong> — {importBatchSummary.created} proposition{importBatchSummary.created > 1 ? "s" : ""} créée{importBatchSummary.created > 1 ? "s" : ""}, {importBatchSummary.merged} fusionnée{importBatchSummary.merged > 1 ? "s" : ""}, {importBatchSummary.silenced} silencée{importBatchSummary.silenced > 1 ? "s" : ""} (confiance trop basse).
+      <button type="button" class="ppv2-import-summary-close" onclick={() => (importBatchSummary = null)} aria-label="Fermer">×</button>
+    </div>
+  {/if}
 
   <div class="ppv2-body">
     {#if activeView === "doctrine"}
@@ -180,4 +259,45 @@
     color: var(--ink-40);
   }
   .ppv2-error { color: var(--vermillon); }
+  .ppv2-spacer { flex: 1; }
+  .ppv2-import {
+    background: transparent;
+    border: 1px solid var(--rule-strong);
+    border-radius: 4px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+    color: var(--ink-70);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .ppv2-import:hover:not(:disabled) {
+    color: var(--ink);
+    border-color: var(--ink);
+  }
+  .ppv2-import:disabled { opacity: 0.55; cursor: progress; }
+  .ppv2-import-summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    background: var(--bg-soft, rgba(0,0,0,0.04));
+    border-bottom: 1px solid var(--rule);
+    font-family: var(--font-mono);
+    font-size: var(--fs-tiny);
+    color: var(--ink-70);
+  }
+  .ppv2-import-summary strong { color: var(--ink); font-weight: 600; }
+  .ppv2-import-summary-close {
+    margin-left: auto;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--ink-40);
+    font-size: 18px;
+    line-height: 1;
+    padding: 0 4px;
+  }
+  .ppv2-import-summary-close:hover { color: var(--ink); }
 </style>
