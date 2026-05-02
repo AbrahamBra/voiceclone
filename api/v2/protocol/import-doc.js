@@ -21,9 +21,17 @@
 //      (source_core IS NULL).
 //   2. Chunk the doc into ≤3 500-char prose blocks (paragraph-aware, sentence
 //      fallback for very long paragraphs).
-//   3. For each chunk : `routeAndExtract({ source_type: 'doc_import', ... })`
-//      in parallel via Promise.allSettled. Router picks 0-2 target_kinds per
-//      chunk via Haiku, then runs the matching Sonnet extractor(s).
+//   3. Routing per doc_kind (KIND_ROUTING) :
+//        - extractTargets === null   → for each chunk, ONE Sonnet tool_use
+//          call (extractFromChunk) emits 0..N propositions tagged by
+//          target_kind. No router gate, no per-target Sonnet fan-out.
+//          Replaces the old Haiku-router pipeline that filtered out prose
+//          (recall ~5% on Nicolas process-setter.md, see
+//          docs/superpowers/specs/2026-05-02-extracteur-recall-handoff.md).
+//        - extractTargets === []     → no extraction (identity-only, e.g.
+//          persona_context).
+//        - extractTargets === [kinds] → for each chunk, runExtractors with
+//          the explicit kinds (PR #215 flow, unchanged).
 //   4. For each extracted candidate :
 //        - Embed `proposed_text` (Voyage 1024 dims).
 //        - `findSimilarProposition` against pending propositions of this doc
@@ -55,6 +63,7 @@ import {
   routeAndExtract as _routeAndExtract,
   runExtractors as _runExtractors,
 } from "../../../lib/protocol-v2-extractor-router.js";
+import { extractFromChunk as _extractFromChunk } from "../../../lib/protocol-v2-doc-extractor.js";
 import {
   embedForProposition as _embedForProposition,
   findSimilarProposition as _findSimilarProposition,
@@ -195,6 +204,7 @@ export default async function handler(req, res, deps) {
     setCors = _setCors,
     routeAndExtract = _routeAndExtract,
     runExtractors = _runExtractors,
+    extractFromChunk = _extractFromChunk,
     embedForProposition = _embedForProposition,
     findSimilarProposition = _findSimilarProposition,
     appendToIdentity = appendToIdentitySection,
@@ -295,13 +305,12 @@ export default async function handler(req, res, deps) {
   /** @type {Array<{target_kind:string, proposal:object}>} */
   const allCandidates = [];
   if (routing.extractTargets === null) {
+    // Single Sonnet tool_use call per chunk emits 0..N typed propositions.
+    // Replaces the old Haiku-router + per-target Sonnet pipeline that gated
+    // prose chunks (recall ~5% on Nicolas process-setter.md). See
+    // docs/superpowers/specs/2026-05-02-extracteur-recall-handoff.md.
     const settled = await Promise.allSettled(
-      chunks.map((chunk) =>
-        routeAndExtract(
-          { source_type: "doc_import", source_text: chunk, context: ctx },
-          {},
-        ),
-      ),
+      chunks.map((chunk) => extractFromChunk(chunk, ctx, {})),
     );
     for (const s of settled) {
       if (s.status === "fulfilled" && Array.isArray(s.value)) {
