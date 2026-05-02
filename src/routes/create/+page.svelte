@@ -450,11 +450,26 @@
     }
   }
 
+  // Sortie du wizard. history.back() couvre le cas standard (user vient de /chat
+  // ou /lab) ; le fallback vise le dernier clone connu, sinon la home — même
+  // logique que pickPersona() côté lab.
+  function exitWizard() {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      history.back();
+      return;
+    }
+    let lastId = null;
+    try {
+      lastId = localStorage.getItem("setclone_last_persona") || localStorage.getItem("vc_last_persona");
+    } catch {}
+    goto(lastId ? `/chat/${lastId}` : "/");
+  }
 
 </script>
 
 <div class="create-page">
   <div class="create-container">
+    <button class="back-btn" onclick={exitWizard} type="button" aria-label="Quitter et revenir au chat">← Retour</button>
     <h2>Créer un clone</h2>
     <p class="create-subtitle">
       Étape {steps.indexOf(step) + 1}/{TOTAL}
@@ -802,6 +817,24 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
   .create-container {
     max-width: 520px;
     width: 100%;
+  }
+
+  .back-btn {
+    background: transparent;
+    border: 1px solid var(--rule-strong, var(--border));
+    border-radius: var(--radius);
+    padding: 6px 10px;
+    font-family: var(--font-mono, var(--font));
+    font-size: 11px;
+    color: var(--ink-60, var(--text-secondary));
+    cursor: pointer;
+    margin-bottom: 0.875rem;
+    letter-spacing: 0.02em;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .back-btn:hover {
+    color: var(--ink, var(--text));
+    border-color: var(--text-secondary);
   }
 
   .create-container h2 {
