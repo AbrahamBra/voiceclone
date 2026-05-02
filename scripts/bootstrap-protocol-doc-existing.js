@@ -10,12 +10,13 @@ import "dotenv/config";
 import { supabase } from "../lib/supabase.js";
 
 const SECTIONS = [
-  { kind: "hard_rules",   order: 0, heading: "Règles absolues" },
-  { kind: "errors",       order: 1, heading: "Erreurs à éviter — préférences de formulation" },
-  { kind: "process",      order: 2, heading: "Process — étapes opérationnelles" },
-  { kind: "icp_patterns", order: 3, heading: "ICP patterns — taxonomie prospects" },
-  { kind: "scoring",      order: 4, heading: "Scoring — axes de qualification" },
-  { kind: "templates",    order: 5, heading: "Templates — skeletons par scénario" },
+  { kind: "identity",     order: 0, heading: "Identité — voix, parcours, convictions" },
+  { kind: "hard_rules",   order: 1, heading: "Règles absolues" },
+  { kind: "errors",       order: 2, heading: "Erreurs à éviter — préférences de formulation" },
+  { kind: "process",      order: 3, heading: "Process — étapes opérationnelles" },
+  { kind: "icp_patterns", order: 4, heading: "ICP patterns — taxonomie prospects" },
+  { kind: "scoring",      order: 5, heading: "Scoring — axes de qualification" },
+  { kind: "templates",    order: 6, heading: "Templates — skeletons par scénario" },
 ];
 
 const apply = process.argv.includes("--apply");
