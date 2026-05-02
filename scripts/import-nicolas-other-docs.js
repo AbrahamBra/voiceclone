@@ -10,7 +10,10 @@ import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import handler from "../api/v2/protocol/import-doc.js";
 
-dotenv.config({ path: "C:/Users/abrah/AhmetA/.env" });
+// override: true required because the shell env has ANTHROPIC_API_KEY="" set
+// by the harness, which would otherwise prevent dotenv from loading the real
+// key and cause extractFromChunk to silently skip the LLM call.
+dotenv.config({ path: "C:/Users/abrah/AhmetA/.env", override: true });
 
 const dryRun = process.argv.includes("--dry-run");
 const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);

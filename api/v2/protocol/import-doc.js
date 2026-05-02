@@ -23,15 +23,20 @@
 //      fallback for very long paragraphs).
 //   3. Routing per doc_kind (KIND_ROUTING) :
 //        - extractTargets === null   → for each chunk, ONE Sonnet tool_use
-//          call (extractFromChunk) emits 0..N propositions tagged by
-//          target_kind. No router gate, no per-target Sonnet fan-out.
-//          Replaces the old Haiku-router pipeline that filtered out prose
-//          (recall ~5% on Nicolas process-setter.md, see
-//          docs/superpowers/specs/2026-05-02-extracteur-recall-handoff.md).
+//          call (extractFromChunk) emits 0..N propositions across all 6
+//          target_kinds. Used by operational_playbook + generic.
 //        - extractTargets === []     → no extraction (identity-only, e.g.
 //          persona_context).
-//        - extractTargets === [kinds] → for each chunk, runExtractors with
-//          the explicit kinds (PR #215 flow, unchanged).
+//        - extractTargets === [kinds] → for each chunk, ONE Sonnet tool_use
+//          call (extractFromChunk with allowedTargets=[kinds]) — same single-
+//          call architecture as the null path, but the tool enum + prompt
+//          are restricted to the listed kinds. Used by icp_audience +
+//          positioning. Replaces the legacy runExtractors per-target
+//          pipeline (which produced 0 candidates on Nicolas's audience.odt
+//          + positionnement.odt — the per-target extractors are too strict
+//          on prose narrative).
+//      Both extracting paths share the same Sonnet model + prompt strategy
+//      from docs/superpowers/specs/2026-05-02-extracteur-recall-handoff.md.
 //   4. For each extracted candidate :
 //        - Embed `proposed_text` (Voyage 1024 dims).
 //        - `findSimilarProposition` against pending propositions of this doc
@@ -322,17 +327,15 @@ export default async function handler(req, res, deps) {
       }
     }
   } else if (routing.extractTargets.length > 0) {
-    const explicitRoutes = routing.extractTargets.map((kind) => ({
-      target_kind: kind,
-      confidence: 1.0,
-    }));
+    // Explicit targets path (icp_audience, positioning) : delegate to the
+    // single-call doc extractor with allowedTargets so Sonnet self-routes
+    // per-item but limited to the allowed enum. Replaces the legacy
+    // runExtractors per-target Sonnet pipeline that produced 0 candidates
+    // on Nicolas's audience-cible.odt + positionnement.odt (the per-target
+    // extractors are too strict on prose narrative).
     const settled = await Promise.allSettled(
       chunks.map((chunk) =>
-        runExtractors(
-          { source_type: "doc_import", source_text: chunk, context: ctx },
-          explicitRoutes,
-          {},
-        ),
+        extractFromChunk(chunk, ctx, { allowedTargets: routing.extractTargets }),
       ),
     );
     for (const s of settled) {
