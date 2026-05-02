@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { authenticateRequest, supabase, getApiKey, setCors } from "../lib/supabase.js";
-import { getPersonaFromDb, getCorrectionsFromDb, clearCache } from "../lib/knowledge-db.js";
+import { getPersonaFromDb, getCorrectionsFromDb, findRelevantKnowledgeFromDb, clearCache } from "../lib/knowledge-db.js";
 import { buildSystemPrompt } from "../lib/prompt.js";
 
 const DEFAULT_MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514";
@@ -44,13 +44,32 @@ export default async function handler(req, res) {
     const persona = await getPersonaFromDb(personaId);
     if (!persona) { res.status(404).json({ error: "Persona not found" }); return; }
 
-    // Inject accumulated corrections so calibration reflects the real clone
-    // state (same prompt shape as /api/chat, minus knowledge/scenario/ontology
-    // which are query-dependent and irrelevant for generic calibration contexts).
+    // Pull RAG chunks per calibration context so the clone drafts grounded in
+    // the persona's docs (offer, ICP, anecdotes, témoignages…) instead of
+    // inventing. Until 2026-05-02 this passed knowledgeMatches=[] which made
+    // calibration drafts violate the docs at runtime — exactly the gap user
+    // flagged: "le calibrage DM ne prend pas en compte les documents".
+    const ctxMessages = CALIBRATION_CONTEXTS.map((ctx) => [{ role: "user", content: ctx }]);
+    const perCtxChunks = await Promise.all(
+      ctxMessages.map((msgs) => findRelevantKnowledgeFromDb(personaId, msgs, []).catch(() => []))
+    );
+    const seen = new Set();
+    const knowledgeMatches = [];
+    for (const chunks of perCtxChunks) {
+      for (const chunk of chunks) {
+        const key = chunk.path || chunk.content?.slice(0, 80);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        knowledgeMatches.push(chunk);
+        if (knowledgeMatches.length >= 8) break;
+      }
+      if (knowledgeMatches.length >= 8) break;
+    }
+
     const corrections = await getCorrectionsFromDb(personaId);
     const { prompt: systemPrompt } = buildSystemPrompt({
       persona,
-      knowledgeMatches: [],
+      knowledgeMatches,
       scenarioContent: null,
       corrections,
       ontology: { entities: [], relations: [] },
