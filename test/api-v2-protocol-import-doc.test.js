@@ -126,6 +126,7 @@ const baseDeps = (overrides = {}) => ({
   setCors: () => {},
   routeAndExtract: async () => [],
   runExtractors: async () => [],
+  extractFromChunk: async () => [],
   embedForProposition: async () => [0.1, 0.2, 0.3],
   findSimilarProposition: async () => [],
   ...overrides,
@@ -268,7 +269,7 @@ describe("POST /api/v2/protocol/import-doc — happy path", () => {
       res,
       baseDeps({
         supabase,
-        routeAndExtract: async () => candidates,
+        extractFromChunk: async () => candidates,
       }),
     );
     assert.equal(res.statusCode, 200, `body: ${JSON.stringify(res.body)}`);
@@ -309,7 +310,7 @@ describe("POST /api/v2/protocol/import-doc — happy path", () => {
       res,
       baseDeps({
         supabase,
-        routeAndExtract: async () => candidates,
+        extractFromChunk: async () => candidates,
         findSimilarProposition: async () => [existingProposition],
       }),
     );
@@ -345,7 +346,7 @@ describe("POST /api/v2/protocol/import-doc — happy path", () => {
       res,
       baseDeps({
         supabase,
-        routeAndExtract: async () => candidates,
+        extractFromChunk: async () => candidates,
       }),
     );
     assert.equal(res.statusCode, 200);
@@ -373,7 +374,7 @@ describe("POST /api/v2/protocol/import-doc — happy path", () => {
       res,
       baseDeps({
         supabase,
-        routeAndExtract: async () => {
+        extractFromChunk: async () => {
           callCount++;
           if (callCount === 2) throw new Error("simulated extractor failure");
           return [
@@ -590,8 +591,9 @@ describe("POST /api/v2/protocol/import-doc — doc_kind routing", () => {
     }
   });
 
-  it("operational_playbook: uses LLM router (current default behavior)", async () => {
+  it("operational_playbook: uses extractFromChunk (single-call Sonnet, not Haiku router)", async () => {
     const supabase = makeSupabase();
+    let extractCalls = 0;
     let routeCalls = 0;
     const req = {
       method: "POST",
@@ -604,15 +606,27 @@ describe("POST /api/v2/protocol/import-doc — doc_kind routing", () => {
     const res = makeRes();
     await handler(req, res, baseDeps({
       supabase,
+      extractFromChunk: async () => {
+        extractCalls++;
+        return [
+          {
+            target_kind: "hard_rules",
+            proposal: { intent: "add_rule", proposed_text: "Max 6 lignes par message.", rationale: "doc explicit", confidence: 0.9 },
+          },
+        ];
+      },
       routeAndExtract: async () => { routeCalls++; return []; },
     }));
     assert.equal(res.statusCode, 200);
     assert.equal(res.body.identity_appended, false);
-    assert(routeCalls > 0, "router should be called for operational_playbook");
+    assert(extractCalls > 0, "extractFromChunk should be called for operational_playbook");
+    assert.equal(routeCalls, 0, "routeAndExtract must NOT be called for operational_playbook");
+    assert.equal(res.body.candidates_total, extractCalls);
   });
 
-  it("invalid doc_kind silently degrades to generic (LLM router)", async () => {
+  it("invalid doc_kind silently degrades to generic (extractFromChunk path)", async () => {
     const supabase = makeSupabase();
+    let extractCalls = 0;
     let routeCalls = 0;
     const req = {
       method: "POST",
@@ -625,11 +639,36 @@ describe("POST /api/v2/protocol/import-doc — doc_kind routing", () => {
     const res = makeRes();
     await handler(req, res, baseDeps({
       supabase,
+      extractFromChunk: async () => { extractCalls++; return []; },
       routeAndExtract: async () => { routeCalls++; return []; },
     }));
     assert.equal(res.statusCode, 200);
     assert.equal(res.body.doc_kind, "generic");
-    assert(routeCalls > 0);
+    assert(extractCalls > 0);
+    assert.equal(routeCalls, 0);
+  });
+
+  it("icp_audience still routes via runExtractors (NOT extractFromChunk)", async () => {
+    const supabase = makeSupabase();
+    let extractCalls = 0;
+    let runCalls = 0;
+    const req = {
+      method: "POST",
+      body: {
+        persona_id: VALID_PERSONA,
+        doc_text: longProse,
+        doc_kind: "icp_audience",
+      },
+    };
+    const res = makeRes();
+    await handler(req, res, baseDeps({
+      supabase,
+      extractFromChunk: async () => { extractCalls++; return []; },
+      runExtractors: async () => { runCalls++; return []; },
+    }));
+    assert.equal(res.statusCode, 200);
+    assert(runCalls > 0, "runExtractors should be called for icp_audience");
+    assert.equal(extractCalls, 0, "extractFromChunk must NOT be called for explicit-targets paths");
   });
 
   it("identity-append failure does not block extraction", async () => {
