@@ -385,7 +385,7 @@
         : "Indexation incomplète : la mémoire du clone est vide. Re-créez le clone ou contactez le support pour relancer l'indexation.";
       showToast(msg, 8000);
     }
-    setTimeout(() => { goto(`/calibrate/${persona.id}`); }, 800);
+    setTimeout(() => { goto(`/chat/${persona.id}`); }, 800);
   }
 
   // ─── Persist draft on every meaningful change ─────────────────────────
