@@ -20,23 +20,8 @@
 
   let ruleSaved = $state(false);
   let showDiff = $state(false);
-  let copyMenuOpen = $state(false);
-  let copiedLabel = $state("");
+  let copied = $state(false);
   let copiedTimer;
-
-  const COPY_MODE_KEY = "copy_mode_default";
-  const COPY_MODES = [
-    { id: "linkedin", label: "LinkedIn-ready", hint: "Unicode gras/italique, puces •" },
-    { id: "markdown", label: "Markdown", hint: "texte brut avec ** et *" },
-    { id: "plain", label: "Texte brut", hint: "supprime le markdown" },
-  ];
-  let copyMode = $state("linkedin");
-  if (typeof window !== "undefined") {
-    try {
-      const saved = localStorage.getItem(COPY_MODE_KEY);
-      if (saved && COPY_MODES.some((m) => m.id === saved)) copyMode = saved;
-    } catch {}
-  }
 
   let blocks = $derived(
     message.role === "bot" && message.content
@@ -45,36 +30,16 @@
   );
   let isMultiBlock = $derived(blocks.length > 1);
 
-  function stripMarkdown(md) {
-    return md
-      .replace(/\*\*(.+?)\*\*/g, "$1")
-      .replace(/\*(.+?)\*/g, "$1")
-      .replace(/^---+\s*$/gm, "")
-      .replace(/^[-*•]\s+/gm, "")
-      .replace(/^(\d+)[.)]\s+/gm, "$1. ");
-  }
-
-  function formatFor(mode, text) {
-    if (mode === "linkedin") return toLinkedIn(text);
-    if (mode === "plain") return stripMarkdown(text);
-    return text; // markdown
-  }
-
-  function copyAs(mode, text) {
-    navigator.clipboard.writeText(formatFor(mode, text));
-    const modeObj = COPY_MODES.find((m) => m.id === mode);
-    copiedLabel = modeObj?.label ?? "Copié";
-    clearTimeout(copiedTimer);
-    copiedTimer = setTimeout(() => (copiedLabel = ""), 1400);
-    onCopyOut?.(text);
-  }
-
   function copyDefault() {
-    copyAs(copyMode, message.content);
+    navigator.clipboard.writeText(toLinkedIn(message.content));
+    copied = true;
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => (copied = false), 1400);
+    onCopyOut?.(message.content);
   }
 
-  function copyBlock(block, btnEl) {
-    navigator.clipboard.writeText(formatFor(copyMode, block));
+  function copyBlock(block) {
+    navigator.clipboard.writeText(toLinkedIn(block));
     onCopyBlock?.(block);
     onCopyOut?.(block);
   }
@@ -130,7 +95,7 @@
             <button
               class="block-copy-btn"
               title="Copier ce bloc"
-              onclick={(e) => { e.stopPropagation(); copyBlock(block, e.currentTarget); }}
+              onclick={(e) => { e.stopPropagation(); copyBlock(block); }}
             >&#10697;</button>
           </div>
         {/each}
@@ -140,38 +105,11 @@
 
       {#if message.role === "bot" && !message.typing && message.content}
         <div class="msg-actions">
-          <div class="copy-split">
-            <button
-              class="action-btn copy-main"
-              onclick={copyDefault}
-              title="Copier · {COPY_MODES.find(m => m.id === copyMode)?.label}"
-            >{copiedLabel ? `${copiedLabel} ✓` : (isDraft ? "📋 copier" : "Copier")}</button>
-            <button
-              class="action-btn copy-caret"
-              onclick={() => (copyMenuOpen = !copyMenuOpen)}
-              aria-label="Choisir le format de copie"
-              aria-expanded={copyMenuOpen}
-            >▾</button>
-            {#if copyMenuOpen}
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <div class="copy-backdrop" onclick={() => (copyMenuOpen = false)}></div>
-              <div class="copy-menu" role="menu">
-                {#each COPY_MODES as mode}
-                  <button
-                    class="copy-menu-item"
-                    class:is-default={copyMode === mode.id}
-                    role="menuitem"
-                    onclick={() => selectMode(mode.id)}
-                  >
-                    <span class="cm-label">{mode.label}</span>
-                    <span class="cm-hint">{mode.hint}</span>
-                    {#if copyMode === mode.id}<span class="cm-mark">●</span>{/if}
-                  </button>
-                {/each}
-              </div>
-            {/if}
-          </div>
+          <button
+            class="action-btn"
+            onclick={copyDefault}
+            title="Copier le message en version LinkedIn"
+          >{copied ? "Copié ✓" : (isDraft ? "📋 copier" : "Copier")}</button>
 
           {#if isDraft}
             <!-- Draft actions: c'est ça (validation client explicite, signal fort

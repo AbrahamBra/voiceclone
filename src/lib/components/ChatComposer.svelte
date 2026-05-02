@@ -174,7 +174,7 @@
     <div class="scenario-gate mono" role="status">
       → Choisis un mode ci-dessous (1er message, répondre, relancer, closer) avant d'écrire.
     </div>
-  {:else if target}
+  {:else if target && chars > 0}
     <div class="char-counter mono" data-state={countState} aria-live="polite">
       <span class="count">{chars}</span>
       <span class="sep"> · </span>
@@ -248,15 +248,6 @@
                 </button>
               </li>
             {/each}
-            <li>
-              <button
-                type="button"
-                disabled
-                title="bientôt — entraîne ton clone en conversation directe"
-              >
-                💬 parler au clone
-              </button>
-            </li>
           </ul>
         </details>
       {:else}
