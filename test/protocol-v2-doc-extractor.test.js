@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import { normalizeBatchOutput, EXTRACTOR_TOOL, EXTRACTOR_SYSTEM_PROMPT } from "../lib/protocol-v2-doc-extractor.js";
+import { normalizeBatchOutput, EXTRACTOR_TOOL, EXTRACTOR_SYSTEM_PROMPT, extractFromChunk } from "../lib/protocol-v2-doc-extractor.js";
 
 describe("normalizeBatchOutput", () => {
   it("returns [] for null/non-object input", () => {
@@ -95,5 +95,87 @@ describe("EXTRACTOR_SYSTEM_PROMPT", () => {
     // Two key bias correctors versus the old Haiku router.
     assert.match(EXTRACTOR_SYSTEM_PROMPT, /(plusieurs|multiple|N items|tous les items)/i);
     assert.match(EXTRACTOR_SYSTEM_PROMPT, /(narrati|prose)/i);
+  });
+});
+
+function makeAnthropicStub({ toolInput, contentOverride } = {}) {
+  return {
+    messages: {
+      create: async (params) => {
+        // Capture for assertions.
+        makeAnthropicStub.lastCall = params;
+        if (contentOverride) return contentOverride;
+        return {
+          content: [
+            {
+              type: "tool_use",
+              name: "emit_propositions",
+              input: toolInput || { propositions: [] },
+            },
+          ],
+        };
+      },
+    },
+  };
+}
+
+describe("extractFromChunk", () => {
+  it("returns [] for empty/short chunk without API call", async () => {
+    const out = await extractFromChunk("", {}, { anthropic: { messages: { create: () => { throw new Error("should not be called"); } } } });
+    assert.deepEqual(out, []);
+  });
+
+  it("returns [] when no API key and no anthropic stub provided", async () => {
+    const oldKey = process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    try {
+      const out = await extractFromChunk("a real chunk of prose with enough length to pass the min", {}, {});
+      assert.deepEqual(out, []);
+    } finally {
+      if (oldKey) process.env.ANTHROPIC_API_KEY = oldKey;
+    }
+  });
+
+  it("forwards tool_use input through normalizeBatchOutput", async () => {
+    const anthropic = makeAnthropicStub({
+      toolInput: {
+        propositions: [
+          { target_kind: "hard_rules", intent: "add_rule", proposed_text: "Max 6 lignes par message.", confidence: 0.92, rationale: "explicit dans la prose" },
+          { target_kind: "icp_patterns", intent: "add_pattern", proposed_text: "Founder solo SaaS B2B 1-10 employés", confidence: 0.85 },
+          { target_kind: "garbage", intent: "x", proposed_text: "y", confidence: 0.5 }, // dropped by normalize
+        ],
+      },
+    });
+    const out = await extractFromChunk("Max 6 lignes par message dans tout DM. Cible : founders solo SaaS.", { doc_filename: "doc.md", doc_kind: "operational_playbook" }, { anthropic });
+    assert.equal(out.length, 2);
+    assert.equal(out[0].target_kind, "hard_rules");
+    assert.equal(out[1].target_kind, "icp_patterns");
+  });
+
+  it("forces tool_choice on emit_propositions and includes context in user message", async () => {
+    const anthropic = makeAnthropicStub({ toolInput: { propositions: [] } });
+    await extractFromChunk("some chunk text long enough to pass min length threshold", { doc_filename: "process.md", doc_kind: "operational_playbook" }, { anthropic });
+    const params = makeAnthropicStub.lastCall;
+    assert.equal(params.tool_choice.type, "tool");
+    assert.equal(params.tool_choice.name, "emit_propositions");
+    assert.equal(params.tools.length, 1);
+    assert.equal(params.tools[0].name, "emit_propositions");
+    // user message mentions the filename
+    const userText = params.messages[0].content;
+    assert.match(userText, /process\.md/);
+    assert.match(userText, /operational_playbook/);
+    assert.match(userText, /some chunk text/);
+  });
+
+  it("returns [] on timeout or thrown error", async () => {
+    const throwing = { messages: { create: async () => { throw new Error("net fail"); } } };
+    const out = await extractFromChunk("a real chunk of prose with enough length", {}, { anthropic: throwing });
+    assert.deepEqual(out, []);
+  });
+
+  it("returns [] when no tool_use block in response", async () => {
+    const noTool = makeAnthropicStub({ contentOverride: { content: [{ type: "text", text: "I refuse" }] } });
+    const out = await extractFromChunk("a real chunk of prose with enough length", {}, { anthropic: noTool });
+    assert.deepEqual(out, []);
   });
 });
