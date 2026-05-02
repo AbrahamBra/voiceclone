@@ -42,16 +42,15 @@
     prevHealth = current;
   });
 
-  const HEALTH_GLYPH = { ok: "≡", warn: "▲", drift: "●" };
   const HEALTH_LABEL = {
     ok: "voix calibrée",
-    warn: "à surveiller",
-    drift: "dérive style",
+    warn: "voix à surveiller",
+    drift: "voix qui dérive",
   };
   const HEALTH_TITLE = {
-    ok: "Le clone tient sa voix sur les derniers messages.",
-    warn: "Quelques signaux faibles — règles actives ou collapse moyen.",
-    drift: "Dérive détectée — fidélité sous le seuil ou collapse bas.",
+    ok: "Le clone reste fidèle à ta voix sur les derniers drafts.",
+    warn: "Quelques drafts s'écartent un peu de ta voix — corrige si besoin.",
+    drift: "Les drafts récents s'éloignent franchement de ta voix — ouvre le cerveau pour ajuster.",
   };
 
   function openBrain() {
@@ -88,18 +87,20 @@
 
   <div class="center">
     {#if styleHealth !== "unknown"}
-      <span
+      <button
+        type="button"
         class="style-health"
         class:health-ok={styleHealth === "ok"}
         class:health-warn={styleHealth === "warn"}
         class:health-drift={styleHealth === "drift"}
         class:pulse={healthPulse}
         title={HEALTH_TITLE[styleHealth]}
+        onclick={openBrain}
         aria-live="polite"
       >
-        <span class="health-glyph" aria-hidden="true">{HEALTH_GLYPH[styleHealth]}</span>
+        <span class="health-dot" aria-hidden="true"></span>
         <span class="health-label">{HEALTH_LABEL[styleHealth]}</span>
-      </span>
+      </button>
     {/if}
   </div>
 
@@ -219,11 +220,20 @@
     font-size: 10.5px;
     letter-spacing: 0.04em;
     line-height: 1;
+    cursor: pointer;
     transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
   }
-  .style-health .health-glyph {
-    font-size: 11px;
-    line-height: 1;
+  .style-health:hover { color: var(--ink); }
+  .style-health:focus-visible {
+    outline: 1px solid var(--vermillon);
+    outline-offset: 2px;
+  }
+  .style-health .health-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
   }
   .style-health.health-ok {
     color: var(--ink-60);

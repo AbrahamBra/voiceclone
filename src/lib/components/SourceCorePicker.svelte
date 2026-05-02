@@ -41,14 +41,14 @@
     {disabled}
     aria-haspopup="listbox"
     aria-expanded={open}
-    title="Source du lead — sélectionne pour activer le playbook spécifique"
+    title="D'où vient ce contact ? Active des règles d'écriture spécifiques à l'origine."
   >
     <span class="dot" class:active={!!current}></span>
     <span class="label">
       {#if current}
-        Source : {current.label}
+        Origine : {current.label}
       {:else}
-        Pas de source — protocole global seul
+        D'où vient ce contact ?
       {/if}
     </span>
     <span class="caret">▾</span>
@@ -61,8 +61,8 @@
     <ul class="menu" role="listbox">
       <li>
         <button type="button" class="item" class:selected={!current} onclick={clear}>
-          <span class="item-label">Aucune source</span>
-          <span class="item-hint">Protocole global seul (comportement par défaut)</span>
+          <span class="item-label">Origine inconnue</span>
+          <span class="item-hint">Aucune règle d'écriture spécifique (par défaut)</span>
         </button>
       </li>
       {#each SOURCE_CORES as sc (sc.id)}

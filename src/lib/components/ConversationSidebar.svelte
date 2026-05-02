@@ -171,6 +171,7 @@
       value={searchQuery}
       oninput={handleSearch}
     />
+    {#if lifecycleCounts.all > 0}
     <div class="conv-filter-tabs" role="tablist" aria-label="Filtre lifecycle">
       <button
         class="conv-filter-tab"
@@ -227,6 +228,7 @@
         <span class="conv-filter-count">{lifecycleCounts.closed}</span>
       </button>
     </div>
+    {/if}
   </div>
 
   <div class="conv-list">
