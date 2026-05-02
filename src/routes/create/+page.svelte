@@ -460,34 +460,31 @@
     }
   }
 
-  // Sortie du wizard. history.back() peut tomber sur "/" qui auto-redirige
-  // (onMount de +page.svelte) — boucle de retour vers /create. On va donc
-  // chercher direct un persona : localStorage en premier (rapide, hors-ligne),
-  // puis /api/personas en filet si jamais le user n'a pas encore visité /chat
-  // sur ce navigateur. Si aucun persona, retour à la racine.
-  async function exitWizard() {
-    let lastId = null;
+  // Sortie du wizard. Priorité 1 : retour navigateur si on a un référent
+  // applicatif (autre que /create lui-même) — ramène à la page d'avant
+  // naturellement. Sinon : home avec ?stop=1 pour court-circuiter
+  // l'auto-redirect logged-in qui boucle sur un chat.
+  function exitWizard() {
     try {
-      lastId = localStorage.getItem("setclone_last_persona") || localStorage.getItem("vc_last_persona");
+      const ref = document.referrer;
+      if (window.history.length > 1 && ref) {
+        const refUrl = new URL(ref);
+        const sameOrigin = refUrl.origin === window.location.origin;
+        const notSelf = !refUrl.pathname.startsWith("/create");
+        if (sameOrigin && notSelf) {
+          window.history.back();
+          return;
+        }
+      }
     } catch {}
-    if (lastId) {
-      goto(`/chat/${lastId}`);
-      return;
-    }
-    try {
-      const data = await api("/api/personas");
-      const target = data?.personas?.[0];
-      goto(target ? `/chat/${target.id}` : "/");
-    } catch {
-      goto("/");
-    }
+    goto("/?stop=1");
   }
 
 </script>
 
 <div class="create-page">
   <div class="create-container">
-    <button class="back-btn" onclick={exitWizard} type="button" aria-label="Quitter et revenir au chat">← Retour</button>
+    <button class="back-btn" onclick={exitWizard} type="button" aria-label="Quitter le wizard de création">← Retour</button>
     <h2>Créer un clone</h2>
     <p class="create-subtitle">
       Étape {steps.indexOf(step) + 1}/{TOTAL}

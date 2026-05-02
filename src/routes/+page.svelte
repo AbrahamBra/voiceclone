@@ -43,6 +43,12 @@
   }
 
   onMount(async () => {
+    // ?stop=1 : sortie explicite du wizard /create — on reste sur la landing
+    // au lieu d'auto-rediriger vers un chat (sinon "Quitter" boucle).
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("stop") === "1") return;
+    } catch {}
     if ($accessCode || $sessionToken) {
       const dest = await resolveHome();
       goto(dest);
