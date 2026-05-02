@@ -460,19 +460,27 @@
     }
   }
 
-  // Sortie du wizard. history.back() couvre le cas standard (user vient de /chat
-  // ou /lab) ; le fallback vise le dernier clone connu, sinon la home — même
-  // logique que pickPersona() côté lab.
-  function exitWizard() {
-    if (typeof window !== "undefined" && window.history.length > 1) {
-      history.back();
-      return;
-    }
+  // Sortie du wizard. history.back() peut tomber sur "/" qui auto-redirige
+  // (onMount de +page.svelte) — boucle de retour vers /create. On va donc
+  // chercher direct un persona : localStorage en premier (rapide, hors-ligne),
+  // puis /api/personas en filet si jamais le user n'a pas encore visité /chat
+  // sur ce navigateur. Si aucun persona, retour à la racine.
+  async function exitWizard() {
     let lastId = null;
     try {
       lastId = localStorage.getItem("setclone_last_persona") || localStorage.getItem("vc_last_persona");
     } catch {}
-    goto(lastId ? `/chat/${lastId}` : "/");
+    if (lastId) {
+      goto(`/chat/${lastId}`);
+      return;
+    }
+    try {
+      const data = await api("/api/personas");
+      const target = data?.personas?.[0];
+      goto(target ? `/chat/${target.id}` : "/");
+    } catch {
+      goto("/");
+    }
   }
 
 </script>
