@@ -8,6 +8,13 @@ const VALID_TYPES = new Set([
   // on a prior bot message when the user sends a follow-up without correcting.
   // implicit_dismiss is reserved for future beforeunload / abandon detection.
   "implicit_accept", "implicit_dismiss",
+  // Chantier 3 (2026-05-02) — feedback canal leak fix : regen_rejection et
+  // copy_paste_out étaient émis uniquement vers /api/feedback (corrections
+  // table) et asymétriques avec /api/feedback-events. La FeedbackRail UI
+  // les manquait, et le drain protocol-v2 ne voyait pas le harmful_count
+  // associé. Émis maintenant en parallèle via api/feedback.js sur ces 2
+  // types pour fermer le canal.
+  "regen_rejection", "copy_paste_out",
 ]);
 
 // Maps a feedback_events.event_type to a learning_events.event_type. Keeps
@@ -25,6 +32,12 @@ const FB_TO_LEARNING = {
   paste_zone_dismissed: { type: "signal_dismissed",       intensity: null },
   implicit_accept:      { type: "positive_reinforcement", intensity: "implicit" },
   implicit_dismiss:     { type: "signal_dismissed",       intensity: "implicit" },
+  // Chantier 3 — implicit negative signals. regen_rejection = user clicked ↻
+  // (rejected the draft strongly). copy_paste_out = user copied the draft
+  // (weak positive at corrections layer, but emitted ALSO as feedback_event
+  // for visibility in FeedbackRail UI).
+  regen_rejection:      { type: "correction_saved",       intensity: "implicit_negative" },
+  copy_paste_out:       { type: "positive_reinforcement", intensity: "implicit_copy" },
 };
 
 // Chantier 3.1 — feedback event_type → protocol_rule_firing outcome resolution.
@@ -38,7 +51,9 @@ const EVENT_TO_FIRING_OUTCOME = {
   excellent:            "helpful",
   client_validated:     "helpful",
   implicit_accept:      "helpful",
+  copy_paste_out:       "helpful",  // user copied the draft → artifacts contributed positively
   corrected:            "harmful",
+  regen_rejection:      "harmful",  // user clicked regen → artifacts likely missed the mark
   paste_zone_dismissed: "unrelated",
   implicit_dismiss:     "unrelated",
 };
