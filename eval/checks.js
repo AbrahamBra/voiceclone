@@ -1,15 +1,29 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 
+// Lazy persona load — the critic-only mode (`node eval/run.js critic`) doesn't
+// touch this, and the legacy `personas/<id>/persona.json` filesystem layout
+// went away when the project moved to DB-backed personas. Loading at import
+// time used to hard-fail the entire eval run with ENOENT.
 const PERSONA_ID = process.env.PERSONA || "alex";
-const persona = JSON.parse(
-  readFileSync(join(process.cwd(), "personas", PERSONA_ID, "persona.json"), "utf-8")
-);
-const v = persona.voice;
+let _voice = null;
+function getVoice() {
+  if (_voice) return _voice;
+  try {
+    const persona = JSON.parse(
+      readFileSync(join(process.cwd(), "personas", PERSONA_ID, "persona.json"), "utf-8")
+    );
+    _voice = persona.voice || { forbiddenWords: [] };
+  } catch {
+    _voice = { forbiddenWords: [] };
+  }
+  return _voice;
+}
 
 export function noForbiddenWords(text) {
   const lower = text.toLowerCase();
-  const found = v.forbiddenWords.filter((w) => lower.includes(w.toLowerCase()));
+  const v = getVoice();
+  const found = (v.forbiddenWords || []).filter((w) => lower.includes(w.toLowerCase()));
   return {
     pass: found.length === 0,
     detail: found.length > 0 ? `Forbidden words found: ${found.join(", ")}` : "OK",
