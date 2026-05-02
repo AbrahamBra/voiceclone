@@ -47,8 +47,21 @@
   // voice samples, paste DM conversations, optional protocol + docs.
   // Maturity step added 2026-04-29 per spec
   // docs/superpowers/specs/2026-04-27-clone-meta-rules-and-maturity.md §1.
-  const steps = ['maturity', 'info', 'dm', 'protocol', 'docs'];
-  const TOTAL = steps.length;
+  // L1 = positionnement seul (pas de scripts DM ni protocole) → on saute ces 2
+  // étapes pour ne pas demander une matière qui n'existe pas par définition.
+  const FULL_STEPS = ['maturity', 'info', 'dm', 'protocol', 'docs'];
+  const L1_STEPS = ['maturity', 'info', 'docs'];
+  let steps = $derived(maturityLevel === 'L1' ? L1_STEPS : FULL_STEPS);
+  let TOTAL = $derived(steps.length);
+
+  // Si l'utilisateur revient en arrière et change de tier (ex: L2 → L1), la
+  // step courante peut disparaître du parcours. On la ramène alors sur la
+  // dernière step encore valide pour ne pas afficher un écran vide.
+  $effect(() => {
+    if (!steps.includes(step)) {
+      step = steps[steps.length - 1];
+    }
+  });
 
   // Step 0: Maturité du document source (L1 / L2 / L3, optionnel)
   let maturityLevel = $state(/** @type {'L1'|'L2'|'L3'|null} */(initialDraft?.maturityLevel ?? null));
@@ -487,7 +500,7 @@
               >
                 <div class="maturity-tier">L1 · Positionnement</div>
                 <div class="maturity-desc">Bio + ICP + voix. Pas de scripts DM.</div>
-                <div class="maturity-example">Ex : un doc qui décrit qui le client est, à qui il s'adresse, et comment il s'exprime.</div>
+                <div class="maturity-example"><strong>À fournir :</strong> profil LinkedIn (URL ou bio collée) et/ou un doc de positionnement. <strong>Pas besoin</strong> de DMs ni de protocole.</div>
               </button>
 
               <button
@@ -498,7 +511,7 @@
               >
                 <div class="maturity-tier">L2 · Mono-scénario</div>
                 <div class="maturity-desc">Playbook DM bien outillé sur 1 scénario (ex: icebreaker outbound).</div>
-                <div class="maturity-example">Ex : un doc avec règles, scoring, templates pour un cas précis.</div>
+                <div class="maturity-example"><strong>À fournir :</strong> profil LinkedIn + un playbook DM (règles, scoring, templates) + ~10 DMs réels du même scénario.</div>
               </button>
 
               <button
@@ -509,7 +522,7 @@
               >
                 <div class="maturity-tier">L3 · Multi-scénario</div>
                 <div class="maturity-desc">Playbook complet : icebreaker × multi-source + creusement + call_proposal + graceful_exit.</div>
-                <div class="maturity-example">Ex : un doc qui couvre tout le pipeline DM end-to-end.</div>
+                <div class="maturity-example"><strong>À fournir :</strong> profil LinkedIn + un playbook DM multi-scénarios + DMs réels couvrant plusieurs scénarios + matière de contenu (témoignages, USP, anecdotes).</div>
               </button>
             </div>
 
@@ -555,6 +568,12 @@
 
             <label>Bio & positionnement</label>
             <textarea rows="4" bind:value={profileText} placeholder="Expertise, thèmes abordés, valeur ajoutée..."></textarea>
+
+            {#if maturityLevel === 'L1'}
+              <p class="step-desc step-desc-aside">
+                Tu as choisi <strong>L1 · Positionnement</strong> : on saute les DMs et le protocole. Tu pourras les ajouter plus tard depuis <em>Cerveau</em> si tu veux faire monter le clone en L2/L3.
+              </p>
+            {/if}
 
             <div class="create-actions">
               <button class="btn-secondary" onclick={prevStep}>← Retour</button>
@@ -1233,6 +1252,11 @@ Moi: OK donc pas encore le signal d'usage pour du PLG. Sales-led les 6 premiers 
     color: var(--text-tertiary);
     font-style: italic;
     line-height: 1.4;
+  }
+  .maturity-example strong {
+    font-style: normal;
+    font-weight: 600;
+    color: var(--text-secondary);
   }
 
   @media (max-width: 480px) {
