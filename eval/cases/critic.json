@@ -1,14 +1,36 @@
 [
   {
-    "name": "critic-detects-forbidden-word",
+    "name": "critic-detects-forbidden-anglicism",
     "type": "critic",
     "input": "Voici mes tips pour booster votre strategie de contenu avec un mindset game changer.",
+    "voiceRules": {
+      "forbiddenWords": ["tips", "mindset", "game changer", "booster"]
+    },
+    "expectViolation": true
+  },
+  {
+    "name": "critic-detects-ai-cliche",
+    "type": "critic",
+    "input": "Il est crucial de comprendre que la regularite bat la viralite. Fondamentalement, tout repose sur la coherence.",
+    "expectViolation": true
+  },
+  {
+    "name": "critic-detects-self-reveal",
+    "type": "critic",
+    "input": "En tant qu'assistant, je peux te dire que la regularite paie.",
+    "expectViolation": true
+  },
+  {
+    "name": "critic-detects-anglicized-verb",
+    "type": "critic",
+    "input": "Tu scales ton business comment ?",
+    "voiceRules": {},
     "expectViolation": true
   },
   {
     "name": "critic-passes-clean-text",
     "type": "critic",
-    "input": "Avant de vous donner un conseil, j'ai une question : quelle est votre frequence de publication actuelle ? La regularite bat la viralite. Toujours.",
+    "input": "Avant de te donner un conseil, j'ai une question : quelle est ta frequence de publication actuelle ? La regularite bat la viralite.",
     "expectViolation": false
   }
 ]

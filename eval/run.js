@@ -37,10 +37,9 @@ async function runChatTest(testCase) {
 
 async function runCriticTest(testCase) {
   const { criticCheck } = await import("../lib/pipeline.js");
-  const Anthropic = (await import("@anthropic-ai/sdk")).default;
-  const client = new Anthropic();
-
-  const result = await criticCheck(client, testCase.input);
+  // criticCheck is sync and pure — no client needed. Kept the parameter for
+  // forward-compat in case voice-aware variants want to call out to an LLM.
+  const result = criticCheck(null, testCase.input, testCase.voiceRules || {});
   const passed = testCase.expectViolation ? !result.pass : result.pass;
 
   return {
@@ -52,7 +51,11 @@ async function runCriticTest(testCase) {
 }
 
 async function main() {
-  const caseFiles = ["free.json", "audit.json", "critic.json"];
+  // CLI: `node eval/run.js critic` to skip server-dependent suites; otherwise
+  // all three. The critic-only mode is what CI / pre-PR validation uses since
+  // it needs no running dev server.
+  const onlyCritic = process.argv.includes("critic");
+  const caseFiles = onlyCritic ? ["critic.json"] : ["free.json", "audit.json", "critic.json"];
   let total = 0, passed = 0, failed = 0;
 
   for (const file of caseFiles) {
