@@ -50,4 +50,41 @@ describe("extractFileText", () => {
     const text = await extractFileText(file);
     assert.equal(text, "# hi");
   });
+
+  it("reads an ODT (zipped content.xml) and decodes paragraphs + entities", async () => {
+    const { zipSync, strToU8 } = await import("fflate");
+    const contentXml =
+      `<?xml version="1.0" encoding="UTF-8"?>` +
+      `<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" ` +
+      `xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">` +
+      `<office:body><office:text>` +
+      `<text:p>Premier paragraphe — l&apos;essentiel.</text:p>` +
+      `<text:p>Second paragraphe : 42 &lt; 100.</text:p>` +
+      `<text:p/>` +
+      `<text:p>Troisi&#232;me paragraphe avec accent.</text:p>` +
+      `</office:text></office:body></office:document-content>`;
+    const zipped = zipSync({ "content.xml": strToU8(contentXml) });
+    const file = {
+      name: "synthetic.odt",
+      type: "application/vnd.oasis.opendocument.text",
+      arrayBuffer: async () => zipped.buffer.slice(zipped.byteOffset, zipped.byteOffset + zipped.byteLength),
+    };
+    const text = await extractFileText(file);
+    assert.match(text, /Premier paragraphe — l'essentiel\./);
+    assert.match(text, /Second paragraphe : 42 < 100\./);
+    assert.match(text, /Troisième paragraphe avec accent/);
+    // Paragraph boundaries preserved as blank lines (so chunkDoc can split).
+    assert.match(text, /\n\n/);
+  });
+
+  it("throws a clear error if the ODT lacks content.xml", async () => {
+    const { zipSync, strToU8 } = await import("fflate");
+    const zipped = zipSync({ "manifest.xml": strToU8("<x/>") });
+    const file = {
+      name: "broken.odt",
+      type: "application/vnd.oasis.opendocument.text",
+      arrayBuffer: async () => zipped.buffer.slice(zipped.byteOffset, zipped.byteOffset + zipped.byteLength),
+    };
+    await assert.rejects(() => extractFileText(file), /content\.xml/);
+  });
 });
