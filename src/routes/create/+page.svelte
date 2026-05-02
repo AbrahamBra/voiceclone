@@ -490,6 +490,9 @@
             <p class="step-desc">
               Ça nous aide à calibrer l'extraction. Aucun mauvais choix, tu peux changer plus tard ou skip.
             </p>
+            <p class="step-desc step-desc-aside">
+              <em>Vocabulaire</em> : un <strong>script de setting</strong> (souvent appelé "playbook") = la procédure DM formalisée pour un canal/cible (qui ouvrir, quoi dire, quand pivoter).
+            </p>
 
             <div class="maturity-options">
               <button
@@ -499,8 +502,8 @@
                 type="button"
               >
                 <div class="maturity-tier">L1 · Positionnement</div>
-                <div class="maturity-desc">Bio + ICP + voix. Pas de scripts DM.</div>
-                <div class="maturity-example"><strong>À fournir :</strong> profil LinkedIn (URL ou bio collée) et/ou un doc de positionnement. <strong>Pas besoin</strong> de DMs ni de protocole.</div>
+                <div class="maturity-desc">Bio + ICP + voix. Pas de procédure DM formalisée.</div>
+                <div class="maturity-example"><strong>À fournir :</strong> profil LinkedIn (URL ou bio collée) et/ou un doc de positionnement. <strong>Pas besoin</strong> de DMs.</div>
               </button>
 
               <button
@@ -510,8 +513,8 @@
                 type="button"
               >
                 <div class="maturity-tier">L2 · Mono-scénario</div>
-                <div class="maturity-desc">Playbook DM bien outillé sur 1 scénario (ex: icebreaker outbound).</div>
-                <div class="maturity-example"><strong>À fournir :</strong> profil LinkedIn + un playbook DM (règles, scoring, templates) + ~10 DMs réels du même scénario.</div>
+                <div class="maturity-desc">Un canal/cible bien rodé en pratique (ex : icebreaker outbound), pas forcément documenté.</div>
+                <div class="maturity-example"><strong>À fournir :</strong> profil LinkedIn + ~10 DMs réels du scénario + matière autour (objections, messages-types, cas, anecdotes — script de setting documenté en bonus).</div>
               </button>
 
               <button
@@ -521,8 +524,8 @@
                 type="button"
               >
                 <div class="maturity-tier">L3 · Multi-scénario</div>
-                <div class="maturity-desc">Playbook complet : icebreaker × multi-source + creusement + call_proposal + graceful_exit.</div>
-                <div class="maturity-example"><strong>À fournir :</strong> profil LinkedIn + un playbook DM multi-scénarios + DMs réels couvrant plusieurs scénarios + matière de contenu (témoignages, USP, anecdotes).</div>
+                <div class="maturity-desc">Plusieurs canaux/cibles rodés bout-en-bout (icebreaker × multi-source, creusement, call_proposal, graceful_exit).</div>
+                <div class="maturity-example"><strong>À fournir :</strong> profil LinkedIn + DMs réels couvrant plusieurs scénarios + matière transverse (cas, objections, témoignages, USP, anecdotes founder — script(s) de setting documenté(s) en bonus).</div>
               </button>
             </div>
 
