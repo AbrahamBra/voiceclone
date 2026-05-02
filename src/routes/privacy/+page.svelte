@@ -84,7 +84,7 @@
     <ul>
       <li>Compte actif : tant que le compte est actif.</li>
       <li>Compte désactivé via <code>/api/account/delete</code> (mode par défaut) : suppression logique immédiate — compte verrouillé, clés API purgées, nom anonymisé. Réversible sur demande email pendant 30 jours.</li>
-      <li>Compte supprimé via <code>/api/account/delete</code> avec <code>{ hard: true }</code> : suppression irréversible en cascade. Toutes les données rattachées au compte sont effacées (clones, conversations, messages, corrections, knowledge, protocoles, événements d'apprentissage). Les logs de facturation sont conservés mais leur lien à votre compte est anonymisé.</li>
+      <li>Compte supprimé via <code>/api/account/delete</code> avec <code>&lbrace; hard: true &rbrace;</code> : suppression irréversible en cascade. Toutes les données rattachées au compte sont effacées (clones, conversations, messages, corrections, knowledge, protocoles, événements d'apprentissage). Les logs de facturation sont conservés mais leur lien à votre compte est anonymisé.</li>
       <li>Logs facturation : 10 ans (obligation comptable et fiscale française), anonymisés après suppression du compte.</li>
     </ul>
   </section>
@@ -96,7 +96,7 @@
     </p>
     <ul>
       <li><strong>Droit d'accès</strong> et de rectification (articles 15 et 16).</li>
-      <li><strong>Droit à l'effacement</strong> (article 17). Soft-delete immédiat via <code>POST /api/account/delete</code>. Hard-delete cascade complet via le même endpoint avec <code>{ hard: true }</code> dans le corps.</li>
+      <li><strong>Droit à l'effacement</strong> (article 17). Soft-delete immédiat via <code>POST /api/account/delete</code>. Hard-delete cascade complet via le même endpoint avec <code>&lbrace; hard: true &rbrace;</code> dans le corps.</li>
       <li><strong>Droit à la limitation</strong> du traitement (article 18).</li>
       <li><strong>Droit à la portabilité</strong> (article 20). Export JSON sur demande pendant la bêta.</li>
       <li><strong>Droit d'opposition</strong> (article 21), notamment au traitement fondé sur l'intérêt légitime (consolidation des corrections).</li>
