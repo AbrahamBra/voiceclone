@@ -17,7 +17,7 @@ function makeRes() {
   };
 }
 
-function makeSupabase({ personasReturn, personasError, clientsError } = {}) {
+function makeSupabase({ personasReturn, personasError, clientsError, hardDeleteError } = {}) {
   const calls = [];
   return {
     _calls: calls,
@@ -25,15 +25,22 @@ function makeSupabase({ personasReturn, personasError, clientsError } = {}) {
       let _filter = {};
       let _patch = null;
       let _wantsSelect = false;
+      let _isDelete = false;
       const builder = {
         update(patch) { _patch = patch; return builder; },
+        delete() { _isDelete = true; return builder; },
         eq(col, val) { _filter[col] = val; return builder; },
         select(cols) { _wantsSelect = true; calls.push({ table, op: "update_select", filter: { ..._filter }, patch: _patch, cols }); return Promise.resolve({ data: personasReturn || [], error: personasError || null }); },
         then(resolve) {
-          if (!_wantsSelect) {
+          if (_isDelete) {
+            calls.push({ table, op: "delete", filter: { ..._filter } });
+            resolve({ error: hardDeleteError || null });
+          } else if (!_wantsSelect) {
             calls.push({ table, op: "update", filter: { ..._filter }, patch: _patch });
+            resolve({ error: clientsError || null });
+          } else {
+            resolve({ error: clientsError || null });
           }
-          resolve({ error: clientsError || null });
         },
       };
       return builder;
@@ -157,5 +164,58 @@ describe("POST /api/account/delete", () => {
     const res = makeRes();
     await handler({ method: "OPTIONS", headers: {} }, res, baseDeps());
     assert.equal(res.statusCode, 200);
+  });
+
+  it("hard=true fires DELETE FROM clients and skips soft-delete updates", async () => {
+    const res = makeRes();
+    const deps = baseDeps();
+    await handler(
+      { method: "POST", headers: {}, body: { confirm_access_code: ACCESS_CODE, hard: true } },
+      res,
+      deps,
+    );
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res._body.ok, true);
+    assert.equal(res._body.mode, "hard");
+    assert.match(res._body.deleted_at, /^\d{4}-\d{2}-\d{2}T/);
+
+    const calls = deps.supabase._calls;
+    const deleteCall = calls.find((c) => c.table === "clients" && c.op === "delete");
+    assert.ok(deleteCall, "DELETE on clients should fire in hard mode");
+    assert.equal(deleteCall.filter.id, CLIENT_ID);
+
+    // Soft-delete operations must NOT fire when hard=true.
+    assert.ok(
+      !calls.find((c) => c.table === "personas"),
+      "personas update should NOT fire in hard mode",
+    );
+    assert.ok(
+      !calls.find((c) => c.table === "clients" && c.op === "update"),
+      "clients update should NOT fire in hard mode",
+    );
+  });
+
+  it("hard=true returns 500 if DELETE fails (e.g. FK violation)", async () => {
+    const res = makeRes();
+    await handler(
+      { method: "POST", headers: {}, body: { confirm_access_code: ACCESS_CODE, hard: true } },
+      res,
+      baseDeps({
+        supabase: makeSupabase({ hardDeleteError: { message: "FK violation" } }),
+      }),
+    );
+    assert.equal(res.statusCode, 500);
+    assert.match(res._body.error, /FK violation/);
+  });
+
+  it("hard=true still requires confirm_access_code to match", async () => {
+    const res = makeRes();
+    await handler(
+      { method: "POST", headers: {}, body: { confirm_access_code: "wrong", hard: true } },
+      res,
+      baseDeps(),
+    );
+    assert.equal(res.statusCode, 400);
   });
 });

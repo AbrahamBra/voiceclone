@@ -13,7 +13,7 @@
   <header class="legal-head">
     <a class="back" href="/">← Setclone</a>
     <h1>Politique de confidentialité</h1>
-    <p class="legal-meta mono">Dernière mise à jour : 1<sup>er</sup> mai 2026</p>
+    <p class="legal-meta mono">Dernière mise à jour : 2 mai 2026</p>
   </header>
 
   <section>
@@ -83,8 +83,9 @@
     <h2>Combien de temps</h2>
     <ul>
       <li>Compte actif : tant que le compte est actif.</li>
-      <li>Compte désactivé via <code>/api/account/delete</code> ou demande email : suppression logique immédiate (compte verrouillé, clés API purgées, nom anonymisé). Le hard delete complet — y compris messages, logs d'usage, événements d'apprentissage — est en cours d'implémentation et sera disponible avant la sortie de la bêta privée.</li>
-      <li>Logs facturation : 10 ans (obligation comptable et fiscale française).</li>
+      <li>Compte désactivé via <code>/api/account/delete</code> (mode par défaut) : suppression logique immédiate — compte verrouillé, clés API purgées, nom anonymisé. Réversible sur demande email pendant 30 jours.</li>
+      <li>Compte supprimé via <code>/api/account/delete</code> avec <code>{ hard: true }</code> : suppression irréversible en cascade. Toutes les données rattachées au compte sont effacées (clones, conversations, messages, corrections, knowledge, protocoles, événements d'apprentissage). Les logs de facturation sont conservés mais leur lien à votre compte est anonymisé.</li>
+      <li>Logs facturation : 10 ans (obligation comptable et fiscale française), anonymisés après suppression du compte.</li>
     </ul>
   </section>
 
@@ -95,7 +96,7 @@
     </p>
     <ul>
       <li><strong>Droit d'accès</strong> et de rectification (articles 15 et 16).</li>
-      <li><strong>Droit à l'effacement</strong> (article 17). Soft-delete immédiat via <code>POST /api/account/delete</code>. Hard-delete sur demande pendant la bêta, automatisé après.</li>
+      <li><strong>Droit à l'effacement</strong> (article 17). Soft-delete immédiat via <code>POST /api/account/delete</code>. Hard-delete cascade complet via le même endpoint avec <code>{ hard: true }</code> dans le corps.</li>
       <li><strong>Droit à la limitation</strong> du traitement (article 18).</li>
       <li><strong>Droit à la portabilité</strong> (article 20). Export JSON sur demande pendant la bêta.</li>
       <li><strong>Droit d'opposition</strong> (article 21), notamment au traitement fondé sur l'intérêt légitime (consolidation des corrections).</li>
