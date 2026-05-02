@@ -37,6 +37,7 @@ import {
   setCors as _setCors,
 } from "../../lib/supabase.js";
 import { computeArtifactHash } from "../../lib/protocol-v2-db.js";
+import { deriveCheckParams as _deriveCheckParams } from "../../lib/protocol-v2-check-derivation.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STATUS_VALUES = new Set(["pending", "accepted", "rejected", "revised", "merged"]);
@@ -371,13 +372,25 @@ export function patchProse(currentProse, prop) {
  * doctrine view, the artifact is the queryable + future-firable form (RAG,
  * rule firing telemetry, cross-clone similarity match).
  */
-async function materializeArtifact(supabase, { proposition, sectionId }) {
+async function materializeArtifact(supabase, { proposition, sectionId, deriveCheckParams = _deriveCheckParams }) {
   const kind = INTENT_TO_ARTIFACT_KIND[proposition.intent];
   if (!kind) return null;
   const text = (proposition.proposed_text || "").trim();
   if (!text) return null;
   const hash = computeArtifactHash(text);
   if (!hash) return null;
+
+  // For hard_check artifacts, derive a runtime-testable shape from the
+  // rule prose so lib/protocolChecks.js can actually fire on chat
+  // messages. Without this, the artifact is stored with empty params
+  // and 0 violations are ever emitted (audit 2026-05-01 §2 — Nicolas
+  // had 6 active hard_checks, 0 firings on 7 conversations).
+  // Heuristic first (fast, deterministic) then Haiku LLM fallback.
+  let derivation = null;
+  if (kind === "hard_check") {
+    derivation = await deriveCheckParams(text).catch(() => null);
+  }
+
   try {
     const row = {
       source_section_id: sectionId,
@@ -389,6 +402,11 @@ async function materializeArtifact(supabase, { proposition, sectionId }) {
         source_proposition_id: proposition.id,
         source_kind: proposition.target_kind,
         confidence: proposition.confidence,
+        // The runtime checker keys on these. Absent fields = checker skips.
+        ...(derivation ? {
+          check_kind: derivation.check_kind,
+          check_params: derivation.check_params,
+        } : {}),
       },
       severity: ARTIFACT_KIND_TO_SEVERITY[kind],
       content_hash: hash,
