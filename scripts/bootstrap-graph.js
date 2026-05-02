@@ -54,7 +54,7 @@ Reponds en JSON :
 
 async function extractFromText(text, context) {
   const result = await anthropic.messages.create({
-    model: process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514",
+    model: process.env.CLAUDE_MODEL || "claude-sonnet-4-6",
     max_tokens: 2048,
     system: EXTRACTION_PROMPT,
     messages: [{ role: "user", content: `Source : ${context}\n\nContenu :\n${text.slice(0, 4000)}` }],

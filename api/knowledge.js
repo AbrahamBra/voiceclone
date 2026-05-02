@@ -126,14 +126,18 @@ export default async function handler(req, res) {
     // Split by --- separator, each post is its own chunk (not merged by chunkText)
     const posts = content.split(/\n---\n|\n---$|^---\n/).map(p => p.trim()).filter(p => p.length > 20);
     let chunkCount = 0;
+    let embedStatus = "ok";
+    let embedError = null;
     try {
       chunkCount = await embedAndStore(supabase, posts, intellId, "linkedin_post");
     } catch (e) {
+      embedStatus = "failed";
+      embedError = e.message;
       console.log(JSON.stringify({ event: "embed_error", error: e.message }));
     }
 
     clearIntelligenceCache(intellId);
-    res.json({ chunk_count: chunkCount });
+    res.json({ chunk_count: chunkCount, embed_status: embedStatus, embed_error: embedError });
     return;
   }
 
@@ -209,15 +213,19 @@ export default async function handler(req, res) {
 
   // Embeddings (RAG + chunk counter) must stay sync — UI counts chunks immediately.
   // Graph extraction is NOT done here (runs in cron).
+  let embedStatus = "ok";
+  let embedError = null;
   try {
     const chunks = chunkText(content);
     await embedAndStore(supabase, chunks, intellId, "knowledge_file", path);
   } catch (e) {
+    embedStatus = "failed";
+    embedError = e.message;
     console.log(JSON.stringify({ event: "embed_error", error: e.message, path }));
   }
 
   res.json({
-    file: { path, extraction_status: "pending", document_type },
+    file: { path, extraction_status: "pending", document_type, embed_status: embedStatus, embed_error: embedError },
     protocol: protocolId ? { id: protocolId, status: "pending" } : null,
   });
 
