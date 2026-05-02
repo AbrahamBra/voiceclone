@@ -519,10 +519,11 @@ describe("POST /api/v2/protocol/import-doc — doc_kind routing", () => {
     assert.match(supabase.sectionUpdates[0].payload.prose, /First doc content already there\.\n\n--- background\.odt ---\n\n/);
   });
 
-  it("icp_audience: bypasses router, runs only icp_patterns + process via runExtractors", async () => {
+  it("icp_audience: extractFromChunk called with allowedTargets=['icp_patterns','process']", async () => {
     const supabase = makeSupabase();
     let routeCalls = 0;
-    const seenRoutes = [];
+    let runCalls = 0;
+    const seenAllowed = [];
     const req = {
       method: "POST",
       body: {
@@ -536,8 +537,9 @@ describe("POST /api/v2/protocol/import-doc — doc_kind routing", () => {
     await handler(req, res, baseDeps({
       supabase,
       routeAndExtract: async () => { routeCalls++; return []; },
-      runExtractors: async (signal, routes) => {
-        seenRoutes.push(routes.map((r) => r.target_kind).sort());
+      runExtractors: async () => { runCalls++; return []; },
+      extractFromChunk: async (chunk, ctx, opts) => {
+        seenAllowed.push((opts?.allowedTargets || []).slice().sort());
         return [
           {
             target_kind: "icp_patterns",
@@ -554,17 +556,19 @@ describe("POST /api/v2/protocol/import-doc — doc_kind routing", () => {
     assert.equal(res.statusCode, 200);
     assert.equal(res.body.identity_appended, false);
     assert.equal(routeCalls, 0, "router bypassed");
-    assert(seenRoutes.length > 0);
-    for (const r of seenRoutes) {
-      assert.deepEqual(r, ["icp_patterns", "process"]);
+    assert.equal(runCalls, 0, "legacy runExtractors not called for icp_audience anymore");
+    assert(seenAllowed.length > 0, "extractFromChunk should be called");
+    for (const a of seenAllowed) {
+      assert.deepEqual(a, ["icp_patterns", "process"]);
     }
-    assert.equal(supabase.inserts.length, seenRoutes.length);
+    assert.equal(supabase.inserts.length, seenAllowed.length);
   });
 
-  it("positioning: BOTH appends to identity AND runs explicit extractors", async () => {
+  it("positioning: BOTH appends to identity AND calls extractFromChunk with allowedTargets", async () => {
     const supabase = makeSupabase();
     let runCalls = 0;
-    const seenRoutes = [];
+    let extractCalls = 0;
+    const seenAllowed = [];
     const req = {
       method: "POST",
       body: {
@@ -577,17 +581,19 @@ describe("POST /api/v2/protocol/import-doc — doc_kind routing", () => {
     const res = makeRes();
     await handler(req, res, baseDeps({
       supabase,
-      runExtractors: async (signal, routes) => {
-        runCalls++;
-        seenRoutes.push(routes.map((r) => r.target_kind).sort());
+      runExtractors: async () => { runCalls++; return []; },
+      extractFromChunk: async (chunk, ctx, opts) => {
+        extractCalls++;
+        seenAllowed.push((opts?.allowedTargets || []).slice().sort());
         return [];
       },
     }));
     assert.equal(res.statusCode, 200);
     assert.equal(res.body.identity_appended, true);
-    assert(runCalls > 0, "runExtractors should be called for positioning");
-    for (const r of seenRoutes) {
-      assert.deepEqual(r, ["icp_patterns", "process"]);
+    assert.equal(runCalls, 0, "legacy runExtractors not called for positioning anymore");
+    assert(extractCalls > 0, "extractFromChunk should be called for positioning");
+    for (const a of seenAllowed) {
+      assert.deepEqual(a, ["icp_patterns", "process"]);
     }
   });
 
@@ -648,10 +654,11 @@ describe("POST /api/v2/protocol/import-doc — doc_kind routing", () => {
     assert.equal(routeCalls, 0);
   });
 
-  it("icp_audience still routes via runExtractors (NOT extractFromChunk)", async () => {
+  it("icp_audience: extractFromChunk receives allowedTargets, runExtractors NOT called", async () => {
     const supabase = makeSupabase();
     let extractCalls = 0;
     let runCalls = 0;
+    const seenAllowed = [];
     const req = {
       method: "POST",
       body: {
@@ -663,12 +670,19 @@ describe("POST /api/v2/protocol/import-doc — doc_kind routing", () => {
     const res = makeRes();
     await handler(req, res, baseDeps({
       supabase,
-      extractFromChunk: async () => { extractCalls++; return []; },
+      extractFromChunk: async (_chunk, _ctx, opts) => {
+        extractCalls++;
+        seenAllowed.push((opts?.allowedTargets || []).slice().sort());
+        return [];
+      },
       runExtractors: async () => { runCalls++; return []; },
     }));
     assert.equal(res.statusCode, 200);
-    assert(runCalls > 0, "runExtractors should be called for icp_audience");
-    assert.equal(extractCalls, 0, "extractFromChunk must NOT be called for explicit-targets paths");
+    assert.equal(runCalls, 0, "runExtractors must NOT be called for explicit-targets paths post-PR");
+    assert(extractCalls > 0, "extractFromChunk should be called for icp_audience with allowedTargets");
+    for (const a of seenAllowed) {
+      assert.deepEqual(a, ["icp_patterns", "process"]);
+    }
   });
 
   it("identity-append failure does not block extraction", async () => {
@@ -676,7 +690,7 @@ describe("POST /api/v2/protocol/import-doc — doc_kind routing", () => {
     // {appended:false, reason:"no_identity_section"} but extraction still
     // runs.
     const supabase = makeSupabase({ identitySection: null });
-    let runCalls = 0;
+    let extractCalls = 0;
     const req = {
       method: "POST",
       body: {
@@ -688,10 +702,10 @@ describe("POST /api/v2/protocol/import-doc — doc_kind routing", () => {
     const res = makeRes();
     await handler(req, res, baseDeps({
       supabase,
-      runExtractors: async () => { runCalls++; return []; },
+      extractFromChunk: async () => { extractCalls++; return []; },
     }));
     assert.equal(res.statusCode, 200);
     assert.equal(res.body.identity_appended, false);
-    assert(runCalls > 0, "extraction continues even when identity append fails");
+    assert(extractCalls > 0, "extraction continues even when identity append fails");
   });
 });
