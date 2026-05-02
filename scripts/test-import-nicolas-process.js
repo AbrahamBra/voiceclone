@@ -19,8 +19,19 @@ import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const envPath = path.resolve(__dirname, "../../../../.env.local");
-dotenv.config({ path: envPath, override: true });
+// Try .env.local in project root, then C:/Users/abrah/AhmetA/.env (main repo .env)
+const envCandidates = [
+  path.resolve(__dirname, "../.env.local"),
+  path.resolve(__dirname, "../.env"),
+  "C:/Users/abrah/AhmetA/.env",
+];
+for (const candidate of envCandidates) {
+  if (fs.existsSync(candidate)) {
+    dotenv.config({ path: candidate, override: true });
+    console.log(`env loaded from: ${candidate}`);
+    break;
+  }
+}
 import { createClient } from "@supabase/supabase-js";
 import handler from "../api/v2/protocol/import-doc.js";
 
@@ -66,7 +77,9 @@ console.log(`Existing pending propositions on this doc: ${existingPending}`);
 const docText = fs.readFileSync(FIXTURE_PATH, "utf8");
 console.log(`\nDoc fixture: ${FIXTURE_PATH} (${docText.length} chars)\n`);
 
-// Wrap supabase to no-op writes in dry-run
+// Wrap supabase to no-op writes in dry-run while echoing inserted row back so
+// the response body still carries the real proposition payload (target_kind,
+// intent, proposed_text, etc).
 const wrappedSb = dryRun
   ? new Proxy(sb, {
       get(target, prop) {
@@ -76,26 +89,20 @@ const wrappedSb = dryRun
           return new Proxy(real, {
             get(rt, p) {
               if (p === "insert" || p === "update" || p === "delete" || p === "upsert") {
-                // Return a chainable thenable that resolves to a fake row so
-                // .insert(...).select(...).single() pattern works.
-                const fake = {
-                  select: () => fake,
-                  single: () =>
-                    Promise.resolve({
-                      data: {
-                        id: `dry-${Math.random().toString(36).slice(2, 10)}`,
-                        target_kind: null,
-                        intent: null,
-                        proposed_text: null,
-                        rationale: null,
-                        confidence: null,
-                      },
-                      error: null,
-                    }),
-                  eq: () => Promise.resolve({ error: null }),
-                  then: (resolve) => resolve({ error: null }),
+                return (row) => {
+                  // Echo the row back as if it had been inserted with a fake id.
+                  const echoed = {
+                    id: `dry-${Math.random().toString(36).slice(2, 10)}`,
+                    ...(row || {}),
+                  };
+                  const fake = {
+                    select: () => fake,
+                    single: () => Promise.resolve({ data: echoed, error: null }),
+                    eq: () => Promise.resolve({ error: null }),
+                    then: (resolve) => resolve({ error: null }),
+                  };
+                  return fake;
                 };
-                return () => fake;
               }
               return Reflect.get(rt, p);
             },
