@@ -478,6 +478,14 @@
       goto(exitTarget);
       return;
     }
+    // Filet : si afterNavigate n'a pas capturé (initial mount, edge cases
+    // SPA, cache nav), on tente le retour navigateur natif. history.length
+    // > 1 = il y a une page précédente dans cet onglet, peu importe que ce
+    // soit une nav SPA ou full reload.
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      window.history.back();
+      return;
+    }
     try {
       const lastId = localStorage.getItem("setclone_last_persona")
                   || localStorage.getItem("vc_last_persona");
