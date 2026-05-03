@@ -10,7 +10,7 @@ import {
   computeArtifactHash,
   TEMPLATE_ARTIFACTS,
   NICOLAS_FORK_ARTIFACTS,
-} from "../scripts/seed-visite-profil-playbook.js";
+} from "../scripts/archive/seed-visite-profil-playbook.js";
 
 describe("seed-visite-profil-playbook — buildPlan", () => {
   it("produces a doc with source_core='visite_profil' and matching artifacts", () => {
