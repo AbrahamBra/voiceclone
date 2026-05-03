@@ -124,6 +124,7 @@ describe("GET /api/v2/brain-status", () => {
     await handler(req, res, baseDeps());
     assert.equal(res.statusCode, 200);
     assert.equal(res._body.persona_id, PERSONA_ID);
+    assert.equal(res._body.document_id, DOC_ID);
     assert.deepEqual(res._body.counts, {
       contradictions_open: 2,
       propositions_pending: 5,

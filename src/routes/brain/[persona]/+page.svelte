@@ -14,6 +14,8 @@
   import BrainNoteStrip from "$lib/components/brain/BrainNoteStrip.svelte";
   import CollapsibleSection from "$lib/components/brain/CollapsibleSection.svelte";
   import ContradictionsList from "$lib/components/brain/ContradictionsList.svelte";
+  import BatchBar from "$lib/components/brain/BatchBar.svelte";
+  import PropositionsList from "$lib/components/brain/PropositionsList.svelte";
   import ApiKeysPanel from "$lib/components/ApiKeysPanel.svelte";
   import SettingsPanel from "$lib/components/SettingsPanel.svelte";
 
@@ -60,6 +62,7 @@
   // ── State : counts, contradictions, propositions, distribution, protocol, sources ──
 
   let counts = $state(null);
+  let documentId = $state(null);
   let countsLoading = $state(false);
   let countsError = $state(null);
   async function loadCounts() {
@@ -69,6 +72,7 @@
     try {
       const data = await api(`/api/v2/brain-status?persona=${personaUuid}`);
       counts = data.counts;
+      documentId = data.document_id || null;
     } catch (e) {
       console.error("[brain/counts] fetch failed:", e, "personaUuid=", personaUuid);
       countsError = e.message || "erreur";
@@ -91,6 +95,84 @@
     } finally { contradictionsLoading = false; }
   }
   $effect(() => { if (personaUuid) loadContradictions(); });
+
+  // ── Propositions : pending list (filtered client-side via BatchBar) ──
+  let allPendingProps = $state([]);
+  let propsLoading = $state(false);
+  async function loadPropositions() {
+    if (!documentId) return;
+    propsLoading = true;
+    try {
+      const data = await api(`/api/v2/propositions?document=${documentId}&status=pending`);
+      allPendingProps = data.propositions || [];
+    } catch (e) {
+      console.error("[brain/propositions] fetch failed:", e);
+      showToast(`Propositions : ${e.message || "erreur"}`, "error");
+    } finally { propsLoading = false; }
+  }
+  $effect(() => { if (documentId) loadPropositions(); });
+
+  // ── Distribution (precomputed buckets pour le slider BatchBar) ──
+  let distribution = $state(null);
+  async function loadDistribution() {
+    if (!personaUuid) return;
+    try {
+      const data = await api(`/api/v2/propositions-distribution?persona=${personaUuid}`);
+      distribution = data.distribution;
+    } catch (e) {
+      console.error("[brain/distribution] fetch failed:", e);
+      // Pas de toast — la BatchBar fonctionne en mode dégradé sans distribution
+    }
+  }
+  $effect(() => { if (personaUuid) loadDistribution(); });
+
+  // ── Filters (parent-owned) ──
+  let propFilters = $state({ target_kind: null, source_group: null, confidence_min: 0.85 });
+  const PROPS_DISPLAY_LIMIT = 30;
+
+  let filteredProps = $derived(() => {
+    if (!allPendingProps.length) return [];
+    return allPendingProps
+      .filter(p => {
+        if (propFilters.target_kind && p.target_kind !== propFilters.target_kind) return false;
+        if ((p.confidence ?? 0) < propFilters.confidence_min - 1e-9) return false;
+        return true;
+      })
+      .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
+  });
+
+  let displayedProps = $derived(() => filteredProps().slice(0, PROPS_DISPLAY_LIMIT));
+  let filteredTotal = $derived(() => filteredProps().length);
+
+  async function handlePropAction(id, action) {
+    try {
+      const body = { action, id };
+      await api(`/api/v2/propositions`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      // Optimistic : retirer de la liste pending locale
+      allPendingProps = allPendingProps.filter(p => p.id !== id);
+      showToast(`Proposition ${action === "accept" ? "acceptée" : action === "reject" ? "rejetée" : "à éditer"}.`, "info");
+      // Refresh counts en background
+      loadCounts();
+      loadDistribution();
+    } catch (e) {
+      console.error("[brain/propAction] failed:", e);
+      showToast(`Action proposition : ${e.message || "erreur"}`, "error");
+    }
+  }
+
+  function handleBatchAccept() {
+    showToast("Batch accept : confirm modal arrive en Step 11.", "info");
+  }
+  function handleBatchReject() {
+    showToast("Batch reject : confirm modal arrive en Step 11.", "info");
+  }
+  function handleSeeAllProps() {
+    propsCollapsed = false;
+    showToast(`${filteredTotal()} propositions au total. Vue paginée arrive en V1.1.`, "info");
+  }
 
   // Section navigation (cell click = scroll to + force expand).
   // Each CollapsibleSection has an id ; scrollIntoView gère le scroll.
@@ -207,10 +289,27 @@
     count={counts ? `${counts.propositions_pending} pending · ${counts.auto_merged} auto-mergées` : null}
     bind:collapsed={propsCollapsed}
   >
-    <p class="placeholder">
-      BatchBar + PropositionsList arrivent dans Step 7-9 (plan v2).
-      Queue d'arbitrage existante temporairement masquée pendant le réalignement.
+    <BatchBar
+      filters={propFilters}
+      {distribution}
+      onFilterChange={(f) => propFilters = f}
+      onBatchAccept={handleBatchAccept}
+      onBatchReject={handleBatchReject}
+    />
+    <p class="hint">
+      Bouge le slider à 0.95 pour les ultra-fiables, ou descend à 0.70 pour élargir.
+      {#if counts}Les paires synonymes déjà mergées ({counts.auto_merged}) ne sont pas comptées.{/if}
     </p>
+    {#if propsLoading && allPendingProps.length === 0}
+      <p class="placeholder">Chargement des propositions…</p>
+    {:else}
+      <PropositionsList
+        propositions={displayedProps()}
+        total={filteredTotal()}
+        onAction={handlePropAction}
+        onSeeAll={handleSeeAllProps}
+      />
+    {/if}
   </CollapsibleSection>
 
   <CollapsibleSection
@@ -306,6 +405,15 @@
     color: var(--ink-40);
     text-align: center;
     border: 1px dashed var(--rule-strong);
+  }
+
+  .hint {
+    margin-top: 8px;
+    padding: 0 4px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--ink-40);
+    letter-spacing: 0.02em;
   }
 
   .brain-footer {

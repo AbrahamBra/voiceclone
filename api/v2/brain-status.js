@@ -1,5 +1,5 @@
 // GET /api/v2/brain-status?persona=<uuid>
-//   → { persona_id, counts: { contradictions_open, propositions_pending,
+//   → { persona_id, document_id, counts: { contradictions_open, propositions_pending,
 //                              propositions_pending_doc, propositions_pending_chat,
 //                              auto_merged, doctrine_sections_filled,
 //                              doctrine_sections_total } }
@@ -142,6 +142,7 @@ export default async function handler(req, res, deps) {
 
   res.status(200).json({
     persona_id: personaId,
+    document_id: documentId,
     counts: {
       contradictions_open: (contraRes.data || []).length,
       propositions_pending: propRows.length,
