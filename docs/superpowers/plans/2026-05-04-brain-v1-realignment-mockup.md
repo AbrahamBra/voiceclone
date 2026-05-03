@@ -1,7 +1,7 @@
 # Brain V1 — réalignement sur le mockup
 
-**Status:** plan, à exécuter
-**Date:** 2026-05-04 (rédigé après le ship raté du soir 2026-05-03)
+**Status:** plan, à exécuter (patch v2 — bloquants résolus 2026-05-04)
+**Date:** 2026-05-04 (rédigé après le ship raté du soir 2026-05-03 ; patché après challenge-score-iterate)
 **Supersede:** `docs/superpowers/specs/2026-05-04-brain-v1-arbitrage-design.md` (parties UI de la spec)
 **Mockup canonique:** `docs/mockups/brain-refonte-2026-05-03.html` (PR #239)
 
@@ -76,7 +76,7 @@ C'est une UX scroll-and-collapse, pas une UX modale. La V1 spec a inventé la mo
 (footer)
 ```
 
-⚙ menu : pour V1 on **retire le popover** et on met un lien `⚙ réglages + intégrations → page séparée` en footer (le mockup le suggère explicitement). Décision : ne pas reconstruire un popover qui multiplie le code à entretenir, faire une vraie route `/persona/[id]/settings` plus tard si besoin. Pour V1 on bouton dans le header qui amène à `/persona/[id]?tab=integrations` (route à créer en V1.1, en attendant le ⚙ ouvre la page actuelle ApiKeysPanel/SettingsPanel via un overlay basique).
+⚙ menu — **décision V1 : on garde le popover existant** (ApiKeysPanel + SettingsPanel via overlay) tel quel, juste retirer ce qui le clutter inutilement. Pas de nouvelle route `/persona/[id]/settings` en V1. Le footer "page séparée" du mockup pointe vers `#` ou est masqué. V1.1 : extraire en route standalone si vraiment besoin. **Raison du change vs draft précédent :** créer une nouvelle route demande 30min minimum + risques de régression sur les flows existants ApiKeys/Settings, pour zéro gain user en V1.
 
 ## Status banner — labels à corriger
 
@@ -126,6 +126,28 @@ Réponse :
 
 Body : `{ action: keep_a|keep_b|both_false_positive|reject_both|punt, note? }`. Side effects décrits dans le spec V1. À implémenter en TDD.
 
+### `GET /api/v2/propositions/distribution?persona=<uuid>` (nouveau)
+
+Pour `BatchBar.svelte` — retourne la distribution précomputée des propositions pending par bucket de confiance, par target_kind.
+
+**Buckets verrouillés V1 : 11 buckets de 0.50 à 1.00 par pas de 0.05.** Chaque entrée du tableau est `[bucket_min, count_pending_with_confidence_>=_bucket_min]`. L'entrée à 0.50 = total count pending pour ce target_kind (puisque toutes les props ≥ 0.50 par construction L1).
+
+Réponse :
+```json
+{
+  "all":          [[1.00, 0], [0.95, 97], [0.90, 132], [0.85, 168], [0.80, 191], [0.75, 209], [0.70, 220], [0.65, 226], [0.60, 230], [0.55, 232], [0.50, 232]],
+  "hard_rules":   [[1.00, 0], [0.95, 12],  [0.90, 18], ...],
+  "errors":       [[1.00, 0], ...],
+  "icp_patterns": [...],
+  "scoring":      [...],
+  "process":      [...],
+  "templates":    [...],
+  "identity":     [...]
+}
+```
+
+Côté client, `BatchBar` calcule `matched = bucketsForKind[filters.confidence_min]` en O(1) lookup, pas de fetch par move-slider.
+
 ### `POST /api/v2/propositions/batch` (nouveau, simplifie le batch-preview de la spec V1)
 
 Body : `{ persona, filters: { target_kind?, source_group?, confidence_min }, action: 'accept'|'reject', dry_run?: true }`.
@@ -151,13 +173,15 @@ Style : background paper-subtle, border-left 3px vermillon, padding 11x14, font-
 
 ### `BatchBar.svelte`
 
-Props :
-- `filters` : `{ target_kind, source_group, confidence_min }` (state owned by parent)
-- `distribution` : `{ all: [[1.00, 0], [0.95, 97], ...], hard_rules: [...] , ... }` — résultat d'un fetch précomputé sur le persona, calcul du `matched` côté client (instantané au move du slider)
-- `onFilterChange(filters)` — émis sur chaque changement
+Props (callback-driven, pas de bind:) :
+- `filters` : `{ target_kind, source_group, confidence_min }` — read-only, owned par parent
+- `distribution` : shape verrouillée par l'endpoint distribution (voir §Endpoints)
+- `onFilterChange(nextFilters)` — émis à chaque changement local (parent re-injecte via `filters` prop)
 - `onBatchAccept()` / `onBatchReject()` — émis sur click bouton
 
-Le composant calcule `matched = countAt(filters.target_kind, filters.confidence_min)` à partir du `distribution`. Pas de fetch par move-slider.
+Le composant calcule `matched = distribution[filters.target_kind || 'all'].find(b => b[0] <= filters.confidence_min)?.[1] ?? 0` à partir du `distribution`. Pas de fetch par move-slider.
+
+**Style explicite :** parent owne le state, BatchBar émet via callback. Pas de `bind:filters` (l'exemple `+page.svelte` plus bas est corrigé).
 
 ### `PropositionsList.svelte`
 
@@ -215,7 +239,7 @@ Table 6 colonnes : Document / Type / Chunks proto / Propositions extraites / Ide
 </CollapsibleSection>
 
 <CollapsibleSection id="props" title="Propositions" count={status?.counts.propositions_pending}>
-  <BatchBar bind:filters={propFilters} {distribution} onBatchAccept={handleBatchAccept} onBatchReject={handleBatchReject} />
+  <BatchBar filters={propFilters} {distribution} onFilterChange={(f) => propFilters = f} onBatchAccept={handleBatchAccept} onBatchReject={handleBatchReject} />
   <p class="hint">Bouge le slider à 0.95 pour les ultra-fiables…</p>
   <PropositionsList propositions={filteredProps} total={propFilters.matched} onAction={handlePropAction} />
 </CollapsibleSection>
@@ -238,30 +262,32 @@ Table 6 colonnes : Document / Type / Chunks proto / Propositions extraites / Ide
 
 | Étape | Bloc | Estimé | Test/check |
 |---|---|---|---|
-| **0** | Debug pourquoi `brain-status` renvoie counts à `—` (probablement fetch trop tôt avant `personaConfig.id` chargé, ou auth header) | 15 min | curl + console : counts non-null sur Nicolas |
+| **0** | Debug `brain-status` counts à `—`. Hypothèses dans l'ordre : (1) `loadCounts` foiré côté server → check logs Vercel + curl direct ; (2) auth header manquant → vérifier `authHeaders()` dans `api()` ; (3) RLS/persona introuvable côté Supabase ; (4) timing $effect (improbable, gate déjà sur personaUuid). Logger console côté client pour confirmer la phase qui foire. | 30-45 min | curl `/api/v2/brain-status?persona=<nicolas-uuid>` 200 + counts non-null + console client confirme fetch fired |
 | **1** | Corriger labels banner (lbl ↔ meta swap) | 5 min | screenshot match mockup |
 | **2** | Ajouter `BrainNoteStrip.svelte` + l'inclure en haut de Contradictions list | 10 min | visible sur preview |
-| **3** | Créer `CollapsibleSection.svelte` + tests `composer-state-style` (toggle state) | 30 min | tests unit pure JS pass |
+| **3** | Créer `CollapsibleSection.svelte` + tests `node:test` unit (toggle state, defaultCollapsed honoré, slot rendu) | 30 min | tests unit pass via `npm test` |
 | **4** | Refactor `+page.svelte` : supprimer mode bar + localStorage logic, wrapper sections dans `<CollapsibleSection>`, default-collapsed Doctrine et Sources | 30 min | manuel : scroll + collapse fonctionne |
-| **5** | Supprimer `BrainModeBar.svelte` + son import | 5 min | grep clean |
-| **6** | Endpoint `GET /api/v2/propositions/distribution?persona=` (TDD) — retourne le shape `{ all: [...], hard_rules: [...], … }` à partir des propositions pending | 45 min | tests 5/5 |
-| **7** | Composant `BatchBar.svelte` (filter + slider + matched count + boutons) — état parent | 30 min | démo : déplacer slider met à jour `matched` instantanément |
+| **5** | Supprimer `BrainModeBar.svelte` + son import | 5 min | grep clean (aucun import résiduel) |
+| **6** | Endpoint `GET /api/v2/propositions/distribution?persona=` (TDD) — buckets verrouillés 0.50→1.00 par 0.05, par target_kind | 45 min | tests 5/5 (shape, buckets cumulatifs, kinds présents, persona inconnu, persona vide) |
+| **7** | Composant `BatchBar.svelte` (filter + slider + matched count + boutons) — callback-driven, parent owne state | 30 min | démo : déplacer slider met à jour `matched` instantanément |
 | **8** | Composant `PropositionsList.svelte` (flat 5-col grid + actions ✓/éditer/✗) | 45 min | démo : top-30 props + "+N autres" row |
 | **9** | Wire BatchBar + PropositionsList dans la section Propositions du `+page.svelte`, remplaçant l'ancien embed `<ProtocolPanel>` | 20 min | preview montre toolbar + flat list |
 | **10** | Endpoint `POST /api/v2/propositions/batch` (dry_run + apply) — TDD | 1h | tests 6/6 |
 | **11** | Wire boutons batch accept/reject avec confirm modal sur dry_run sample | 30 min | preview : click accept → modal preview → confirm → batch executed |
 | **12** | Composant `DoctrineGrid.svelte` (7 cells) | 30 min | preview : cells correctes vs Nicolas data |
-| **13** | Endpoint `GET /api/v2/sources?persona=` (TDD) | 45 min | tests 4/4 |
-| **14** | Composant `SourcesTable.svelte` | 30 min | preview : table docs + playbooks |
+| **13** | Endpoint `GET /api/v2/sources?persona=` (TDD). **Mitigation V1 minimal :** retourne `{ filename, doc_kind, imported_at, char_count }` lus directement de `protocol_document` ; les colonnes Chunks/Propositions/Identity affichent "—" en V1.1. Confirmer ce minimal en début d'étape. | 45 min | tests 4/4 (shape minimal, persona inconnu, persona vide, ordre par imported_at desc) |
+| **14** | Composant `SourcesTable.svelte` (avec colonnes "—" pour aggregat différé V1.1) | 30 min | preview : table docs + playbooks |
 | **15** | Endpoint `POST /api/v2/contradictions/:id/resolve` (TDD) — voir spec V1 §API | 1h | tests 7/7 |
 | **16** | Wire `onResolve` dans `ContradictionsList` (passer la fonction au lieu de `null`) | 10 min | preview : click "garder A" → card disparaît, count décrémente |
-| **17** | Lien footer ⚙ → route `/persona/[id]/settings` (créer la route, simple wrapper de SettingsPanel + ApiKeysPanel) | 30 min | navigation OK |
-| **18** | Smoke test sur Nicolas via preview Vercel : (a) banner counts cohérents avec Supabase ; (b) collapse/expand sections ; (c) slider conf met à jour matched ; (d) accepter une prop la fait disparaître ; (e) garder A sur une contradiction décrémente count ; (f) ⚙ navigue | 30 min | acceptance criteria 1-6 ✓ |
-| **19** | Run `merge-synonyms-and-list-contradictions.js --apply` sur Nicolas (avec re-écriture pour DB write — voir Étape 19a) | 1h | proposition_contradiction et proposition_merge_history populées |
-| **19a** | Re-éditer le script pour qu'il écrive aussi dans `proposition_contradiction` + `proposition_merge_history` (mes edits avaient été reverted par session parallèle) | 30 min | dry-run montre les inserts attendus |
-| **20** | Push final + merge à master + deploy preview → prod | 15 min | URL prod montre le mockup live sur Nicolas |
+| **17** | ~~Lien footer ⚙ → route `/persona/[id]/settings`~~ **Décision V1 : garder le popover ⚙ existant (ApiKeysPanel + SettingsPanel via overlay).** Pas de nouvelle route. Juste vérifier que le popover s'ouvre toujours après refactor +page.svelte. | 5 min | manuel : click ⚙ ouvre overlay ApiKeys+Settings |
+| **18a** | **(Déplacé avant smoke)** Re-éditer `scripts/merge-synonyms-and-list-contradictions.js` pour qu'il écrive aussi dans `proposition_contradiction` + `proposition_merge_history`. **Avant edit :** lire l'état actuel du script, identifier ce qui a été reverted par session parallèle, et patcher uniquement le delta manquant. Pas de re-application aveugle. | 30-45 min | dry-run montre les inserts attendus |
+| **18b** | **(Déplacé avant smoke)** Run `merge-synonyms-and-list-contradictions.js --apply` sur Nicolas | 1h | `proposition_contradiction` (≥10 lignes) + `proposition_merge_history` (≥1 ligne) populées |
+| **19** | Smoke test sur Nicolas via preview Vercel : (a) banner counts cohérents avec Supabase ; (b) collapse/expand sections ; (c) slider conf met à jour matched ; (d) accepter une prop la fait disparaître ; (e) garder A sur une contradiction décrémente count ; (f) popover ⚙ s'ouvre | 30 min | acceptance criteria 1-6 ✓ |
+| **20** | Push final + merge à master + deploy preview → prod. **Rollback plan :** si prod casse, revert merge commit (le ship V1.0 mode-bar de master pré-merge reste un fallback fonctionnel). | 15 min | URL prod montre le mockup live sur Nicolas |
 
-**Estimé total : 9-10h de coding focalisé.** Faisable en 1.5 journée si pas d'interruption.
+**Estimé total : 9-11h de coding focalisé** (post-patch des 5 bloquants). Faisable en 1.5-2 journées si pas d'interruption.
+
+**Note sequencing :** les anciens Steps 19/19a (script merge) sont devenus 18a/18b et passent **avant** le smoke test 19, parce que le smoke test (e) "garder A → décrémente count" exige `proposition_contradiction` populée. Sans données, le smoke échoue.
 
 ## Risques
 
