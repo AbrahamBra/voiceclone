@@ -28,8 +28,8 @@
     aria-label="Contradictions ouvertes"
   >
     <span class="num" class:alert={counts?.contradictions_open > 0}>{counts?.contradictions_open ?? "—"}</span>
-    <span class="lbl">contradictions</span>
-    <span class="meta">à arbitrer</span>
+    <span class="lbl">à arbitrer</span>
+    <span class="meta">contradictions</span>
   </button>
 
   <button
@@ -39,14 +39,8 @@
     aria-label="Propositions pending"
   >
     <span class="num">{counts?.propositions_pending ?? "—"}</span>
-    <span class="lbl">propositions</span>
-    <span class="meta">
-      {#if counts}
-        {counts.propositions_pending_doc} doc · {counts.propositions_pending_chat} chat
-      {:else}
-        pending
-      {/if}
-    </span>
+    <span class="lbl">à reviewer</span>
+    <span class="meta">propositions pending</span>
   </button>
 
   <button
@@ -57,7 +51,7 @@
   >
     <span class="num">{counts?.auto_merged ?? "—"}</span>
     <span class="lbl">auto-mergées</span>
-    <span class="meta">synonymes</span>
+    <span class="meta">aujourd'hui · synonymes</span>
   </button>
 
   <button
@@ -66,11 +60,15 @@
     onclick={() => onCellClick("doctrine")}
     aria-label="Doctrine"
   >
-    <span class="num">
-      {counts ? `${counts.doctrine_sections_filled}/${counts.doctrine_sections_total}` : "—"}
+    <span class="num">{counts?.doctrine_sections_total ?? "—"}</span>
+    <span class="lbl">sections actives</span>
+    <span class="meta">
+      {#if counts}
+        doctrine remplie {counts.doctrine_sections_filled}/{counts.doctrine_sections_total}
+      {:else}
+        doctrine remplie
+      {/if}
     </span>
-    <span class="lbl">doctrine</span>
-    <span class="meta">sections remplies</span>
   </button>
 
   <div class="import-cell">

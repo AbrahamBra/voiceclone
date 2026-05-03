@@ -1,25 +1,19 @@
 <script>
   import { goto } from "$app/navigation";
-  import { page } from "$app/stores";
   import { accessCode, sessionToken } from "$lib/stores/auth.js";
   import { personaConfig } from "$lib/stores/persona.js";
   import { api, authHeaders } from "$lib/api.js";
   import { showToast } from "$lib/stores/ui.js";
 
-  // Brain V1 — workflow arbitrage-first.
-  //
-  // Layout : header / status banner / mode bar (Arbitrage | Doctrine).
-  //   Mode Arbitrage : Contradictions + Propositions (queue) + Auto-mergées
-  //   Mode Doctrine  : Sections (= ProtocolPanel embarqué pour V1, sous-vue
-  //                    Concepts différée V1.1)
-  //   ⚙ menu : ApiKeys + Settings (popover)
-  //
-  // Spec : docs/superpowers/specs/2026-05-04-brain-v1-arbitrage-design.md
+  // Brain V1 — single page scroll, 4 sections empilées :
+  //   Arbitrages → Propositions → Doctrine (collapsed) → Sources (collapsed)
+  // Plan : docs/superpowers/plans/2026-05-04-brain-v1-realignment-mockup.md
+  // Mockup canonique : docs/mockups/brain-refonte-2026-05-03.html
 
   import BrainStatusBanner from "$lib/components/brain/BrainStatusBanner.svelte";
-  import BrainModeBar from "$lib/components/brain/BrainModeBar.svelte";
+  import BrainNoteStrip from "$lib/components/brain/BrainNoteStrip.svelte";
+  import CollapsibleSection from "$lib/components/brain/CollapsibleSection.svelte";
   import ContradictionsList from "$lib/components/brain/ContradictionsList.svelte";
-  import ProtocolPanel from "$lib/components/ProtocolPanel.svelte";
   import ApiKeysPanel from "$lib/components/ApiKeysPanel.svelte";
   import SettingsPanel from "$lib/components/SettingsPanel.svelte";
 
@@ -31,50 +25,55 @@
     if (!$accessCode && !$sessionToken) goto("/");
   });
 
+  // personaConfig : si déjà set pour ce slug, skip ; sinon fetch.
+  // Note : /api/config response n'inclut pas `slug` → on stocke le slug en clé locale.
+  let personaConfigLoading = $state(false);
+  let personaConfigError = $state(null);
+  let lastFetchedSlug = $state(null);
+
   $effect(() => {
     if (typeof window === "undefined") return;
     if (!personaSlug) return;
-    if ($personaConfig && $personaConfig.slug === personaSlug) return;
+    if (lastFetchedSlug === personaSlug) return;
+    lastFetchedSlug = personaSlug;
+    personaConfigLoading = true;
+    personaConfigError = null;
     fetch(`/api/config?persona=${personaSlug}`, { headers: authHeaders() })
-      .then(r => r.ok ? r.json() : null)
-      .then(cfg => { if (cfg) personaConfig.set(cfg); })
-      .catch(() => {});
+      .then(async r => {
+        if (!r.ok) {
+          const txt = await r.text().catch(() => "");
+          throw new Error(`/api/config ${r.status} : ${txt.slice(0, 200) || r.statusText}`);
+        }
+        return r.json();
+      })
+      .then(cfg => { personaConfig.set(cfg); })
+      .catch(e => {
+        console.error("[brain/personaConfig] fetch failed:", e);
+        personaConfigError = e.message || "fetch failed";
+        showToast(`Persona config : ${personaConfigError}`, "error");
+      })
+      .finally(() => { personaConfigLoading = false; });
   });
 
   let personaUuid = $derived($personaConfig?.id || null);
 
-  function modeKey(uuid) { return `brain.mode.${uuid}`; }
-  let mode = $state("arbitrage");
-
-  $effect(() => {
-    if (typeof window === "undefined") return;
-    const urlMode = $page.url.searchParams.get("mode");
-    if (urlMode === "arbitrage" || urlMode === "doctrine") { mode = urlMode; return; }
-    if (personaUuid) {
-      const stored = localStorage.getItem(modeKey(personaUuid));
-      if (stored === "arbitrage" || stored === "doctrine") mode = stored;
-    }
-  });
-
-  function selectMode(next) {
-    mode = next;
-    if (typeof window === "undefined") return;
-    if (personaUuid) localStorage.setItem(modeKey(personaUuid), next);
-    const url = new URL(window.location.href);
-    url.searchParams.set("mode", next);
-    history.replaceState(null, "", url.toString());
-  }
+  // ── State : counts, contradictions, propositions, distribution, protocol, sources ──
 
   let counts = $state(null);
   let countsLoading = $state(false);
+  let countsError = $state(null);
   async function loadCounts() {
     if (!personaUuid) return;
     countsLoading = true;
+    countsError = null;
     try {
       const data = await api(`/api/v2/brain-status?persona=${personaUuid}`);
       counts = data.counts;
-    } catch (e) { showToast(`Status banner : ${e.message || "erreur"}`, "error"); }
-    finally { countsLoading = false; }
+    } catch (e) {
+      console.error("[brain/counts] fetch failed:", e, "personaUuid=", personaUuid);
+      countsError = e.message || "erreur";
+      showToast(`Status banner : ${countsError}`, "error");
+    } finally { countsLoading = false; }
   }
   $effect(() => { if (personaUuid) loadCounts(); });
 
@@ -86,25 +85,66 @@
     try {
       const data = await api(`/api/v2/contradictions?persona=${personaUuid}&status=open`);
       contradictions = data.contradictions || [];
-    } catch (e) { showToast(`Contradictions : ${e.message || "erreur"}`, "error"); }
-    finally { contradictionsLoading = false; }
+    } catch (e) {
+      console.error("[brain/contradictions] fetch failed:", e);
+      showToast(`Contradictions : ${e.message || "erreur"}`, "error");
+    } finally { contradictionsLoading = false; }
   }
-  $effect(() => { if (personaUuid && mode === "arbitrage") loadContradictions(); });
+  $effect(() => { if (personaUuid) loadContradictions(); });
 
+  // Section navigation (cell click = scroll to + force expand).
+  // Each CollapsibleSection has an id ; scrollIntoView gère le scroll.
+  // Pour expand depuis collapsed, on relit l'URL hash plus tard. V1 minimal :
+  // les sections sont default-expanded sauf Doctrine et Sources, et le banner
+  // ne scrolle que vers les 2 premières (qui sont toujours expanded).
   function handleCellClick(cellId) {
-    if (cellId === "doctrine") { selectMode("doctrine"); return; }
-    if (mode !== "arbitrage") selectMode("arbitrage");
-    const id = { contradictions: "section-contradictions", propositions: "section-propositions", merged: "section-merged" }[cellId];
-    if (id && typeof window !== "undefined") {
-      requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }));
-    }
+    const targetId = {
+      contradictions: "arb",
+      propositions: "props",
+      merged: "props",
+      doctrine: "doctrine",
+    }[cellId];
+    if (!targetId) return;
+    expandAndScrollTo(targetId);
   }
 
   function handleImportClick() {
-    selectMode("doctrine");
-    showToast("Bascule mode Doctrine — clique '+ importer un doc' dans le panneau Protocole.", "info");
+    showToast("Upload doc : ouvre le panneau Sources ou utilise ⚙ → Sources.", "info");
   }
 
+  // ── URL hash deep linking : #arb / #props / #doctrine / #sources ──
+  // Bindable collapsed state per section + initial hash override.
+  let arbCollapsed = $state(false);
+  let propsCollapsed = $state(false);
+  let doctrineCollapsed = $state(true);
+  let sourcesCollapsed = $state(true);
+
+  $effect(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash.replace(/^#/, "");
+    if (!hash) return;
+    if (hash === "arb") { arbCollapsed = false; }
+    else if (hash === "props") { propsCollapsed = false; }
+    else if (hash === "doctrine") { doctrineCollapsed = false; }
+    else if (hash === "sources") { sourcesCollapsed = false; }
+    requestAnimationFrame(() => {
+      document.getElementById(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+
+  // Status banner cell click → force-expand target + scroll.
+  function expandAndScrollTo(targetId) {
+    if (typeof window === "undefined") return;
+    if (targetId === "arb") arbCollapsed = false;
+    else if (targetId === "props") propsCollapsed = false;
+    else if (targetId === "doctrine") doctrineCollapsed = false;
+    else if (targetId === "sources") sourcesCollapsed = false;
+    requestAnimationFrame(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  // ── ⚙ menu (popover existant V1 — décision plan v2 patché : pas de route /settings) ──
   let menuOpen = $state(false);
   let menuTab = $state(null);
   function openMenu(tab) { menuTab = tab; menuOpen = true; }
@@ -132,39 +172,73 @@
     </div>
   </header>
 
+  {#if personaConfigError}
+    <div class="page-error">
+      <strong>Persona config introuvable.</strong> {personaConfigError}
+      <button class="retry" onclick={() => { lastFetchedSlug = null; }}>réessayer</button>
+    </div>
+  {/if}
+
   <BrainStatusBanner {counts} loading={countsLoading} onCellClick={handleCellClick} onImportClick={handleImportClick} />
 
-  <BrainModeBar {mode} {counts} onChange={selectMode} />
-
-  {#if mode === "arbitrage"}
-    <section id="section-contradictions" class="section">
-      <h2 class="section-title">Contradictions {#if counts}<span class="count" class:alert={counts.contradictions_open > 0}>{counts.contradictions_open}</span>{/if}</h2>
-      <ContradictionsList {contradictions} loading={contradictionsLoading} onResolve={null} />
-    </section>
-
-    <section id="section-propositions" class="section">
-      <h2 class="section-title">Propositions {#if counts}<span class="count">{counts.propositions_pending}</span>{/if}</h2>
-      <p class="section-hint">La queue d'arbitrage existante. Tri convergence + filtres + slider confidence sont déjà branchés (PR #234).</p>
-      {#if personaUuid}<ProtocolPanel personaId={personaUuid} />{:else}<p class="empty-block">chargement…</p>{/if}
-    </section>
-
-    <section id="section-merged" class="section">
-      <h2 class="section-title">Auto-mergées {#if counts}<span class="count">{counts.auto_merged}</span>{/if}</h2>
-      <p class="section-hint">
-        {#if (counts?.auto_merged ?? 0) > 0}
-          Synonymes auto-fusionnés. Le composant de vérification + split-back arrive dans le prochain commit.
-        {:else}
-          Aucune auto-fusion enregistrée. Le scan synonymes n'a pas encore tourné en mode --apply sur cette persona.
-        {/if}
-      </p>
-    </section>
-  {:else if mode === "doctrine"}
-    <section class="section">
-      <h2 class="section-title">Doctrine</h2>
-      <p class="section-hint">Sections du protocole (identity / hard_rules / icp_patterns / process / templates / errors / scoring). Sous-vue Concepts (graphe d'entités) arrive en V1.1.</p>
-      {#if personaUuid}<ProtocolPanel personaId={personaUuid} />{:else}<p class="empty-block">chargement…</p>{/if}
-    </section>
+  {#if countsError && !counts}
+    <div class="page-error subtle">
+      <strong>Counts banner :</strong> {countsError}
+      <button class="retry" onclick={loadCounts}>réessayer</button>
+    </div>
   {/if}
+
+  <CollapsibleSection
+    id="arb"
+    title="Arbitrages"
+    count={counts ? `${counts.contradictions_open} contradictions` : null}
+    countAlert={counts ? counts.contradictions_open > 0 : false}
+    bind:collapsed={arbCollapsed}
+  >
+    <BrainNoteStrip>
+      <strong>Pourquoi cette liste ?</strong> Pour chaque paire ci-dessous, le système a détecté que les 2 propositions disent l'inverse. Si tu acceptes les 2, le clone reçoit des règles incompatibles. Choisis laquelle garder.
+    </BrainNoteStrip>
+    <ContradictionsList contradictions={contradictions} loading={contradictionsLoading} onResolve={null} />
+  </CollapsibleSection>
+
+  <CollapsibleSection
+    id="props"
+    title="Propositions"
+    count={counts ? `${counts.propositions_pending} pending · ${counts.auto_merged} auto-mergées` : null}
+    bind:collapsed={propsCollapsed}
+  >
+    <p class="placeholder">
+      BatchBar + PropositionsList arrivent dans Step 7-9 (plan v2).
+      Queue d'arbitrage existante temporairement masquée pendant le réalignement.
+    </p>
+  </CollapsibleSection>
+
+  <CollapsibleSection
+    id="doctrine"
+    title="Doctrine"
+    count={counts ? `${counts.doctrine_sections_total} sections · ${counts.doctrine_sections_filled} remplies` : null}
+    bind:collapsed={doctrineCollapsed}
+  >
+    <p class="placeholder">
+      DoctrineGrid (7 cells) arrive dans Step 12 (plan v2).
+    </p>
+  </CollapsibleSection>
+
+  <CollapsibleSection
+    id="sources"
+    title="Sources"
+    count={null}
+    bind:collapsed={sourcesCollapsed}
+  >
+    <p class="placeholder">
+      SourcesTable arrive dans Step 13-14 (plan v2).
+    </p>
+  </CollapsibleSection>
+
+  <footer class="brain-footer">
+    <span class="footer-meta">4 sections · 1 page · scroll</span>
+    <button class="footer-link" onclick={() => openMenu("integrations")}>⚙ réglages + intégrations</button>
+  </footer>
 </div>
 
 {#if menuOpen}
@@ -197,12 +271,66 @@
   .gear { background: transparent; border: 1px solid var(--rule-strong); padding: 7px 9px; cursor: pointer; border-radius: 2px; font-size: 14px; }
   .gear:hover { background: var(--paper-subtle, #ecebe4); }
 
-  .section { margin-top: 36px; }
-  .section-title { margin: 0; padding-bottom: 10px; border-bottom: 1px solid var(--rule); font-family: var(--font, Georgia, serif); font-weight: 500; font-size: 21px; letter-spacing: -0.01em; display: flex; align-items: baseline; gap: 10px; }
-  .count { font-family: var(--font-mono); font-size: 11px; color: var(--ink-40); font-weight: normal; letter-spacing: 0.04em; }
-  .count.alert { color: var(--vermillon); font-weight: 600; }
-  .section-hint { font-family: var(--font-mono); font-size: 11px; color: var(--ink-40); margin: 10px 0 0; letter-spacing: 0.02em; }
-  .empty-block { font-family: var(--font-mono); font-size: 11px; color: var(--ink-40); padding: 20px 0; }
+  .page-error {
+    margin-top: 14px;
+    padding: 11px 14px;
+    background: var(--paper-subtle, #ecebe4);
+    border-left: 3px solid var(--vermillon);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-70);
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .page-error.subtle { border-left-color: var(--ink-40); }
+  .page-error .retry {
+    background: transparent;
+    border: 1px solid var(--rule-strong);
+    padding: 4px 10px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    cursor: pointer;
+    border-radius: 2px;
+    color: var(--ink-70);
+  }
+  .page-error .retry:hover { background: var(--paper); color: var(--ink); }
+
+  .placeholder {
+    margin: 14px 0 0;
+    padding: 18px;
+    background: var(--paper-subtle, #ecebe4);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-40);
+    text-align: center;
+    border: 1px dashed var(--rule-strong);
+  }
+
+  .brain-footer {
+    margin-top: 60px;
+    padding-top: 18px;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 14px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-40);
+  }
+  .footer-link {
+    background: transparent;
+    border: 1px solid var(--rule-strong);
+    padding: 6px 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    cursor: pointer;
+    border-radius: 2px;
+    color: var(--ink-70);
+  }
+  .footer-link:hover { background: var(--paper-subtle, #ecebe4); color: var(--ink); }
 
   .menu-overlay { position: fixed; inset: 0; background: rgba(20, 20, 26, 0.4); display: flex; align-items: flex-start; justify-content: center; padding: 60px 16px; z-index: 100; }
   .menu-panel { background: var(--paper); border: 1px solid var(--rule-strong); border-radius: 4px; width: 100%; max-width: 720px; max-height: 80dvh; display: flex; flex-direction: column; overflow: hidden; }
