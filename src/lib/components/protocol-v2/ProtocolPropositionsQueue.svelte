@@ -17,7 +17,10 @@
   let error = $state(null);
   let kindFilter = $state(/** @type {string[]} */ ([]));
   let intentFilter = $state(/** @type {string[]} */ ([]));
-  let sortBy = $state("priority"); // priority | recent
+  let sortBy = $state("priority"); // priority | recent | convergence
+  // Toggle "convergence ≥ 2" : focus sur les propositions vues dans 2+ sources
+  // (signal fort de doctrine commune côté chantier 1 / playbook_extraction).
+  let convergeOnly = $state(false);
 
   $effect(() => {
     if (documentId) load();
@@ -59,6 +62,17 @@
     return Array.from(set).sort();
   });
 
+  // Helper : compte le nombre de sources distinctes (source_core) où la
+  // proposition apparaît, depuis provenance.playbook_sources. Renvoie 0
+  // pour les propositions sans provenance (issues d'imports doc générés).
+  function uniqueSourcesCount(p) {
+    const ps = p?.provenance?.playbook_sources;
+    if (!Array.isArray(ps) || ps.length === 0) return 0;
+    const set = new Set();
+    for (const s of ps) if (s?.source_core) set.add(s.source_core);
+    return set.size;
+  }
+
   // Filter then sort.
   const filtered = $derived.by(() => {
     const kindSet = kindFilter.length ? new Set(kindFilter) : null;
@@ -66,9 +80,14 @@
     return propositions.filter((p) => {
       if (kindSet && !kindSet.has(p.target_kind)) return false;
       if (intentSet && !intentSet.has(p.intent)) return false;
+      if (convergeOnly && uniqueSourcesCount(p) < 2) return false;
       return true;
     });
   });
+  // Compte des propositions converge ≥2 sources, pour décider d'afficher
+  // ou non le toggle (pas la peine sur un doc qui n'a pas eu d'extraction
+  // playbook).
+  const convergeCount = $derived(propositions.filter((p) => uniqueSourcesCount(p) >= 2).length);
 
   const sorted = $derived.by(() => {
     const list = [...filtered];
@@ -77,6 +96,20 @@
         const ta = new Date(a.created_at || 0).getTime();
         const tb = new Date(b.created_at || 0).getTime();
         return tb - ta;
+      });
+    } else if (sortBy === "convergence") {
+      // convergence = nb de sources distinctes (provenance.playbook_sources)
+      // DESC, tiebreak par count puis confidence. Met les "vues dans 3
+      // sources" en haut, isole les vraies doctrines communes à arbitrer
+      // d'abord.
+      list.sort((a, b) => {
+        const ua = uniqueSourcesCount(a);
+        const ub = uniqueSourcesCount(b);
+        if (ub !== ua) return ub - ua;
+        const ca = a.count || 1;
+        const cb = b.count || 1;
+        if (cb !== ca) return cb - ca;
+        return (b.confidence || 0) - (a.confidence || 0);
       });
     } else {
       // priority = confidence × count, DESC
@@ -103,6 +136,7 @@
   function clearFilters() {
     kindFilter = [];
     intentFilter = [];
+    convergeOnly = false;
   }
 </script>
 
@@ -127,13 +161,22 @@
         class:on={sortBy === "recent"}
         onclick={() => (sortBy = "recent")}
       >récent</button>
+      {#if convergeCount > 0}
+        <button
+          type="button"
+          class="ppq-sort-btn"
+          class:on={sortBy === "convergence"}
+          onclick={() => (sortBy = "convergence")}
+          title="Trie par nombre de sources distinctes (provenance.playbook_sources)"
+        >convergence</button>
+      {/if}
     </div>
     <button type="button" class="ppq-refresh" onclick={load} disabled={loading} title="Recharger">
       ↻
     </button>
   </header>
 
-  {#if availableKinds.length > 1 || availableIntents.length > 1}
+  {#if availableKinds.length > 1 || availableIntents.length > 1 || convergeCount > 0}
     <div class="ppq-filters">
       {#if availableKinds.length > 1}
         <fieldset class="ppq-fset">
@@ -165,7 +208,21 @@
           </div>
         </fieldset>
       {/if}
-      {#if kindFilter.length || intentFilter.length}
+      {#if convergeCount > 0}
+        <fieldset class="ppq-fset">
+          <legend>convergence</legend>
+          <div class="ppq-pills">
+            <button
+              type="button"
+              class="ppq-pill"
+              class:on={convergeOnly}
+              onclick={() => (convergeOnly = !convergeOnly)}
+              title="Affiche uniquement les propositions vues dans ≥2 sources distinctes"
+            >⊕ ≥2 sources ({convergeCount})</button>
+          </div>
+        </fieldset>
+      {/if}
+      {#if kindFilter.length || intentFilter.length || convergeOnly}
         <button type="button" class="ppq-clear" onclick={clearFilters}>Reset</button>
       {/if}
     </div>

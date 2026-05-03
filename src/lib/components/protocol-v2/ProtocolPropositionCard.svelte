@@ -28,6 +28,26 @@
   let busy = $state(false);
   let error = $state(null);
 
+  // Convergence cross-source : si la proposition a été extraite de plusieurs
+  // playbooks (cf migration 070, source='playbook_extraction'), on lit la
+  // liste depuis provenance.playbook_sources pour afficher un badge
+  // "vu dans N sources" + détails au hover.
+  const playbookSources = $derived.by(() => {
+    const ps = proposition?.provenance?.playbook_sources;
+    return Array.isArray(ps) ? ps : [];
+  });
+  const uniqueSourceCores = $derived.by(() => {
+    const set = new Set();
+    for (const s of playbookSources) if (s?.source_core) set.add(s.source_core);
+    return Array.from(set);
+  });
+  const provenanceTooltip = $derived.by(() => {
+    if (!playbookSources.length) return "";
+    return playbookSources
+      .map((s) => `${s.source_core || "?"}/T${s.toggle_idx ?? "?"}${s.toggle_title ? " " + s.toggle_title : ""}`)
+      .join("\n");
+  });
+
   function confidenceClass(c) {
     if (typeof c !== "number") return "low";
     if (c >= 0.85) return "high";
@@ -89,6 +109,19 @@
     <span class="ppc-intent">{proposition.intent}</span>
     {#if (proposition.count ?? 1) > 1}
       <span class="ppc-count" title="signaux fusionnés">×{proposition.count}</span>
+    {/if}
+    {#if playbookSources.length > 0}
+      <span
+        class="ppc-prov"
+        class:converge={uniqueSourceCores.length >= 2}
+        title={provenanceTooltip}
+      >
+        {#if uniqueSourceCores.length >= 2}
+          ⊕ {uniqueSourceCores.length} sources
+        {:else}
+          {uniqueSourceCores[0]}/T{playbookSources[0].toggle_idx}
+        {/if}
+      </span>
     {/if}
     <span class="ppc-conf {confidenceClass(proposition.confidence)}">
       {Math.round((proposition.confidence ?? 0) * 100)}%
@@ -187,6 +220,24 @@
     padding: 1px 5px;
     border-radius: 2px;
     font-variant-numeric: tabular-nums;
+  }
+  /* Provenance issue d'un playbook source. Discret en mono-source.
+     Vermillon + plus marqué quand convergence cross-source ≥ 2 sources
+     (signal fort de doctrine commune à arbitrer en priorité). */
+  .ppc-prov {
+    font-family: var(--font-mono);
+    font-size: var(--fs-nano);
+    color: var(--ink-40);
+    background: color-mix(in srgb, var(--ink) 4%, transparent);
+    padding: 1px 6px;
+    border-radius: 2px;
+    cursor: help;
+    white-space: nowrap;
+  }
+  .ppc-prov.converge {
+    color: var(--accent, #c8463a);
+    background: color-mix(in srgb, var(--accent, #c8463a) 12%, transparent);
+    font-weight: 500;
   }
   .ppc-conf {
     margin-left: auto;
