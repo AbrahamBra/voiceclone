@@ -173,6 +173,33 @@ describe("extractFromChunk", () => {
     assert.deepEqual(out, []);
   });
 
+  it("invokes opts.onError on thrown error with message + retryable hint (PR #232)", async () => {
+    const throwing = { messages: { create: async () => { throw new Error("doc_extractor_timeout"); } } };
+    const errs = [];
+    const out = await extractFromChunk(
+      "a real chunk of prose with enough length",
+      {},
+      { anthropic: throwing, onError: (e) => errs.push(e) },
+    );
+    assert.deepEqual(out, [], "still returns [] for back-compat");
+    assert.equal(errs.length, 1);
+    assert.equal(errs[0].message, "doc_extractor_timeout");
+    assert.equal(errs[0].retryable, true, "timeout flagged retryable");
+    assert.ok(errs[0].chunk_len > 0);
+  });
+
+  it("opts.onError NOT called when call succeeds with empty propositions (PR #232)", async () => {
+    const empty = makeAnthropicStub({ toolInput: { propositions: [] } });
+    const errs = [];
+    const out = await extractFromChunk(
+      "a real chunk of prose with enough length",
+      {},
+      { anthropic: empty, onError: (e) => errs.push(e) },
+    );
+    assert.deepEqual(out, []);
+    assert.equal(errs.length, 0, "legitimate empty must not be conflated with error");
+  });
+
   it("returns [] when no tool_use block in response", async () => {
     const noTool = makeAnthropicStub({ contentOverride: { content: [{ type: "text", text: "I refuse" }] } });
     const out = await extractFromChunk("a real chunk of prose with enough length", {}, { anthropic: noTool });

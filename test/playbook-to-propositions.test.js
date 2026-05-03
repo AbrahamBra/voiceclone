@@ -151,3 +151,78 @@ test("splitForExtractor — input court retourné tel quel", () => {
   const short = "petite prose";
   assert.deepEqual(splitForExtractor(short), [short]);
 });
+
+// ── PR #232 — surface per-toggle empty vs error ──────────────────
+//
+// Bug context: visite_profil playbook (14k chars, 6 toggles) extracted 0
+// propositions in prod while sibling playbooks succeeded. The catch in
+// extractFromChunk swallowed errors and returned []; callers couldn't
+// distinguish "LLM legitimately returned []" from "call failed silently".
+//
+// Fix: extractor now exposes opts.onError; playbook helper fires onSkip with
+// reason='extractor_returned_empty' for empty case and onError for failures.
+
+test("extractPlaybookToPropositions — onSkip fires with reason='extractor_returned_empty' when LLM returns []", async () => {
+  const skips = [];
+  const errors = [];
+  const fakeExtract = async () => []; // legitimate empty
+
+  const result = await extractPlaybookToPropositions(
+    {
+      prose: PROSE_3_TOGGLES,
+      sourceCore: "visite_profil",
+      playbookId: "11111111-1111-1111-1111-111111111111",
+    },
+    {
+      extractFromChunk: fakeExtract,
+      onSkip: (s) => skips.push(s),
+      onError: (e) => errors.push(e),
+    }
+  );
+
+  assert.equal(result.length, 0);
+  assert.equal(errors.length, 0, "no error fired for legitimate empty");
+  assert.equal(skips.length, 3, "3 toggles all empty → 3 skip events");
+  for (const s of skips) {
+    assert.equal(s.reason, "extractor_returned_empty");
+    assert.ok(typeof s.toggle_idx === "number");
+    assert.ok(typeof s.toggle_title === "string");
+  }
+});
+
+test("extractPlaybookToPropositions — onError fires when extractor invokes its onError callback", async () => {
+  const skips = [];
+  const errors = [];
+  // Simulate the real extractor: catches internally, calls onError, returns [].
+  const fakeExtract = async (_chunk, _ctx, opts) => {
+    if (typeof opts?.onError === "function") {
+      opts.onError({ message: "doc_extractor_timeout", retryable: true, chunk_len: 500 });
+    }
+    return [];
+  };
+
+  const result = await extractPlaybookToPropositions(
+    {
+      prose: PROSE_3_TOGGLES,
+      sourceCore: "visite_profil",
+      playbookId: "11111111-1111-1111-1111-111111111111",
+    },
+    {
+      extractFromChunk: fakeExtract,
+      onSkip: (s) => skips.push(s),
+      onError: (e) => errors.push(e),
+    }
+  );
+
+  assert.equal(result.length, 0);
+  assert.equal(errors.length, 3, "3 toggles each errored → 3 error events");
+  for (const e of errors) {
+    assert.equal(e.message, "doc_extractor_timeout");
+    assert.equal(e.retryable, true);
+    assert.ok(typeof e.toggle_idx === "number");
+    assert.ok(typeof e.toggle_title === "string");
+  }
+  // Crucial: errored toggles do NOT also fire onSkip(extractor_returned_empty)
+  const emptySkips = skips.filter((s) => s.reason === "extractor_returned_empty");
+  assert.equal(emptySkips.length, 0, "errored toggles must not be conflated with empty ones");
+});
