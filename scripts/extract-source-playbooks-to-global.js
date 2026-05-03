@@ -141,11 +141,28 @@ for (const pb of playbooks) {
 
   console.log(`  → extraction toggle par toggle (Sonnet)...`);
   const t0 = Date.now();
+  // Per-toggle visibility (PR #232) : count empty vs error explicitly so the
+  // 0-extraction case (visite_profil produced 0 propositions silently) becomes
+  // audible in stdout.
+  const toggleEmpties = []; // { toggle_idx, toggle_title, ... }
+  const toggleErrors = [];  // { toggle_idx, toggle_title, message, retryable, ... }
   let candidates;
   try {
     candidates = await extractPlaybookToPropositions(
       { prose, sourceCore: pb.source_core, playbookId: pb.id, docFilename: `playbook:${pb.source_core}` },
-      { onSkip: (s) => console.log(`    skip toggle ${s.toggle_idx} (${s.reason}, ${s.prose_len} chars)`) }
+      {
+        onSkip: (s) => {
+          if (s.reason === "extractor_returned_empty") {
+            toggleEmpties.push(s);
+          } else {
+            console.log(`    skip toggle ${s.toggle_idx} (${s.reason}, ${s.prose_len} chars)`);
+          }
+        },
+        onError: (e) => {
+          toggleErrors.push(e);
+          console.log(`    ✗ ERROR toggle ${e.toggle_idx} "${e.toggle_title}"${e.sub_chunk_idx != null ? ` sub#${e.sub_chunk_idx}` : ""}: ${e.message} (retryable=${e.retryable})`);
+        },
+      }
     );
   } catch (err) {
     console.log(`  ✗ extraction échouée: ${err.message}`);
@@ -153,8 +170,17 @@ for (const pb of playbooks) {
   }
   const dt = ((Date.now() - t0) / 1000).toFixed(1);
   console.log(`  ✓ ${candidates.length} candidates extraits en ${dt}s`);
+  if (toggleEmpties.length > 0) {
+    const list = toggleEmpties.map((s) => `T${s.toggle_idx}${s.sub_chunk_idx != null ? `.${s.sub_chunk_idx}` : ""}`).join(", ");
+    console.log(`    ⓘ ${toggleEmpties.length} toggle(s) returned empty (LLM no-op): ${list}`);
+  }
+  if (toggleErrors.length > 0) {
+    console.log(`    ⚠ ${toggleErrors.length} toggle(s) FAILED — see ✗ lines above. Re-run script to retry.`);
+  }
   summary.playbooks_processed++;
   summary.candidates_total += candidates.length;
+  summary.toggle_empties = (summary.toggle_empties || 0) + toggleEmpties.length;
+  summary.toggle_errors = (summary.toggle_errors || 0) + toggleErrors.length;
 
   // Compte les toggles uniques touchés (info)
   const togglesSeen = new Set(candidates.map((c) => c.provenance.toggle_idx));
@@ -271,6 +297,8 @@ console.log("=== Résumé ===");
 console.log(`Playbooks traités       : ${summary.playbooks_processed}`);
 console.log(`Toggles uniques (sum)   : ${summary.toggles_total}`);
 console.log(`Candidates extraites    : ${summary.candidates_total}`);
+console.log(`Toggles empty (LLM ∅)   : ${summary.toggle_empties || 0}`);
+console.log(`Toggles errored         : ${summary.toggle_errors || 0}`);
 if (APPLY) {
   console.log(`Inserts                 : ${summary.inserts}`);
   console.log(`Merges (provenance ⊕)   : ${summary.merges}`);
