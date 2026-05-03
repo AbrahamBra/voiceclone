@@ -12,6 +12,87 @@ import { getActiveArtifactsForPersona } from "../lib/protocol-v2-db.js";
 import { recordFiring, resolveFirings } from "../lib/protocol-v2-rule-counters.js";
 
 /**
+ * Chantier 3 fuite #4 — emit an implicit_correct feedback_event when the
+ * user follow-up text starts with a strong negation marker ("non c'est
+ * pas ma voix", "arrête de me vouvoyer", "j'ai déraillé refais"…). Mirror
+ * of emitImplicitAccept but routes to event_type='corrected' (drains as
+ * harmful) and carries the user message text as correction_text so the
+ * proposition extractor has substance to work with.
+ *
+ * Skips if any feedback_event already exists for the bot message (explicit
+ * signal wins). Best-effort, fire-and-forget via waitUntil.
+ */
+function emitImplicitCorrect(supabase, messageId, conversationId, personaId, userText) {
+  const work = (async () => {
+    try {
+      const { data: existing } = await supabase
+        .from("feedback_events")
+        .select("id")
+        .eq("message_id", messageId)
+        .limit(1);
+      if (existing && existing.length > 0) return;
+
+      const correctionText = (userText || "").slice(0, 500);
+
+      const lePayload = {
+        source: "chat_followup_implicit",
+        fb_event_type: "corrected",
+        message_id: messageId,
+        conversation_id: conversationId,
+        intensity: "implicit",
+      };
+      const { data: leData, error: leErr } = await supabase
+        .from("learning_events")
+        .insert({ persona_id: personaId, event_type: "correction_saved", payload: lePayload })
+        .select("id").single();
+      if (leErr) {
+        console.log(JSON.stringify({
+          event: "implicit_correct_error",
+          ts: new Date().toISOString(),
+          stage: "learning_events_insert",
+          message_id: messageId,
+          error: leErr.message, code: leErr.code, details: leErr.details,
+        }));
+      }
+
+      const { error: feErr } = await supabase.from("feedback_events").insert({
+        conversation_id: conversationId,
+        message_id: messageId,
+        persona_id: personaId,
+        event_type: "corrected",
+        correction_text: correctionText,
+        rules_fired: [],
+        learning_event_id: leData?.id || null,
+      });
+      if (feErr) {
+        console.log(JSON.stringify({
+          event: "implicit_correct_error",
+          ts: new Date().toISOString(),
+          stage: "feedback_events_insert",
+          message_id: messageId,
+          error: feErr.message, code: feErr.code, details: feErr.details,
+        }));
+      }
+
+      await resolveFirings({ supabase, messageId, outcome: "harmful" });
+    } catch (err) {
+      console.log(JSON.stringify({
+        event: "implicit_correct_error",
+        ts: new Date().toISOString(),
+        stage: "exception",
+        message_id: messageId,
+        error: err?.message || "Unknown",
+      }));
+    }
+  })();
+  try {
+    waitUntil(work);
+  } catch {
+    // Outside Vercel runtime → IIFE already in flight.
+  }
+}
+
+/**
  * Chantier 3.1 — emit an implicit_accept feedback_event on a prior bot message
  * when the user sends a follow-up without explicit feedback, and resolve the
  * corresponding rule_firings to outcome='helpful'. Skips if the message
@@ -97,6 +178,7 @@ function emitImplicitAccept(supabase, messageId, conversationId, personaId) {
   }
 }
 import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, detectMetacognitiveInsights, looksLikeDirectInstruction, looksLikeNegativeFeedback, detectNegativeFeedback, classifyMessage, looksLikeHorsCible } from "../lib/feedback-detect.js";
+import { classifyUserFollowup } from "../lib/classify-user-followup.js";
 import { selectModel } from "../lib/model-router.js";
 import { consolidateCorrections } from "../lib/correction-consolidation.js";
 import { logLearningEvent } from "../lib/learning-events.js";
@@ -283,13 +365,21 @@ export default async function handler(req, res) {
       .limit(40);
 
     const history = (dbMessages || []).reverse();
-    // Chantier 3.1 — implicit_accept on the prior bot message. The user just
-    // sent a follow-up without correcting → strongest signal we have that the
-    // previous output was acceptable. Best-effort, fire-and-forget so chat
-    // latency is unchanged. Skips if the message already has any feedback row.
+    // Chantier 3.1 + chantier 3 fuite #4 — implicit signal on the prior bot
+    // message. Classify the user follow-up : if it opens with a strong
+    // negation marker ("non c'est pas...", "arrête", "j'ai déraillé"…) →
+    // emit implicit_correct (harmful). Otherwise → implicit_accept (helpful).
+    // Best-effort, fire-and-forget so chat latency is unchanged. Skips if
+    // the bot message already has any explicit feedback_event row.
     const lastBotInHistory = [...history].reverse().find((m) => m.role === "assistant");
     if (lastBotInHistory?.id) {
-      emitImplicitAccept(supabase, lastBotInHistory.id, convId, personaId);
+      const verdict = classifyUserFollowup(message);
+      if (verdict === "correct") {
+        emitImplicitCorrect(supabase, lastBotInHistory.id, convId, personaId, message);
+      } else if (verdict === "accept") {
+        emitImplicitAccept(supabase, lastBotInHistory.id, convId, personaId);
+      }
+      // verdict === null → no follow-up signal (empty/unparseable text)
     }
     messages = [...history.map(({ role, content }) => ({ role, content })), { role: "user", content: message }];
   } else {
