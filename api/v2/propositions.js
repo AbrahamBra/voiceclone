@@ -61,7 +61,7 @@ const ARTIFACT_KIND_TO_SEVERITY = {
 const PROPOSITION_COLUMNS =
   "id, document_id, source, source_ref, source_refs, count, intent, " +
   "target_kind, target_section_id, proposed_text, rationale, confidence, " +
-  "status, user_note, created_at, resolved_at";
+  "status, user_note, created_at, resolved_at, provenance";
 
 // Columns we need internally for accept/reject/revise side-effects.
 const FULL_PROPOSITION_COLUMNS =
