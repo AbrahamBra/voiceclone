@@ -210,7 +210,10 @@ describe("Chunk 2 wiring — full pipeline composed with in-process stubs", () =
     assert.equal(row.intent, "add_rule");
     assert.equal(row.target_kind, "hard_rules");
     assert.equal(row.status, "pending");
-    assert.equal(row.embedding.length, 1024);
+    // Post pgvector fix: embedding is JSON.stringify'd before insert.
+    // Verify the parsed payload is still a 1024-dim array.
+    assert.equal(typeof row.embedding, "string");
+    assert.equal(JSON.parse(row.embedding).length, 1024);
 
     // Verify the event was marked drained.
     assert.equal(drained.length, 1);

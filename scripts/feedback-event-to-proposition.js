@@ -360,7 +360,9 @@ async function persistCandidate({
     proposed_text: proposal.proposed_text,
     rationale: proposal.rationale || null,
     confidence: proposal.confidence,
-    embedding: embedding ?? null,
+    // pgvector requires literal string "[a,b,c,...]" — raw JS arrays are
+    // silently stored as NULL by supabase-js. Same fix as api/v2/protocol/import-doc.js.
+    embedding: Array.isArray(embedding) && embedding.length > 0 ? JSON.stringify(embedding) : null,
     status: "pending",
   };
 
