@@ -401,7 +401,10 @@ export default async function handler(req, res, deps) {
       proposed_text: proposal.proposed_text,
       rationale: proposal.rationale || null,
       confidence: proposal.confidence,
-      embedding: embedding ?? null,
+      // pgvector requires the literal string format "[a,b,c,...]" — passing the
+      // raw JS array is silently stored as NULL by supabase-js. Mirrors the
+      // working pattern in lib/embeddings.js:158 (chunks insert).
+      embedding: Array.isArray(embedding) && embedding.length > 0 ? JSON.stringify(embedding) : null,
       status: "pending",
     };
 
