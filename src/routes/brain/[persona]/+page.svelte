@@ -16,6 +16,8 @@
   import ContradictionsList from "$lib/components/brain/ContradictionsList.svelte";
   import BatchBar from "$lib/components/brain/BatchBar.svelte";
   import PropositionsList from "$lib/components/brain/PropositionsList.svelte";
+  import DoctrineGrid from "$lib/components/brain/DoctrineGrid.svelte";
+  import SourcesTable from "$lib/components/brain/SourcesTable.svelte";
   import ApiKeysPanel from "$lib/components/ApiKeysPanel.svelte";
   import SettingsPanel from "$lib/components/SettingsPanel.svelte";
 
@@ -163,11 +165,135 @@
     }
   }
 
-  function handleBatchAccept() {
-    showToast("Batch accept : confirm modal arrive en Step 11.", "info");
+  // ── Batch confirm modal ──
+  let batchModalOpen = $state(false);
+  let batchModalAction = $state(null);     // 'accept' | 'reject'
+  let batchModalLoading = $state(false);
+  let batchModalMatched = $state(0);
+  let batchModalSample = $state([]);
+  let batchModalError = $state(null);
+
+  function closeBatchModal() {
+    batchModalOpen = false;
+    batchModalAction = null;
+    batchModalMatched = 0;
+    batchModalSample = [];
+    batchModalError = null;
   }
-  function handleBatchReject() {
-    showToast("Batch reject : confirm modal arrive en Step 11.", "info");
+
+  async function previewBatch(action) {
+    batchModalAction = action;
+    batchModalOpen = true;
+    batchModalLoading = true;
+    batchModalError = null;
+    try {
+      const data = await api(`/api/v2/propositions-batch`, {
+        method: "POST",
+        body: JSON.stringify({
+          persona: personaUuid,
+          filters: {
+            target_kind: propFilters.target_kind || undefined,
+            confidence_min: propFilters.confidence_min,
+          },
+          action,
+          dry_run: true,
+        }),
+      });
+      batchModalMatched = data.matched ?? 0;
+      batchModalSample = data.sample || [];
+    } catch (e) {
+      console.error("[brain/batchPreview] failed:", e);
+      batchModalError = e.message || "erreur";
+    } finally {
+      batchModalLoading = false;
+    }
+  }
+
+  async function confirmBatch() {
+    if (!batchModalAction) return;
+    batchModalLoading = true;
+    batchModalError = null;
+    try {
+      const data = await api(`/api/v2/propositions-batch`, {
+        method: "POST",
+        body: JSON.stringify({
+          persona: personaUuid,
+          filters: {
+            target_kind: propFilters.target_kind || undefined,
+            confidence_min: propFilters.confidence_min,
+          },
+          action: batchModalAction,
+        }),
+      });
+      const verb = batchModalAction === "reject" ? "rejetées" : "acceptées";
+      showToast(`${data.applied ?? 0} propositions ${verb}.`, "info");
+      // Refresh
+      await Promise.all([loadCounts(), loadPropositions(), loadDistribution()]);
+      closeBatchModal();
+    } catch (e) {
+      console.error("[brain/batchConfirm] failed:", e);
+      if (e.status === 501) {
+        batchModalError = "Batch accept arrive V1.1 — accepte les propositions une-par-une via le bouton ✓.";
+      } else {
+        batchModalError = e.message || "erreur";
+      }
+    } finally {
+      batchModalLoading = false;
+    }
+  }
+
+  function handleBatchAccept() { previewBatch("accept"); }
+  function handleBatchReject() { previewBatch("reject"); }
+
+  // ── Protocol sections (DoctrineGrid) + Sources (SourcesTable) ──
+  let protocolSections = $state([]);
+  async function loadProtocol() {
+    if (!personaUuid) return;
+    try {
+      const data = await api(`/api/v2/protocol?persona=${personaUuid}`);
+      protocolSections = data.sections || [];
+    } catch (e) {
+      console.error("[brain/protocol] fetch failed:", e);
+      // Pas de toast — DoctrineGrid affiche cells vides en degraded mode
+    }
+  }
+  $effect(() => { if (personaUuid) loadProtocol(); });
+
+  let sources = $state({ docs: [], playbooks: [] });
+  async function loadSources() {
+    if (!personaUuid) return;
+    try {
+      const data = await api(`/api/v2/sources?persona=${personaUuid}`);
+      sources = { docs: data.docs || [], playbooks: data.playbooks || [] };
+    } catch (e) {
+      console.error("[brain/sources] fetch failed:", e);
+    }
+  }
+  $effect(() => { if (personaUuid) loadSources(); });
+
+  // DoctrineGrid : enrichir protocolSections avec pending_count par target_kind
+  // (dérivé d'allPendingProps groupby target_kind)
+  let pendingCountByKind = $derived(() => {
+    const m = {};
+    for (const p of allPendingProps) {
+      m[p.target_kind] = (m[p.target_kind] || 0) + 1;
+    }
+    return m;
+  });
+
+  let doctrineCells = $derived(() => {
+    return protocolSections.map(s => ({
+      kind: s.kind,
+      prose_chars: (s.prose || "").length,
+      pending_count: pendingCountByKind()[s.kind] || 0,
+    }));
+  });
+
+  function handleDoctrineCellClick(kind) {
+    // V1 : juste expand la section Propositions filtrée par ce kind.
+    propFilters = { ...propFilters, target_kind: kind };
+    propsCollapsed = false;
+    expandAndScrollTo("props");
   }
   function handleSeeAllProps() {
     propsCollapsed = false;
@@ -318,20 +444,18 @@
     count={counts ? `${counts.doctrine_sections_total} sections · ${counts.doctrine_sections_filled} remplies` : null}
     bind:collapsed={doctrineCollapsed}
   >
-    <p class="placeholder">
-      DoctrineGrid (7 cells) arrive dans Step 12 (plan v2).
-    </p>
+    <DoctrineGrid sections={doctrineCells()} onCellClick={handleDoctrineCellClick} />
   </CollapsibleSection>
 
   <CollapsibleSection
     id="sources"
     title="Sources"
-    count={null}
+    count={sources.docs.length || sources.playbooks.length
+      ? `${sources.docs.length} docs · ${sources.playbooks.length} playbooks`
+      : null}
     bind:collapsed={sourcesCollapsed}
   >
-    <p class="placeholder">
-      SourcesTable arrive dans Step 13-14 (plan v2).
-    </p>
+    <SourcesTable docs={sources.docs} playbooks={sources.playbooks} />
   </CollapsibleSection>
 
   <footer class="brain-footer">
@@ -354,6 +478,66 @@
         {#if menuTab === "integrations"}<ApiKeysPanel personaId={personaUuid} />
         {:else if menuTab === "reglages"}<SettingsPanel embedded={true} personaId={personaUuid} onClose={closeMenu} />{/if}
       </div>
+    </div>
+  </div>
+{/if}
+
+{#if batchModalOpen}
+  <div class="menu-overlay" role="dialog" aria-modal="true" onclick={closeBatchModal} onkeydown={(e) => e.key === "Escape" && closeBatchModal()}>
+    <div class="batch-modal" onclick={(e) => e.stopPropagation()} role="document">
+      <header class="batch-modal-head">
+        <h3>
+          {#if batchModalAction === "accept"}✓ Accepter en lot{:else}✗ Rejeter en lot{/if}
+        </h3>
+        <button class="menu-close" onclick={closeBatchModal} aria-label="Fermer">✕</button>
+      </header>
+
+      <div class="batch-modal-body">
+        {#if batchModalLoading && batchModalMatched === 0}
+          <p class="batch-loading">Calcul de l'aperçu…</p>
+        {:else if batchModalError}
+          <p class="batch-error">{batchModalError}</p>
+        {:else}
+          <p class="batch-summary">
+            <strong>{batchModalMatched}</strong> propositions matchent les filtres :
+            <span class="batch-filters">
+              section <em>{propFilters.target_kind || "toutes"}</em> · confidence ≥ <em>{propFilters.confidence_min.toFixed(2)}</em>
+            </span>
+          </p>
+          {#if batchModalSample.length > 0}
+            <div class="batch-sample">
+              <p class="batch-sample-label">Aperçu ({batchModalSample.length}/{batchModalMatched}) :</p>
+              <ul>
+                {#each batchModalSample as s}
+                  <li>
+                    <span class="kind">{s.target_kind}</span>
+                    <span class="text">{s.proposed_text}</span>
+                    <span class="conf">conf {(s.confidence ?? 0).toFixed(2)}</span>
+                  </li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
+          {#if batchModalAction === "accept"}
+            <p class="batch-warning">
+              ⚠ Batch accept arrive V1.1 — pour l'instant accepte les propositions une-par-une via le bouton ✓ dans la liste.
+            </p>
+          {/if}
+        {/if}
+      </div>
+
+      <footer class="batch-modal-foot">
+        <button class="batch-btn" onclick={closeBatchModal} disabled={batchModalLoading}>annuler</button>
+        <button
+          class="batch-btn"
+          class:primary={batchModalAction === "accept"}
+          class:danger={batchModalAction === "reject"}
+          onclick={confirmBatch}
+          disabled={batchModalLoading || batchModalMatched === 0 || (batchModalAction === "accept")}
+        >
+          {#if batchModalLoading}…{:else}confirmer ({batchModalMatched}){/if}
+        </button>
+      </footer>
     </div>
   </div>
 {/if}
@@ -449,6 +633,44 @@
   .menu-close { background: transparent; border: 1px solid var(--rule-strong); padding: 4px 8px; cursor: pointer; border-radius: 2px; font-size: 12px; color: var(--ink-40); }
   .menu-close:hover { color: var(--ink); }
   .menu-body { padding: 16px; overflow-y: auto; }
+
+  .batch-modal {
+    background: var(--paper);
+    border: 1px solid var(--rule-strong);
+    border-radius: 4px;
+    width: 100%;
+    max-width: 640px;
+    max-height: 80dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .batch-modal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--rule); }
+  .batch-modal-head h3 { margin: 0; font-family: var(--font, Georgia, serif); font-weight: 500; font-size: 17px; letter-spacing: -0.01em; }
+  .batch-modal-body { padding: 18px; overflow-y: auto; flex: 1 1 auto; }
+  .batch-modal-foot { display: flex; gap: 10px; justify-content: flex-end; padding: 12px 18px; border-top: 1px solid var(--rule); }
+  .batch-modal-foot .batch-btn { font-family: var(--font-mono); font-size: 11px; padding: 8px 14px; border-radius: 2px; cursor: pointer; border: 1px solid var(--rule-strong); background: transparent; color: var(--ink); }
+  .batch-modal-foot .batch-btn:hover:not(:disabled) { background: var(--paper-subtle, #ecebe4); }
+  .batch-modal-foot .batch-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .batch-modal-foot .batch-btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .batch-modal-foot .batch-btn.danger { color: var(--vermillon-dim, #b43b28); border-color: var(--vermillon-dim, #b43b28); }
+  .batch-modal-foot .batch-btn.danger:hover:not(:disabled) { background: var(--vermillon); color: var(--paper); border-color: var(--vermillon); }
+
+  .batch-loading, .batch-error { font-family: var(--font-mono); font-size: 11px; color: var(--ink-40); }
+  .batch-error { color: var(--vermillon); }
+  .batch-summary { font-family: var(--font, Georgia, serif); font-size: 14px; color: var(--ink); }
+  .batch-summary strong { font-weight: 600; color: var(--ink); }
+  .batch-filters { font-family: var(--font-mono); font-size: 11px; color: var(--ink-40); }
+  .batch-filters em { font-style: normal; color: var(--ink-70); }
+  .batch-sample { margin-top: 14px; }
+  .batch-sample-label { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-40); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+  .batch-sample ul { list-style: none; padding: 0; margin: 0; }
+  .batch-sample li { display: grid; grid-template-columns: 100px 1fr 80px; gap: 12px; padding: 8px 10px; border-bottom: 1px solid var(--rule); align-items: baseline; }
+  .batch-sample li:last-child { border-bottom: none; }
+  .batch-sample .kind { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; color: var(--ink-40); letter-spacing: 0.06em; }
+  .batch-sample .text { font-family: var(--font, Georgia, serif); font-size: 13px; line-height: 1.4; color: var(--ink); }
+  .batch-sample .conf { font-family: var(--font-mono); font-size: 11px; color: var(--ink-70); text-align: right; }
+  .batch-warning { margin-top: 14px; padding: 10px 12px; background: var(--paper-subtle, #ecebe4); border-left: 3px solid var(--vermillon); font-family: var(--font-mono); font-size: 11px; color: var(--ink-70); line-height: 1.5; }
 
   @media (max-width: 700px) {
     .brain-page { padding: 16px 16px 60px; }
