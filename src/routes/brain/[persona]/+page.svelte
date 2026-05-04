@@ -158,8 +158,8 @@
     else goto(`/chat/${personaSlug}`);
   }
 
-  function startFocusMode() {
-    showToast("Mode focus arbitrage arrive en V2.1 — pour l'instant, scroll dans la liste.", "info");
+  function goToArbitrage(focus = "contras") {
+    if (personaUuid) goto(`/persona/${personaUuid}/arbitrage?focus=${focus}`);
   }
 </script>
 
@@ -197,14 +197,14 @@
           ⚡ Contradictions à arbitrer
           {#if counts}<span class="count" class:alert={counts.contradictions_open > 0}>{counts.contradictions_open}</span>{/if}
           {#if contradictions.length > 0}
-            <button class="focus-btn" onclick={startFocusMode}>tout arbitrer →</button>
+            <button class="focus-btn" onclick={() => goToArbitrage("contras")}>tout arbitrer →</button>
           {/if}
         </h3>
         <ContradictionsList contradictions={displayedContras()} loading={false} onResolve={handleContraResolve} />
         {#if contradictions.length > CONTRAS_DISPLAY_LIMIT}
           <p class="more-hint">
             + {contradictions.length - CONTRAS_DISPLAY_LIMIT} autres contradictions ·
-            <button class="link-btn" onclick={startFocusMode}>tout arbitrer en mode focus →</button>
+            <button class="link-btn" onclick={() => goToArbitrage("contras")}>tout arbitrer →</button>
           </p>
         {/if}
       </div>
@@ -213,19 +213,22 @@
         <h3 class="block-title">
           📋 Propositions à reviewer
           {#if counts}<span class="count">{counts.propositions_pending}</span>{/if}
+          {#if allPendingProps.length > 0}
+            <button class="focus-btn" onclick={() => goToArbitrage("props")}>tout voir →</button>
+          {/if}
         </h3>
         <BatchBar
           filters={propFilters}
           {distribution}
           onFilterChange={(f) => propFilters = f}
-          onBatchAccept={() => showToast("Batch accept arrive en V2.1", "info")}
-          onBatchReject={() => showToast("Batch reject arrive en V2.1", "info")}
+          onBatchAccept={() => goToArbitrage("props")}
+          onBatchReject={() => goToArbitrage("props")}
         />
         <PropositionsList
           propositions={displayedProps()}
           total={filteredProps().length}
           onAction={handlePropAction}
-          onSeeAll={() => showToast("Vue paginée arrive en V2.1", "info")}
+          onSeeAll={() => goToArbitrage("props")}
         />
       </div>
     </section>
