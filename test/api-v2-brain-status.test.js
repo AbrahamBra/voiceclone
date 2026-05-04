@@ -202,4 +202,47 @@ describe("GET /api/v2/brain-status", () => {
     await handler(req, res, baseDeps());
     assert.equal(res.statusCode, 405);
   });
+
+  it("REGRESSION : ignores playbook docs (source_core != NULL), uses global doc only", async () => {
+    // Bug Step 0 : un persona peut avoir 1 doc global + N playbooks (mig 055).
+    // Sans le filtre source_core IS NULL, .maybeSingle() throw quand >1 row,
+    // brain-status renvoie 500 et le banner stay à "—".
+    // Cf observation Nicolas 2026-05-04 (5 playbooks + 1 global, tous active).
+    const req = { method: "GET", query: { persona: PERSONA_ID }, headers: {} };
+    const res = makeRes();
+    await handler(req, res, baseDeps({
+      supabase: makeSupabase({
+        protocol_document: {
+          rows: [
+            { id: DOC_ID, owner_kind: "persona", owner_id: PERSONA_ID, status: "active", source_core: null },
+            { id: "pb-spyer", owner_kind: "persona", owner_id: PERSONA_ID, status: "active", source_core: "spyer" },
+            { id: "pb-dr-recue", owner_kind: "persona", owner_id: PERSONA_ID, status: "active", source_core: "dr_recue" },
+            { id: "pb-visite", owner_kind: "persona", owner_id: PERSONA_ID, status: "active", source_core: "visite_profil" },
+          ],
+        },
+        proposition: {
+          rows: [
+            // Props attachées au doc global
+            { id: "p1", document_id: DOC_ID, status: "pending", source: "upload_batch" },
+            { id: "p2", document_id: DOC_ID, status: "pending", source: "upload_batch" },
+            // Props attachées à un playbook : doivent être ignorées par brain-status
+            // (le brain page V1 affiche la doctrine globale uniquement).
+            { id: "p3", document_id: "pb-spyer", status: "pending", source: "upload_batch" },
+          ],
+        },
+        proposition_contradiction: { rows: [] },
+        proposition_merge_history: { rows: [] },
+        protocol_section: {
+          rows: [
+            { id: "s1", document_id: DOC_ID, kind: "identity", prose: "global identity" },
+          ],
+        },
+      }),
+    }));
+    assert.equal(res.statusCode, 200);
+    assert.equal(res._body.document_id, DOC_ID);
+    // Compte 2 props (uniquement celles du global doc), pas 3.
+    assert.equal(res._body.counts.propositions_pending, 2);
+    assert.equal(res._body.counts.doctrine_sections_total, 1);
+  });
 });

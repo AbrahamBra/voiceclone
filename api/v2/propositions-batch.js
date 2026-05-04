@@ -86,13 +86,14 @@ export default async function handler(req, res, deps) {
     return;
   }
 
-  // Resolve active document
+  // Resolve active GLOBAL document (mig 055 : source_core != NULL = playbook).
   const { data: doc, error: docErr } = await supabase
     .from("protocol_document")
     .select("id")
     .eq("owner_kind", "persona")
     .eq("owner_id", personaId)
     .eq("status", "active")
+    .is("source_core", null)
     .maybeSingle();
   if (docErr) {
     res.status(500).json({ error: "protocol_document lookup failed" });

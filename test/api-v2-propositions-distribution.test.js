@@ -194,4 +194,30 @@ describe("GET /api/v2/propositions-distribution", () => {
     });
     assert.equal(res.statusCode, 403);
   });
+
+  it("REGRESSION : ignores playbook docs (source_core != NULL), uses global doc only", async () => {
+    const req = { method: "GET", query: { persona: PERSONA_ID }, headers: {} };
+    const res = makeRes();
+    await handler(req, res, baseDeps({
+      supabase: makeSupabase({
+        protocol_document: {
+          rows: [
+            { id: DOC_ID, owner_kind: "persona", owner_id: PERSONA_ID, status: "active", source_core: null },
+            { id: "pb-spyer", owner_kind: "persona", owner_id: PERSONA_ID, status: "active", source_core: "spyer" },
+          ],
+        },
+        proposition: {
+          rows: [
+            { id: "p1", document_id: DOC_ID, status: "pending", target_kind: "hard_rules", confidence: 0.95 },
+            // Cette prop attachée au playbook doit être IGNORÉE
+            { id: "px", document_id: "pb-spyer", status: "pending", target_kind: "hard_rules", confidence: 0.95 },
+          ],
+        },
+      }),
+    }));
+    assert.equal(res.statusCode, 200);
+    // 1 prop dans le global doc, pas 2.
+    assert.equal(res._body.distribution.all[1][1], 1); // bucket 0.95 = 1
+    assert.equal(res._body.distribution.hard_rules[1][1], 1);
+  });
 });

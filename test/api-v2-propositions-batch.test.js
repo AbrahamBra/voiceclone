@@ -297,6 +297,43 @@ describe("POST /api/v2/propositions-batch", () => {
     assert.match(res._body.error, /accept/i);
   });
 
+  it("REGRESSION : ignores playbook docs (source_core != NULL), uses global doc only", async () => {
+    const deps = baseDeps({
+      supabase: makeSupabase({
+        protocol_document: {
+          rows: [
+            { id: DOC_ID, owner_kind: "persona", owner_id: PERSONA_ID, status: "active", source_core: null },
+            { id: "pb-spyer", owner_kind: "persona", owner_id: PERSONA_ID, status: "active", source_core: "spyer" },
+          ],
+        },
+        proposition: {
+          rows: [
+            { id: "p1", document_id: DOC_ID, status: "pending", target_kind: "hard_rules", confidence: 0.95, proposed_text: "global rule", source: "upload_batch", source_ref: null, source_refs: [], count: 1, intent: "add_rule" },
+            // Cette prop appartient au playbook : ignored
+            { id: "px", document_id: "pb-spyer", status: "pending", target_kind: "hard_rules", confidence: 0.95, proposed_text: "playbook rule", source: "upload_batch", source_ref: null, source_refs: [], count: 1, intent: "add_rule" },
+          ],
+        },
+      }),
+    });
+    const req = {
+      method: "POST",
+      headers: {},
+      query: {},
+      body: {
+        persona: PERSONA_ID,
+        filters: { target_kind: "hard_rules", confidence_min: 0.50 },
+        action: "reject",
+        dry_run: true,
+      },
+    };
+    const res = makeRes();
+    await handler(req, res, deps);
+    assert.equal(res.statusCode, 200);
+    // 1 prop dans le global doc, pas 2.
+    assert.equal(res._body.matched, 1);
+    assert.equal(res._body.sample[0].id, "p1");
+  });
+
   it("action=accept dry_run is allowed (preview matched count)", async () => {
     const deps = baseDeps();
     const req = {
