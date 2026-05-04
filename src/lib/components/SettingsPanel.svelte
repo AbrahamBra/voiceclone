@@ -4,6 +4,8 @@
   import { showToast } from "$lib/stores/ui.js";
   import SidePanel from "./SidePanel.svelte";
 
+  import { personaConfig } from "$lib/stores/persona.js";
+
   // embedded=true: render content directly without SidePanel wrap, for use
   // inside PersonaBrainDrawer. Default preserves legacy standalone behavior.
   let { open = false, personaId = null, onClose, embedded = false } = $props();
@@ -13,8 +15,32 @@
   let usage = $state({ budget_cents: 0, spent_cents: 0, remaining_cents: 0, has_own_key: false });
   let contributors = $state({ contributors: [], is_shared: false, source_persona_name: null });
 
+  // Auto-merge cosine threshold (persona-level).
+  let mergeCos = $state(0.95);
+  let mergeCosSaving = $state(false);
+  let mergeCosLoaded = $state(false);
   $effect(() => {
-    if (open) {
+    const v = $personaConfig?.auto_merge_cosine;
+    if (v != null && !mergeCosLoaded) { mergeCos = Number(v); mergeCosLoaded = true; }
+  });
+
+  async function saveMergeCos() {
+    if (!personaId) return;
+    mergeCosSaving = true;
+    try {
+      await api("/api/v2/persona-settings", {
+        method: "POST",
+        body: JSON.stringify({ persona_id: personaId, auto_merge_cosine: mergeCos }),
+      });
+      personaConfig.update(c => ({ ...c, auto_merge_cosine: mergeCos }));
+      showToast(`Seuil auto-merge → ${mergeCos.toFixed(2)}`, "info");
+    } catch (e) {
+      showToast(`Sauvegarde seuil : ${e.message || "erreur"}`, "error");
+    } finally { mergeCosSaving = false; }
+  }
+
+  $effect(() => {
+    if (open || embedded) {
       fetchUsage();
       if (personaId) fetchContributors();
     }
@@ -78,6 +104,40 @@
       </div>
     {/if}
   </section>
+
+  {#if personaId}
+    <section class="block">
+      <div class="field-label mono">Seuil auto-merge synonymes</div>
+      <div class="slider-row">
+        <input
+          type="range"
+          min="0.65"
+          max="1.0"
+          step="0.01"
+          bind:value={mergeCos}
+        />
+        <span class="slider-val mono">{mergeCos.toFixed(2)}</span>
+      </div>
+      <p class="hint">
+        {#if mergeCos >= 0.95}
+          Strict — ne fusionne que les quasi-doublons. Tu valides plus de propositions à la main.
+        {:else if mergeCos >= 0.85}
+          Modéré — fusionne les paraphrases proches. Risque léger de perdre une nuance.
+        {:else}
+          Large — fusionne agressivement. Risque de perdre des nuances importantes.
+        {/if}
+      </p>
+      <div class="slider-actions">
+        <button
+          class="btn-solid mono"
+          disabled={mergeCosSaving || !mergeCosLoaded || mergeCos === Number($personaConfig?.auto_merge_cosine ?? 0.95)}
+          onclick={saveMergeCos}
+        >
+          {mergeCosSaving ? "…" : "Appliquer"}
+        </button>
+      </div>
+    </section>
+  {/if}
 
   <section class="block">
     <div class="field-label mono">Clé API Anthropic (optionnel)</div>
@@ -241,6 +301,32 @@
   .btn-solid { background: var(--ink); color: var(--paper); border-color: var(--ink); }
   .btn-solid:hover:not(:disabled) { background: var(--vermillon); border-color: var(--vermillon); }
   .btn-solid:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .slider-row input[type="range"] {
+    flex: 1 1 auto;
+    width: auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    accent-color: var(--vermillon);
+  }
+  .slider-val {
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    min-width: 38px;
+    text-align: right;
+    font-size: 12.5px;
+  }
+  .slider-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 8px;
+  }
 
   /* Embedded (inside PersonaBrainDrawer): no surrounding shell — inherits
      drawer's padding. Scope everything with a parent class. */
