@@ -1,5 +1,5 @@
 // GET /api/v2/brain-status?persona=<uuid>
-//   → { persona_id, counts: { contradictions_open, propositions_pending,
+//   → { persona_id, document_id, counts: { contradictions_open, propositions_pending,
 //                              propositions_pending_doc, propositions_pending_chat,
 //                              auto_merged, doctrine_sections_filled,
 //                              doctrine_sections_total } }
@@ -72,13 +72,17 @@ export default async function handler(req, res, deps) {
     return;
   }
 
-  // Active protocol_document — needed to scope proposition + protocol_section.
+  // Active protocol_document — global doc seulement (source_core IS NULL).
+  // Un persona peut avoir plusieurs docs actifs : 1 global + N playbooks
+  // source-specific (mig 055). Le brain page V1 affiche la doctrine globale.
+  // Sans le filtre source_core, .maybeSingle() throw "more than 1 row" → 500.
   const { data: doc, error: docErr } = await supabase
     .from("protocol_document")
     .select("id")
     .eq("owner_kind", "persona")
     .eq("owner_id", personaId)
     .eq("status", "active")
+    .is("source_core", null)
     .maybeSingle();
   if (docErr) {
     res.status(500).json({ error: "protocol_document lookup failed" });
@@ -142,6 +146,7 @@ export default async function handler(req, res, deps) {
 
   res.status(200).json({
     persona_id: personaId,
+    document_id: documentId,
     counts: {
       contradictions_open: (contraRes.data || []).length,
       propositions_pending: propRows.length,
