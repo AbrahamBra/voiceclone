@@ -87,12 +87,16 @@
 
   // ── Filters + filtered props (BatchBar) ──
   let propFilters = $state({ target_kind: null, source_group: null, confidence_min: 0.85 });
-  const PROPS_DISPLAY_LIMIT = 30;
+  const PROPS_DISPLAY_LIMIT = 5;        // cockpit : top-5 only, focus mode V2.1 = "Tout arbitrer"
+  const CONTRAS_DISPLAY_LIMIT = 3;       // cockpit : top-3 contradictions par kind avec le plus de match
   let filteredProps = $derived(() => allPendingProps
     .filter(p => (!propFilters.target_kind || p.target_kind === propFilters.target_kind)
               && (p.confidence ?? 0) >= propFilters.confidence_min - 1e-9)
     .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0)));
   let displayedProps = $derived(() => filteredProps().slice(0, PROPS_DISPLAY_LIMIT));
+
+  // Top-3 contradictions : par cosine desc (les plus crédibles en haut).
+  let displayedContras = $derived(() => contradictions.slice(0, CONTRAS_DISPLAY_LIMIT));
 
   // ── Doctrine cells ──
   let pendingCountByKind = $derived(() => {
@@ -144,21 +148,34 @@
     if (personaUuid) goto(`/persona/${personaUuid}/team`);
   }
 
+  function goToCerveau() {
+    if (personaUuid) goto(`/persona/${personaUuid}/cerveau`);
+  }
+
   function goBack() {
     if (typeof window === "undefined") return;
     if (window.history.length > 1) history.back();
     else goto(`/chat/${personaSlug}`);
   }
+
+  function startFocusMode() {
+    showToast("Mode focus arbitrage arrive en V2.1 — pour l'instant, scroll dans la liste.", "info");
+  }
 </script>
 
-<svelte:head><title>Cockpit · {$personaConfig?.name || "Clone"}</title></svelte:head>
+<svelte:head><title>Cockpit · clone de {$personaConfig?.name || "?"}</title></svelte:head>
 
 <div class="cockpit">
   <header class="cockpit-head">
     <button class="back-btn" onclick={goBack}>← retour</button>
     <div class="title">
       <span class="avatar">{$personaConfig?.avatar || "?"}</span>
-      <h1>Cockpit · {$personaConfig?.name || "Clone"}</h1>
+      <h1>Cockpit · <span class="clone-of">clone de</span> {$personaConfig?.name || "?"}</h1>
+    </div>
+    <div class="head-actions">
+      <button class="head-btn" onclick={goToCerveau} title="Cerveau — protocole + intelligence détaillés">
+        🧠 cerveau
+      </button>
     </div>
   </header>
 
@@ -173,12 +190,27 @@
       <h2 class="zone-label">Décisions</h2>
 
       <div class="block">
-        <h3 class="block-title">⚡ Contradictions à arbitrer {#if counts}<span class="count" class:alert={counts.contradictions_open > 0}>{counts.contradictions_open}</span>{/if}</h3>
-        <ContradictionsList contradictions={contradictions} loading={false} onResolve={handleContraResolve} />
+        <h3 class="block-title">
+          ⚡ Contradictions à arbitrer
+          {#if counts}<span class="count" class:alert={counts.contradictions_open > 0}>{counts.contradictions_open}</span>{/if}
+          {#if contradictions.length > 0}
+            <button class="focus-btn" onclick={startFocusMode}>tout arbitrer →</button>
+          {/if}
+        </h3>
+        <ContradictionsList contradictions={displayedContras()} loading={false} onResolve={handleContraResolve} />
+        {#if contradictions.length > CONTRAS_DISPLAY_LIMIT}
+          <p class="more-hint">
+            + {contradictions.length - CONTRAS_DISPLAY_LIMIT} autres contradictions ·
+            <button class="link-btn" onclick={startFocusMode}>tout arbitrer en mode focus →</button>
+          </p>
+        {/if}
       </div>
 
       <div class="block" id="propositions">
-        <h3 class="block-title">📋 Propositions à reviewer {#if counts}<span class="count">{counts.propositions_pending}</span>{/if}</h3>
+        <h3 class="block-title">
+          📋 Propositions à reviewer
+          {#if counts}<span class="count">{counts.propositions_pending}</span>{/if}
+        </h3>
         <BatchBar
           filters={propFilters}
           {distribution}
@@ -190,7 +222,7 @@
           propositions={displayedProps()}
           total={filteredProps().length}
           onAction={handlePropAction}
-          onSeeAll={() => showToast("Voir tout : V2.1", "info")}
+          onSeeAll={() => showToast("Vue paginée arrive en V2.1", "info")}
         />
       </div>
     </section>
@@ -206,12 +238,60 @@
 
 <style>
   .cockpit { max-width: 1280px; margin: 0 auto; padding: 16px 20px 60px; }
-  .cockpit-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 1px solid var(--rule); margin-bottom: 12px; }
-  .title { display: flex; align-items: center; gap: 10px; }
+  .cockpit-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 1px solid var(--rule); margin-bottom: 12px; gap: 12px; }
+  .title { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; }
   .avatar { font-size: 22px; }
   h1 { margin: 0; font-size: 20px; font-weight: 500; font-family: var(--font, Georgia, serif); }
-  .back-btn { background: transparent; border: 1px solid var(--rule-strong); padding: 6px 10px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; border-radius: 2px; color: var(--ink-40); }
-  .back-btn:hover { color: var(--ink); }
+  .clone-of { font-family: var(--font-mono); font-size: 12px; font-weight: normal; color: var(--ink-40); letter-spacing: 0.02em; }
+
+  .back-btn, .head-btn {
+    background: transparent;
+    border: 1px solid var(--rule-strong);
+    padding: 6px 10px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    cursor: pointer;
+    border-radius: 2px;
+    color: var(--ink-40);
+  }
+  .back-btn:hover, .head-btn:hover { color: var(--ink); background: var(--paper-subtle, #ecebe4); }
+  .head-actions { display: flex; gap: 8px; }
+
+  .focus-btn {
+    background: var(--ink);
+    color: var(--paper);
+    border: 1px solid var(--ink);
+    padding: 5px 10px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    cursor: pointer;
+    border-radius: 2px;
+    margin-left: auto;
+    font-weight: 500;
+  }
+  .focus-btn:hover { background: var(--vermillon, #c45339); border-color: var(--vermillon, #c45339); }
+
+  .more-hint {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--ink-40);
+    padding: 10px 14px;
+    background: var(--paper-subtle, #ecebe4);
+    border-left: 3px solid var(--ink-30, #aaa);
+    margin: 8px 0 0;
+  }
+  .link-btn {
+    background: transparent;
+    border: none;
+    padding: 0;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    cursor: pointer;
+    color: var(--ink);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .link-btn:hover { color: var(--vermillon); }
 
   .error-banner { padding: 10px 14px; background: var(--paper-subtle, #ecebe4); border-left: 3px solid var(--vermillon); font-family: var(--font-mono); font-size: 11px; margin-bottom: 12px; }
 
@@ -223,7 +303,7 @@
   .construction .zone-label { padding: 12px 14px 8px; margin: 0; }
 
   .block { margin-bottom: 24px; }
-  .block-title { font-family: var(--font, Georgia, serif); font-weight: 500; font-size: 18px; margin: 0 0 10px; padding-bottom: 8px; border-bottom: 1px solid var(--rule); display: flex; align-items: baseline; gap: 8px; }
+  .block-title { font-family: var(--font, Georgia, serif); font-weight: 500; font-size: 18px; margin: 0 0 10px; padding-bottom: 8px; border-bottom: 1px solid var(--rule); display: flex; align-items: center; gap: 8px; }
   .count { font-family: var(--font-mono); font-size: 11px; color: var(--ink-40); font-weight: normal; }
   .count.alert { color: var(--vermillon); font-weight: 600; }
 
