@@ -38,6 +38,7 @@ import {
 } from "../../lib/supabase.js";
 import { computeArtifactHash } from "../../lib/protocol-v2-db.js";
 import { deriveCheckParams as _deriveCheckParams } from "../../lib/protocol-v2-check-derivation.js";
+import { summarizeSource } from "../../lib/source-summary.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STATUS_VALUES = new Set(["pending", "accepted", "rejected", "revised", "merged"]);
@@ -134,7 +135,24 @@ async function handleList(req, res, { supabase, hasPersonaAccess, client, isAdmi
     res.status(500).json({ error: "db error" });
     return;
   }
-  res.status(200).json({ propositions: data || [] });
+
+  // Enrich with source_summary (human label) for D2 cockpit treatment.
+  // Resolve upload_batch.source_ref → doc_filename via protocol_import_batch.
+  const props = data || [];
+  const batchRefs = [...new Set(props
+    .filter(p => p.source === "upload_batch" && p.source_ref)
+    .map(p => p.source_ref))];
+  const batchById = {};
+  if (batchRefs.length > 0) {
+    const { data: batches } = await supabase
+      .from("protocol_import_batch")
+      .select("id, doc_filename")
+      .in("id", batchRefs);
+    for (const b of (batches || [])) batchById[b.id] = b;
+  }
+  const enriched = props.map(p => ({ ...p, source_summary: summarizeSource(p, batchById) }));
+
+  res.status(200).json({ propositions: enriched });
 }
 
 async function handleMutate(req, res, { supabase, hasPersonaAccess, client, isAdmin }) {

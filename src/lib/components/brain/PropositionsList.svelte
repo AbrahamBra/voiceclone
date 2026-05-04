@@ -17,10 +17,11 @@
   } = $props();
 
   function srcLabel(p) {
-    const src = p.source_filename || p.source || "—";
+    // Préférer p.source_summary (label humain résolu côté serveur), fallback
+    // sur source_filename ou source brut. count ajouté si > 1.
+    const src = p.source_summary || p.source_filename || p.source || "—";
     const c = p.count ?? 1;
-    const conf = (typeof p.confidence === "number") ? p.confidence.toFixed(2) : "—";
-    return `${src} · count ${c} · ${conf}`;
+    return c > 1 ? `${src} · ${c} mentions` : src;
   }
 
   let extras = $derived(() => {

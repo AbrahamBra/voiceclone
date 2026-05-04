@@ -26,6 +26,7 @@ import {
   supabase as _supabase,
   setCors as _setCors,
 } from "../../lib/supabase.js";
+import { summarizeSource } from "../../lib/source-summary.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const VALID_STATUS = new Set(["open", "punted", "resolved"]);
@@ -90,13 +91,27 @@ export default async function handler(req, res, deps) {
   const propIds = [...new Set(rows.flatMap(r => [r.proposition_a_id, r.proposition_b_id]))];
   const { data: propsRaw, error: pErr } = await supabase
     .from("proposition")
-    .select("id, proposed_text, count, intent, confidence, source, provenance")
+    .select("id, proposed_text, count, intent, confidence, source, source_ref, provenance")
     .in("id", propIds);
   if (pErr) {
     res.status(500).json({ error: "proposition lookup failed", detail: pErr.message });
     return;
   }
   const propsById = new Map((propsRaw || []).map(p => [p.id, p]));
+
+  // Resolve protocol_import_batch.doc_filename via source_ref pour les props upload_batch.
+  // Donne le source_summary humain ("Reflexion process.pdf · 1 mention") au D2 treatment.
+  const batchRefs = [...new Set((propsRaw || [])
+    .filter(p => p.source === "upload_batch" && p.source_ref)
+    .map(p => p.source_ref))];
+  const batchById = {};
+  if (batchRefs.length > 0) {
+    const bRes = await supabase
+      .from("protocol_import_batch")
+      .select("id, doc_filename")
+      .in("id", batchRefs);
+    for (const b of (bRes.data || [])) batchById[b.id] = b;
+  }
 
   const contradictions = rows.map(r => ({
     id: r.id,
@@ -108,14 +123,14 @@ export default async function handler(req, res, deps) {
     resolved_at: r.resolved_at,
     resolved_action: r.resolved_action,
     resolved_note: r.resolved_note,
-    a: shapeProp(propsById.get(r.proposition_a_id)),
-    b: shapeProp(propsById.get(r.proposition_b_id)),
+    a: shapeProp(propsById.get(r.proposition_a_id), batchById),
+    b: shapeProp(propsById.get(r.proposition_b_id), batchById),
   }));
 
   res.status(200).json({ contradictions });
 }
 
-function shapeProp(p) {
+function shapeProp(p, batchById = {}) {
   if (!p) return null;
   return {
     id: p.id,
@@ -125,8 +140,11 @@ function shapeProp(p) {
     confidence: p.confidence != null ? Number(p.confidence) : null,
     source: p.source,
     sources: extractSources(p.provenance),
+    source_summary: summarizeSource(p, batchById),
   };
 }
+
+// summarizeSource importé de lib/source-summary.js (factorisé avec propositions.js).
 
 function extractSources(provenance) {
   if (!provenance || typeof provenance !== "object") return [];
