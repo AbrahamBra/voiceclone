@@ -12,7 +12,40 @@
 
 import dotenv from "dotenv";
 import fs from "node:fs";
-dotenv.config({ path: "C:/Users/abrah/AhmetA/.env", override: true });
+import os from "node:os";
+import path from "node:path";
+
+// Cherche .env dans plusieurs locations (machine-agnostic).
+// Override possible via : DOTENV_PATH=<path> node script.js
+const ENV_CANDIDATES = [
+  process.env.DOTENV_PATH,
+  path.join(os.homedir(), "AhmetA", ".env"),
+  path.join(os.homedir(), ".env"),
+  path.join(process.cwd(), ".env"),
+  "C:/Users/abrah/AhmetA/.env",  // legacy hardcoded
+].filter(Boolean);
+
+let envLoadedFrom = null;
+for (const p of ENV_CANDIDATES) {
+  if (fs.existsSync(p)) {
+    dotenv.config({ path: p, override: true });
+    envLoadedFrom = p;
+    break;
+  }
+}
+if (envLoadedFrom) {
+  console.log(`◇ env loaded from ${envLoadedFrom}`);
+} else {
+  console.log("◇ no .env found, relying on process.env directly");
+}
+
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.ANTHROPIC_API_KEY) {
+  console.error("\n✗ Missing env vars : SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ANTHROPIC_API_KEY.");
+  console.error("\nFix : crée un .env avec ces 3 vars dans une de ces locations :");
+  for (const p of ENV_CANDIDATES) console.error("  - " + p);
+  console.error("\nOu lance avec : DOTENV_PATH=<path/to/.env> node scripts/merge-synonyms-and-list-contradictions.js [...]");
+  process.exit(1);
+}
 
 const { createClient } = await import("@supabase/supabase-js");
 const Anthropic = (await import("@anthropic-ai/sdk")).default;
