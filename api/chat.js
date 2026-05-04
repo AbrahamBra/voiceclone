@@ -96,7 +96,7 @@ function emitImplicitAccept(supabase, messageId, conversationId, personaId) {
     // Outside the Vercel runtime → fall through; the IIFE is already in flight.
   }
 }
-import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, detectMetacognitiveInsights, looksLikeDirectInstruction, looksLikeNegativeFeedback, detectNegativeFeedback, classifyMessage, looksLikeHorsCible } from "../lib/feedback-detect.js";
+import { detectChatFeedback, detectDirectInstruction, detectCoachingCorrection, detectMetacognitiveInsights, looksLikeDirectInstruction, looksLikeNegativeFeedback, detectNegativeFeedback, classifyMessage, looksLikeHorsCible, looksLikeCorrection } from "../lib/feedback-detect.js";
 import { selectModel } from "../lib/model-router.js";
 import { consolidateCorrections } from "../lib/correction-consolidation.js";
 import { logLearningEvent } from "../lib/learning-events.js";
@@ -225,6 +225,7 @@ export default async function handler(req, res) {
   // Resolve conversation
   let convId = conversation_id || null;
   let messages;
+  let prevBotForCorrection = null; // set when user message is a correction — suppresses implicit_accept
 
   // Source-core resolved on this conversation (loaded from DB or set on insert).
   // Used downstream by getActiveArtifactsForPersona to merge in the source-specific
@@ -289,7 +290,12 @@ export default async function handler(req, res) {
     // latency is unchanged. Skips if the message already has any feedback row.
     const lastBotInHistory = [...history].reverse().find((m) => m.role === "assistant");
     if (lastBotInHistory?.id) {
-      emitImplicitAccept(supabase, lastBotInHistory.id, convId, personaId);
+      if (looksLikeCorrection(message)) {
+        // User is correcting the previous draft — capture for diff, skip implicit accept
+        prevBotForCorrection = { id: lastBotInHistory.id, content: lastBotInHistory.content || "" };
+      } else {
+        emitImplicitAccept(supabase, lastBotInHistory.id, convId, personaId);
+      }
     }
     messages = [...history.map(({ role, content }) => ({ role, content })), { role: "user", content: message }];
   } else {
@@ -669,6 +675,21 @@ Longueur : 150-280 caractères, 2-3 lignes. CTA clair avec lien calendrier (plac
               conversationId: convId,
               personaId,
             }).catch(() => { /* best-effort telemetry — never fail the chat */ });
+          }
+          // Correction capture: user corrected the previous draft → emit corrected event
+          // with before/after diff and mark the old draft as rejected.
+          if (prevBotForCorrection) {
+            supabase.from("feedback_events").insert({
+              conversation_id: convId,
+              message_id: prevBotForCorrection.id,
+              persona_id: personaId,
+              event_type: "corrected",
+              diff_before: prevBotForCorrection.content.slice(0, 1000),
+              diff_after: botText.slice(0, 1000),
+              rules_fired: [],
+            }).catch(() => {});
+            supabase.from("messages").update({ turn_kind: "draft_rejected" })
+              .eq("id", prevBotForCorrection.id).catch(() => {});
           }
         }
       } catch (err) {
