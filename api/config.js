@@ -49,6 +49,7 @@ export default async function handler(req, res) {
       scenarios,
       theme: persona.theme,
       voice_complete: voiceComplete,
+      auto_merge_cosine: persona.auto_merge_cosine ?? 0.95,
     });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.error || "Server error" });

@@ -53,6 +53,8 @@ const Anthropic = (await import("@anthropic-ai/sdk")).default;
 const apply = process.argv.includes("--apply");
 const personaArgIdx = process.argv.indexOf("--persona");
 const personaSlug = personaArgIdx >= 0 ? process.argv[personaArgIdx + 1] : "nicolas-lavall-e";
+const autoMergeArgIdx = process.argv.indexOf("--auto-merge-cosine");
+const AUTO_MERGE_COSINE_OVERRIDE = autoMergeArgIdx >= 0 ? Number(process.argv[autoMergeArgIdx + 1]) : null;
 
 const COSINE_THRESHOLD = 0.65;
 const PAIR_LIMIT = 250;
@@ -93,10 +95,18 @@ async function classifyPair(a, b) {
   } catch { return "error"; }
 }
 
-console.log(`=== Auto-merge synonyms + list contradictions (${apply ? "APPLY" : "DRY-RUN"}) persona=${personaSlug} ===\n`);
-
-const { data: persona } = await sb.from("personas").select("id, name").eq("slug", personaSlug).single();
+// select(*) pour tolérer le cas où la column auto_merge_cosine n'existe pas
+// encore (avant DDL ALTER TABLE).
+const { data: persona } = await sb.from("personas").select("*").eq("slug", personaSlug).single();
 if (!persona) { console.error(`persona ${personaSlug} not found`); process.exit(1); }
+
+// Source de vérité : flag CLI > personas.auto_merge_cosine > fallback 0.95.
+// Le fallback couvre le cas où la migration ALTER TABLE n'est pas encore appliquée.
+const AUTO_MERGE_COSINE = AUTO_MERGE_COSINE_OVERRIDE != null
+  ? AUTO_MERGE_COSINE_OVERRIDE
+  : (persona.auto_merge_cosine != null ? Number(persona.auto_merge_cosine) : 0.95);
+
+console.log(`=== Auto-merge synonyms + list contradictions (${apply ? "APPLY" : "DRY-RUN"}) persona=${personaSlug} auto_merge_cosine=${AUTO_MERGE_COSINE}${AUTO_MERGE_COSINE_OVERRIDE != null ? " (CLI override)" : " (from personas table)"} ===\n`);
 
 const { data: docs } = await sb.from("protocol_document").select("id").eq("owner_kind", "persona").eq("owner_id", persona.id);
 const docIds = (docs || []).map((d) => d.id);
@@ -149,8 +159,10 @@ for (const c of candidates) {
 // Cumule source_refs + count.
 const mergedIds = new Set();
 const mergePlan = [];
+let synonymsBelowThreshold = 0;
 for (const s of synonyms) {
   if (mergedIds.has(s.a.id) || mergedIds.has(s.b.id)) continue; // skip transitively
+  if (s.cos < AUTO_MERGE_COSINE) { synonymsBelowThreshold++; continue; }
   const keeper = s.a.proposed_text.length >= s.b.proposed_text.length ? s.a : s.b;
   const loser = keeper === s.a ? s.b : s.a;
   mergedIds.add(loser.id);
@@ -166,6 +178,7 @@ for (const s of synonyms) {
 
 console.log(`\n=== MERGE PLAN ===`);
 console.log(`Synonym pairs detected     : ${synonyms.length}`);
+console.log(`  ↳ below cosine ${AUTO_MERGE_COSINE} (kept pending) : ${synonymsBelowThreshold}`);
 console.log(`Unique merges (no overlap) : ${mergePlan.length}`);
 
 if (mergePlan.length > 0 && !apply) {
