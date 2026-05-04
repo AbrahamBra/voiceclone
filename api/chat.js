@@ -283,7 +283,7 @@ export default async function handler(req, res) {
       .order("created_at", { ascending: false })
       .limit(40);
 
-    const history = (dbMessages || []).reverse();
+    const history = (dbMessages || []).filter(m => (m.content || "").trim()).reverse();
     // Chantier 3.1 — implicit_accept on the prior bot message. The user just
     // sent a follow-up without correcting → strongest signal we have that the
     // previous output was acceptable. Best-effort, fire-and-forget so chat
