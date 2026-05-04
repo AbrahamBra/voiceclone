@@ -295,6 +295,32 @@
     propsCollapsed = false;
     expandAndScrollTo("props");
   }
+
+  // ── Resolve contradiction (Step 15/16) ──
+  async function handleContraResolve(id, action, note) {
+    try {
+      await api(`/api/v2/contradictions-resolve`, {
+        method: "POST",
+        body: JSON.stringify({ id, action, ...(note ? { note } : {}) }),
+      });
+      // Optimistic : retirer la card de la liste open
+      contradictions = contradictions.filter(c => c.id !== id);
+      const verb = {
+        keep_a: "Choix A enregistré",
+        keep_b: "Choix B enregistré",
+        both_false_positive: "Marquée faux-positif",
+        reject_both: "Les deux rejetées",
+        punt: "Mise de côté",
+      }[action] || "Résolu";
+      showToast(verb, "info");
+      // Refresh counts + propositions (les rejets impactent les pending)
+      Promise.all([loadCounts(), loadPropositions(), loadDistribution()]).catch(() => {});
+    } catch (e) {
+      console.error("[brain/contraResolve] failed:", e);
+      showToast(`Résolution : ${e.message || "erreur"}`, "error");
+      throw e;  // remonte pour que ContradictionsList reset son loading state
+    }
+  }
   function handleSeeAllProps() {
     propsCollapsed = false;
     showToast(`${filteredTotal()} propositions au total. Vue paginée arrive en V1.1.`, "info");
@@ -406,7 +432,7 @@
     <BrainNoteStrip>
       <strong>Pourquoi cette liste ?</strong> Pour chaque paire ci-dessous, le système a détecté que les 2 propositions disent l'inverse. Si tu acceptes les 2, le clone reçoit des règles incompatibles. Choisis laquelle garder.
     </BrainNoteStrip>
-    <ContradictionsList contradictions={contradictions} loading={contradictionsLoading} onResolve={null} />
+    <ContradictionsList contradictions={contradictions} loading={contradictionsLoading} onResolve={handleContraResolve} />
   </CollapsibleSection>
 
   <CollapsibleSection

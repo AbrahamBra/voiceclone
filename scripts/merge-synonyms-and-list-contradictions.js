@@ -144,8 +144,15 @@ if (mergePlan.length > 0 && !apply) {
 
 if (apply && mergePlan.length > 0) {
   console.log(`\nApplying merges...`);
-  let okMerge = 0, failMerge = 0;
+  let okMerge = 0, failMerge = 0, mhInsertOk = 0, mhInsertFail = 0;
   for (const m of mergePlan) {
+    // Re-fetch loser snapshot pour proposition_merge_history (texte + provenance
+    // capturés AVANT que le status passe à 'merged'). Le keeper recevra ensuite
+    // les nouveaux source_refs cumulés.
+    const { data: loserSnapshot } = await sb.from("proposition")
+      .select("proposed_text, count, source_refs, provenance")
+      .eq("id", m.loser_id).single();
+
     const { error: updErr } = await sb.from("proposition")
       .update({ source_refs: m.new_refs, count: m.new_count }).eq("id", m.keeper_id);
     if (updErr) { console.error(`  ✗ keeper ${m.keeper_id.slice(0,8)}: ${updErr.message}`); failMerge++; continue; }
@@ -154,8 +161,60 @@ if (apply && mergePlan.length > 0) {
       .eq("id", m.loser_id);
     if (lErr) { console.error(`  ✗ loser ${m.loser_id.slice(0,8)}: ${lErr.message}`); failMerge++; continue; }
     okMerge++;
+
+    // proposition_merge_history : snapshot du loser pour split-back V1.1.
+    // merge_source='auto_synonym', merge_cosine = cosine de la détection.
+    if (loserSnapshot) {
+      const { error: mhErr } = await sb.from("proposition_merge_history").insert({
+        persona_id: persona.id,
+        kept_proposition_id: m.keeper_id,
+        merged_proposition_text: loserSnapshot.proposed_text,
+        merged_proposition_count: Math.max(1, loserSnapshot.count || 1),
+        merged_provenance: loserSnapshot.provenance || null,
+        merged_source_refs: loserSnapshot.source_refs || [],
+        merge_source: "auto_synonym",
+        merge_cosine: Number(m.cosine),
+      });
+      if (mhErr) { console.error(`  ⚠ merge_history ${m.keeper_id.slice(0,8)}: ${mhErr.message}`); mhInsertFail++; }
+      else mhInsertOk++;
+    }
   }
   console.log(`  ✓ merged ${okMerge} pairs (${failMerge} failed)`);
+  console.log(`  ✓ merge_history ${mhInsertOk} rows inserted (${mhInsertFail} failed)`);
+}
+
+// === CONTRADICTIONS DB INSERT (mig 071 — proposition_contradiction) ===
+// Canonicalisation : a_id = LEAST(a, b), b_id = GREATEST → empêche les
+// doublons miroirs via UNIQUE(a, b). Idempotent par UNIQUE constraint :
+// si la paire existe déjà (status open/resolved/punted), on log et continue.
+let contraInsertOk = 0, contraInsertSkipped = 0, contraInsertFail = 0;
+if (apply && contradictions.length > 0) {
+  console.log(`\nInserting contradictions into proposition_contradiction...`);
+  for (const c of contradictions) {
+    const [aId, bId] = c.a.id < c.b.id ? [c.a.id, c.b.id] : [c.b.id, c.a.id];
+    const { error: insErr } = await sb.from("proposition_contradiction").insert({
+      persona_id: persona.id,
+      proposition_a_id: aId,
+      proposition_b_id: bId,
+      kind: c.kind,
+      cosine: Number(c.cos.toFixed(3)),
+      reason: `auto-detected by Haiku (cosine ${c.cos.toFixed(3)}, same kind)`,
+      status: "open",
+    });
+    if (insErr) {
+      // Code 23505 = unique violation = paire déjà enregistrée. On compte
+      // comme skipped (idempotence), pas comme failure.
+      if (insErr.code === "23505" || /duplicate key/i.test(insErr.message || "")) {
+        contraInsertSkipped++;
+      } else {
+        console.error(`  ✗ contra ${aId.slice(0,8)}/${bId.slice(0,8)}: ${insErr.message}`);
+        contraInsertFail++;
+      }
+    } else {
+      contraInsertOk++;
+    }
+  }
+  console.log(`  ✓ ${contraInsertOk} inserted, ${contraInsertSkipped} skipped (already in DB), ${contraInsertFail} failed`);
 }
 
 // === CONTRADICTIONS MD ===
@@ -191,6 +250,7 @@ console.log(`\n=== SUMMARY ===`);
 console.log(`pairs scanned        : ${candidates.length}`);
 console.log(`synonyms (mergeable) : ${synonyms.length}  (${mergePlan.length} unique merges${apply ? " applied" : " preview"})`);
 console.log(`contradictions       : ${contradictions.length}  → ${mdPath}`);
+if (apply) console.log(`contradictions DB    : ${contraInsertOk} new, ${contraInsertSkipped} already-exist, ${contraInsertFail} failed`);
 console.log(`disjoints            : ${disjoints.length}`);
 console.log(`errors               : ${errors.length}`);
-if (!apply) console.log(`\nRe-run with --apply to execute merges.`);
+if (!apply) console.log(`\nRe-run with --apply to execute merges + insert contradictions/merge_history into DB.`);
