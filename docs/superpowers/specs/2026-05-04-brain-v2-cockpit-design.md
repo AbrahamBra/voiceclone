@@ -176,7 +176,7 @@ Lue **de haut en bas** : résultat → tendance → fondation. La causalité nar
 
 **Endpoints à ajouter:**
 - `POST /api/v2/sources/:id/archive` (set status='archived')
-- `DELETE /api/v2/sources/:id` (soft delete or hard delete TBD avec user)
+- `DELETE /api/v2/sources/:id` (soft delete = `protocol_import_batch.status='archived'` ; hard delete out-of-scope V2)
 - `GET /api/v2/sources/:id/chunks` (preview)
 
 ### `/persona/[id]/settings` (déjà spawned)
@@ -218,9 +218,9 @@ Cf. chip task spawned côté V1. Migrer ApiKeysPanel + SettingsPanel ici, retire
 }
 ```
 
-**Source data:** `feedback_events` table where `event_type IN ('corrected', 'validated_edited')`, group by client_id (qui a posté le message), join with personas to attribute setter names.
+**Source data:** `feedback_events` table where `event_type IN ('corrected', 'validated_edited')`, joined to `messages` and/or `conversations` to extract who posted the corrected message (the setter). Group by setter identifier.
 
-**Note:** dépend de la résolution `client_id → setter_name`. À investiguer si `personas` ou autre table relie. Si non disponible, V2 affiche l'UUID setter ou un placeholder `"Setter-1"`.
+**Note implémentation:** `feedback_events` n'a pas de `client_id` direct (cf migration 029). Le setter est inféré via `messages.client_id` ou `conversations.owner_id` — à investiguer Step 1 du plan d'implémentation. Si la mapping setter→nom n'existe pas, V2 affiche un placeholder type `"Setter #1"` indexé par UUID.
 
 #### `GET /api/v2/clone-trajectory?persona=<uuid>&period=8weeks`
 
@@ -293,10 +293,10 @@ COMMENT ON CONSTRAINT feedback_events_event_type_check ON feedback_events IS
 
 ### Nouveaux
 
-- `src/lib/components/cockpit/SetterActivityStrip.svelte`
-- `src/lib/components/cockpit/OutcomeHero.svelte`
-- `src/lib/components/cockpit/TrajectoryBlock.svelte`
-- `src/lib/components/cockpit/DoctrineFoundation.svelte` (renommage + refonte de `brain/DoctrineGrid.svelte` ; déplacé sous `cockpit/`)
+- `src/lib/components/brain/SetterActivityStrip.svelte`
+- `src/lib/components/brain/OutcomeHero.svelte`
+- `src/lib/components/brain/TrajectoryBlock.svelte`
+- `src/lib/components/brain/DoctrineFoundation.svelte` (refonte de `DoctrineGrid.svelte` ; on garde le folder `brain/` puisque la route reste `/brain/[persona]`)
 
 ### Réutilisés (avec retouches)
 
