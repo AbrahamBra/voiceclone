@@ -257,6 +257,9 @@ async function handleMutate(req, res, { supabase, hasPersonaAccess, client, isAd
       sectionId: targetSection.id,
     });
 
+    // 6. Auto-close stale contradictions (best-effort).
+    autoCloseContradictions(supabase, id, "accepted").catch(() => {});
+
     res.status(200).json({
       proposition: data,
       section: { id: targetSection.id, prose: newProse },
@@ -291,6 +294,9 @@ async function handleMutate(req, res, { supabase, hasPersonaAccess, client, isAd
       outcome: "rejected",
       userNote: user_note,
     });
+
+    // Auto-close stale contradictions (best-effort).
+    autoCloseContradictions(supabase, id, "rejected").catch(() => {});
 
     res.status(200).json({ proposition: data, training_example_id: trainingExampleId });
     return;
@@ -330,6 +336,59 @@ async function handleMutate(req, res, { supabase, hasPersonaAccess, client, isAd
 }
 
 // ─── helpers ───────────────────────────────────────────────────────────────
+
+// When a proposition is accepted or rejected, auto-close any open contradictions
+// involving it where the other side is already in a terminal state.
+// Rules:
+//   other=accepted|merged  → both_false_positive  (user accepted both or one was merged)
+//   other=rejected         → keep_a or keep_b     (keep the surviving side)
+// If other side is still pending, leave the contradiction open for explicit arbitrage.
+async function autoCloseContradictions(supabase, propId, newStatus) {
+  const { data: contras } = await supabase
+    .from("proposition_contradiction")
+    .select("id, proposition_a_id, proposition_b_id")
+    .or(`proposition_a_id.eq.${propId},proposition_b_id.eq.${propId}`)
+    .eq("status", "open");
+  if (!contras?.length) return;
+
+  const otherIds = contras.map(c =>
+    c.proposition_a_id === propId ? c.proposition_b_id : c.proposition_a_id
+  );
+  const { data: otherProps } = await supabase
+    .from("proposition")
+    .select("id, status")
+    .in("id", otherIds);
+  const otherStatusMap = Object.fromEntries((otherProps || []).map(p => [p.id, p.status]));
+
+  const now = new Date().toISOString();
+  for (const c of contras) {
+    const otherId = c.proposition_a_id === propId ? c.proposition_b_id : c.proposition_a_id;
+    const otherStatus = otherStatusMap[otherId];
+    let resolvedAction = null;
+
+    if (newStatus === "accepted") {
+      if (otherStatus === "accepted" || otherStatus === "merged") {
+        resolvedAction = "both_false_positive";
+      } else if (otherStatus === "rejected") {
+        resolvedAction = c.proposition_a_id === propId ? "keep_a" : "keep_b";
+      }
+    } else if (newStatus === "rejected") {
+      if (otherStatus === "accepted" || otherStatus === "merged") {
+        resolvedAction = c.proposition_a_id === propId ? "keep_b" : "keep_a";
+      } else if (otherStatus === "rejected") {
+        resolvedAction = "reject_both";
+      }
+    }
+
+    if (!resolvedAction) continue;
+    await supabase.from("proposition_contradiction").update({
+      status: "resolved",
+      resolved_action: resolvedAction,
+      resolved_at: now,
+      resolved_note: "auto-resolved: other proposition already " + otherStatus,
+    }).eq("id", c.id);
+  }
+}
 
 async function documentPersonaId(sb, documentId) {
   const { data, error } = await sb
