@@ -176,6 +176,9 @@
       <button class="head-btn" onclick={goToCerveau} title="Cerveau — protocole + intelligence détaillés">
         🧠 cerveau
       </button>
+      <button class="head-btn" onclick={goToTeam} title="Team — activité détaillée des setters">
+        👥 team
+      </button>
     </div>
   </header>
 
