@@ -15,6 +15,8 @@ const VALID_TYPES = new Set([
   // associé. Émis maintenant en parallèle via api/feedback.js sur ces 2
   // types pour fermer le canal.
   "regen_rejection", "copy_paste_out",
+  // mig 072 — RDV pris marqué par le setter, consommé par /api/v2/clone-outcomes V2
+  "appointment_booked",
 ]);
 
 // Maps a feedback_events.event_type to a learning_events.event_type. Keeps
