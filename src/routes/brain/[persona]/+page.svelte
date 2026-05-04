@@ -172,6 +172,10 @@
   let batchModalMatched = $state(0);
   let batchModalSample = $state([]);
   let batchModalError = $state(null);
+  // V1.1 batch accept : progress per-item pour la boucle séquentielle.
+  // current=0/total=0 quand pas de batch en cours.
+  let batchProgress = $state({ current: 0, total: 0 });
+  let batchAcceptErrors = $state(/** @type {Array<{id: string, message: string}>} */ ([]));
 
   function closeBatchModal() {
     batchModalOpen = false;
@@ -179,6 +183,8 @@
     batchModalMatched = 0;
     batchModalSample = [];
     batchModalError = null;
+    batchProgress = { current: 0, total: 0 };
+    batchAcceptErrors = [];
   }
 
   async function previewBatch(action) {
@@ -211,34 +217,85 @@
 
   async function confirmBatch() {
     if (!batchModalAction) return;
+
+    // ── REJECT : server-side bulk update (1 SQL) ──
+    if (batchModalAction === "reject") {
+      batchModalLoading = true;
+      batchModalError = null;
+      try {
+        const data = await api(`/api/v2/propositions-batch`, {
+          method: "POST",
+          body: JSON.stringify({
+            persona: personaUuid,
+            filters: {
+              target_kind: propFilters.target_kind || undefined,
+              confidence_min: propFilters.confidence_min,
+            },
+            action: "reject",
+          }),
+        });
+        showToast(`${data.applied ?? 0} propositions rejetées.`, "info");
+        await Promise.all([loadCounts(), loadPropositions(), loadDistribution()]);
+        closeBatchModal();
+      } catch (e) {
+        console.error("[brain/batchConfirm/reject] failed:", e);
+        batchModalError = e.message || "erreur";
+      } finally {
+        batchModalLoading = false;
+      }
+      return;
+    }
+
+    // ── ACCEPT (V1.1) : boucle séquentielle client-side ──
+    // On réutilise POST /api/v2/propositions { action:'accept' } unitaire
+    // pour garantir l'identité des side-effects : patch prose, materialize
+    // protocol_artifact (avec deriveCheckParams Haiku pour hard_check),
+    // log extractor_training_example. Sequential car patchProse fait
+    // read-modify-write sur protocol_section.prose sans lock.
+    const targets = filteredProps().slice();
+    if (targets.length === 0) {
+      closeBatchModal();
+      return;
+    }
     batchModalLoading = true;
     batchModalError = null;
-    try {
-      const data = await api(`/api/v2/propositions-batch`, {
-        method: "POST",
-        body: JSON.stringify({
-          persona: personaUuid,
-          filters: {
-            target_kind: propFilters.target_kind || undefined,
-            confidence_min: propFilters.confidence_min,
-          },
-          action: batchModalAction,
-        }),
-      });
-      const verb = batchModalAction === "reject" ? "rejetées" : "acceptées";
-      showToast(`${data.applied ?? 0} propositions ${verb}.`, "info");
-      // Refresh
-      await Promise.all([loadCounts(), loadPropositions(), loadDistribution()]);
-      closeBatchModal();
-    } catch (e) {
-      console.error("[brain/batchConfirm] failed:", e);
-      if (e.status === 501) {
-        batchModalError = "Batch accept arrive V1.1 — accepte les propositions une-par-une via le bouton ✓.";
-      } else {
-        batchModalError = e.message || "erreur";
+    batchAcceptErrors = [];
+    batchProgress = { current: 0, total: targets.length };
+
+    let acceptedCount = 0;
+    for (const p of targets) {
+      batchProgress.current = batchProgress.current + 1;
+      try {
+        await api(`/api/v2/propositions`, {
+          method: "POST",
+          body: JSON.stringify({ action: "accept", id: p.id }),
+        });
+        // Optimistic : retire de la liste pending locale (la PropositionsList
+        // se met à jour au fur et à mesure si la modal est fermée).
+        allPendingProps = allPendingProps.filter(x => x.id !== p.id);
+        acceptedCount++;
+      } catch (e) {
+        batchAcceptErrors = [
+          ...batchAcceptErrors,
+          { id: p.id, message: e?.message || String(e) },
+        ];
       }
-    } finally {
-      batchModalLoading = false;
+    }
+
+    batchModalLoading = false;
+    batchProgress = { current: 0, total: 0 };
+
+    // Refresh full state — le protocole a changé (prose patched), counts
+    // et distribution aussi. loadProtocol() pour DoctrineGrid.prose_chars.
+    await Promise.all([loadCounts(), loadPropositions(), loadDistribution(), loadProtocol()]);
+
+    if (batchAcceptErrors.length === 0) {
+      showToast(`${acceptedCount} propositions acceptées.`, "info");
+      closeBatchModal();
+    } else {
+      showToast(`${acceptedCount} acceptées · ${batchAcceptErrors.length} erreurs`, "error");
+      batchModalError = `${acceptedCount} acceptées, ${batchAcceptErrors.length} erreurs.`;
+      // Modal reste ouverte pour que l'utilisateur voie le détail des erreurs.
     }
   }
 
@@ -519,10 +576,13 @@
       </header>
 
       <div class="batch-modal-body">
-        {#if batchModalLoading && batchModalMatched === 0}
+        {#if batchModalLoading && batchModalMatched === 0 && batchProgress.total === 0}
           <p class="batch-loading">Calcul de l'aperçu…</p>
-        {:else if batchModalError}
-          <p class="batch-error">{batchModalError}</p>
+        {:else if batchProgress.total > 0}
+          <p class="batch-progress">
+            Acceptation en cours : <strong>{batchProgress.current}/{batchProgress.total}</strong>
+            <span class="batch-progress-hint">— chaque acceptation patche le protocole et matérialise un artifact (Haiku derivation pour les hard_checks).</span>
+          </p>
         {:else}
           <p class="batch-summary">
             <strong>{batchModalMatched}</strong> propositions matchent les filtres :
@@ -544,10 +604,18 @@
               </ul>
             </div>
           {/if}
-          {#if batchModalAction === "accept"}
-            <p class="batch-warning">
-              ⚠ Batch accept arrive V1.1 — pour l'instant accepte les propositions une-par-une via le bouton ✓ dans la liste.
-            </p>
+          {#if batchModalError}
+            <p class="batch-error">{batchModalError}</p>
+          {/if}
+          {#if batchAcceptErrors.length > 0}
+            <details class="batch-errs">
+              <summary>{batchAcceptErrors.length} erreur{batchAcceptErrors.length > 1 ? "s" : ""}</summary>
+              <ul>
+                {#each batchAcceptErrors as err (err.id)}
+                  <li><code>{err.id.slice(0, 8)}</code> · {err.message}</li>
+                {/each}
+              </ul>
+            </details>
           {/if}
         {/if}
       </div>
@@ -559,9 +627,15 @@
           class:primary={batchModalAction === "accept"}
           class:danger={batchModalAction === "reject"}
           onclick={confirmBatch}
-          disabled={batchModalLoading || batchModalMatched === 0 || (batchModalAction === "accept")}
+          disabled={batchModalLoading || batchModalMatched === 0}
         >
-          {#if batchModalLoading}…{:else}confirmer ({batchModalMatched}){/if}
+          {#if batchProgress.total > 0}
+            {batchProgress.current}/{batchProgress.total}…
+          {:else if batchModalLoading}
+            …
+          {:else}
+            confirmer ({batchModalMatched})
+          {/if}
         </button>
       </footer>
     </div>
@@ -696,7 +770,14 @@
   .batch-sample .kind { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; color: var(--ink-40); letter-spacing: 0.06em; }
   .batch-sample .text { font-family: var(--font, Georgia, serif); font-size: 13px; line-height: 1.4; color: var(--ink); }
   .batch-sample .conf { font-family: var(--font-mono); font-size: 11px; color: var(--ink-70); text-align: right; }
-  .batch-warning { margin-top: 14px; padding: 10px 12px; background: var(--paper-subtle, #ecebe4); border-left: 3px solid var(--vermillon); font-family: var(--font-mono); font-size: 11px; color: var(--ink-70); line-height: 1.5; }
+  .batch-progress { font-family: var(--font, Georgia, serif); font-size: 14px; color: var(--ink); margin: 0; }
+  .batch-progress strong { font-family: var(--font-mono); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .batch-progress-hint { display: block; margin-top: 6px; font-family: var(--font-mono); font-size: 11px; color: var(--ink-40); line-height: 1.5; }
+
+  .batch-errs { margin-top: 14px; font-family: var(--font-mono); font-size: 11px; color: var(--ink-70); }
+  .batch-errs summary { cursor: pointer; color: var(--vermillon); padding: 4px 0; }
+  .batch-errs ul { margin: 4px 0 0; padding-left: 18px; list-style: square; }
+  .batch-errs code { background: color-mix(in srgb, var(--ink) 6%, transparent); padding: 0 4px; border-radius: 2px; }
 
   @media (max-width: 700px) {
     .brain-page { padding: 16px 16px 60px; }
