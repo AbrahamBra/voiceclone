@@ -152,6 +152,27 @@ describe("protocol-v2-db", () => {
       const arts = await getActiveArtifactsForPersona(sb, "p1", { limit: 4 });
       assert.equal(arts.length, 4);
     });
+
+    it("priority-sorts: manual_override first, then hard > strong > light, recency as tiebreaker", async () => {
+      const sb = makeStub({
+        protocol_document: [{ id: "d1", owner_kind: "persona", owner_id: "p1", status: "active", version: 1 }],
+        protocol_section: [{ id: "s1", document_id: "d1" }],
+        protocol_artifact: [
+          { id: "light-old",   source_section_id: "s1", is_active: true, is_manual_override: false, kind: "pattern",    content: { text: "light old"   }, severity: "light",  created_at: "2026-01-01T00:00:00Z" },
+          { id: "hard-new",    source_section_id: "s1", is_active: true, is_manual_override: false, kind: "hard_check", content: { text: "hard new"    }, severity: "hard",   created_at: "2026-05-01T00:00:00Z" },
+          { id: "strong-mid",  source_section_id: "s1", is_active: true, is_manual_override: false, kind: "pattern",    content: { text: "strong mid"  }, severity: "strong", created_at: "2026-03-01T00:00:00Z" },
+          { id: "override",    source_section_id: "s1", is_active: true, is_manual_override: true,  kind: "hard_check", content: { text: "override"    }, severity: "hard",   created_at: "2026-02-01T00:00:00Z" },
+          { id: "hard-old",    source_section_id: "s1", is_active: true, is_manual_override: false, kind: "hard_check", content: { text: "hard old"    }, severity: "hard",   created_at: "2026-01-15T00:00:00Z" },
+        ],
+      });
+      const arts = await getActiveArtifactsForPersona(sb, "p1", { limit: 5 });
+      const ids = arts.map(a => a.id);
+      assert.equal(ids[0], "override",   "manual override must be first");
+      assert.equal(ids[1], "hard-new",   "hard recency: newer before older");
+      assert.equal(ids[2], "hard-old",   "hard recency: older second");
+      assert.equal(ids[3], "strong-mid", "strong before light");
+      assert.equal(ids[4], "light-old",  "light last");
+    });
   });
 
   describe("source_core dimension (migration 055)", () => {
