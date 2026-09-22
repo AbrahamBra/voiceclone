@@ -83,7 +83,7 @@ Synchrone :
 - `POST /api/auto-critique`, `GET /api/fidelity`, `POST /api/fidelity-tuning`, `GET /api/eval`
 - `GET /api/share`, `POST /api/account/delete`, `GET /api/usage`, `GET /api/metrics`, `GET /api/contributors`, `GET /api/config`, `GET /api/settings`
 
-Cron Vercel (voir [vercel.json](vercel.json)) :
+Cron via GitHub Actions (voir [.github/workflows/cron.yml](.github/workflows/cron.yml) — le plan Vercel Hobby n'accepte que des crons quotidiens ; secrets `CRON_BASE_URL` + `CRON_SECRET` côté GitHub) :
 - `*/5 * * * *` → `/api/cron-protocol-v2-drain` (drain feedback → propositions, atomic claim, 60s max)
 - `*/10 * * * *` → `/api/cron-consolidate` (consolidation propositions → artefacts, 300s max)
 - `0 */6 * * *` → `/api/cron-auto-critique` (auto-critique sur conversations récentes, 300s max)

@@ -25,23 +25,5 @@
     "api/cron-protocol-v2-drain.js": { "maxDuration": 60 },
     "api/cron-auto-critique.js": { "maxDuration": 300 },
     "api/cron-fidelity.js": { "maxDuration": 300 }
-  },
-  "crons": [
-    {
-      "path": "/api/cron-consolidate",
-      "schedule": "*/10 * * * *"
-    },
-    {
-      "path": "/api/cron-protocol-v2-drain",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron-auto-critique",
-      "schedule": "0 */6 * * *"
-    },
-    {
-      "path": "/api/cron-fidelity",
-      "schedule": "0 3 * * *"
-    }
-  ]
+  }
 }
