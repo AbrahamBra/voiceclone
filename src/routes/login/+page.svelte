@@ -32,6 +32,7 @@
       const data = await resp.json();
       isAdmin.set(!!data.isAdmin);
       if (data.clientName) clientName.set(data.clientName);
+      if (data.isAdmin) return "/clones";
       const target = pickPersona(data.personas);
       return target ? `/chat/${target.id}` : "/create";
     } catch {
@@ -67,6 +68,10 @@
       if (data.session?.token) sessionToken.set(data.session.token);
       isAdmin.set(!!data.isAdmin);
       if (data.clientName) clientName.set(data.clientName);
+      if (data.isAdmin) {
+        goto("/clones");
+        return;
+      }
       const target = pickPersona(data.personas);
       goto(target ? `/chat/${target.id}` : "/create");
     } catch {
