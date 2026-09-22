@@ -82,7 +82,7 @@ const KEY_ID = "22222222-2222-2222-2222-222222222222";
 
 describe("CRUD /api/v2/persona-api-keys", () => {
   it("405 on PATCH", async () => {
-    const { default: handler } = await import("../api/v2/persona-api-keys.js");
+    const { default: handler } = await import("../api/_handlers/v2/persona-api-keys.js");
     const req = { method: "PATCH", headers: {}, query: {}, body: {} };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -90,7 +90,7 @@ describe("CRUD /api/v2/persona-api-keys", () => {
   });
 
   it("403 on auth failure", async () => {
-    const { default: handler } = await import("../api/v2/persona-api-keys.js");
+    const { default: handler } = await import("../api/_handlers/v2/persona-api-keys.js");
     const req = { method: "GET", headers: {}, query: { persona: PERSONA_ID }, body: {} };
     const res = makeRes();
     await handler(req, res, baseDeps({
@@ -100,7 +100,7 @@ describe("CRUD /api/v2/persona-api-keys", () => {
   });
 
   it("GET 400 when persona missing/non-uuid", async () => {
-    const { default: handler } = await import("../api/v2/persona-api-keys.js");
+    const { default: handler } = await import("../api/_handlers/v2/persona-api-keys.js");
     const req = { method: "GET", headers: {}, query: { persona: "not-uuid" }, body: {} };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -108,7 +108,7 @@ describe("CRUD /api/v2/persona-api-keys", () => {
   });
 
   it("GET 403 when client lacks access", async () => {
-    const { default: handler } = await import("../api/v2/persona-api-keys.js");
+    const { default: handler } = await import("../api/_handlers/v2/persona-api-keys.js");
     const req = { method: "GET", headers: {}, query: { persona: PERSONA_ID }, body: {} };
     const res = makeRes();
     await handler(req, res, baseDeps({ hasPersonaAccess: async () => false }));
@@ -116,7 +116,7 @@ describe("CRUD /api/v2/persona-api-keys", () => {
   });
 
   it("POST creates key + returns raw_key once", async () => {
-    const { default: handler } = await import("../api/v2/persona-api-keys.js");
+    const { default: handler } = await import("../api/_handlers/v2/persona-api-keys.js");
     const supa = makeFakeSupabase();
     const req = {
       method: "POST", headers: {}, query: {},
@@ -135,7 +135,7 @@ describe("CRUD /api/v2/persona-api-keys", () => {
   });
 
   it("POST 400 when persona_id missing", async () => {
-    const { default: handler } = await import("../api/v2/persona-api-keys.js");
+    const { default: handler } = await import("../api/_handlers/v2/persona-api-keys.js");
     const req = { method: "POST", headers: {}, query: {}, body: { label: "x" } };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -143,7 +143,7 @@ describe("CRUD /api/v2/persona-api-keys", () => {
   });
 
   it("GET returns hash-free public columns only", async () => {
-    const { default: handler } = await import("../api/v2/persona-api-keys.js");
+    const { default: handler } = await import("../api/_handlers/v2/persona-api-keys.js");
     const supa = makeFakeSupabase([
       { id: KEY_ID, persona_id: PERSONA_ID, label: "k1", key_hash: "abc", created_at: "2026-05-01T00:00:00Z", last_used_at: null, revoked_at: null },
     ]);
@@ -157,7 +157,7 @@ describe("CRUD /api/v2/persona-api-keys", () => {
   });
 
   it("DELETE soft-revokes (sets revoked_at)", async () => {
-    const { default: handler } = await import("../api/v2/persona-api-keys.js");
+    const { default: handler } = await import("../api/_handlers/v2/persona-api-keys.js");
     const supa = makeFakeSupabase([
       { id: KEY_ID, persona_id: PERSONA_ID, label: "k1", key_hash: "abc", revoked_at: null },
     ]);
@@ -170,7 +170,7 @@ describe("CRUD /api/v2/persona-api-keys", () => {
   });
 
   it("DELETE 404 when key missing", async () => {
-    const { default: handler } = await import("../api/v2/persona-api-keys.js");
+    const { default: handler } = await import("../api/_handlers/v2/persona-api-keys.js");
     const req = { method: "DELETE", headers: {}, query: { id: KEY_ID }, body: {} };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -178,7 +178,7 @@ describe("CRUD /api/v2/persona-api-keys", () => {
   });
 
   it("DELETE idempotent on already-revoked", async () => {
-    const { default: handler } = await import("../api/v2/persona-api-keys.js");
+    const { default: handler } = await import("../api/_handlers/v2/persona-api-keys.js");
     const supa = makeFakeSupabase([
       { id: KEY_ID, persona_id: PERSONA_ID, key_hash: "abc", revoked_at: "2026-04-30T00:00:00Z" },
     ]);

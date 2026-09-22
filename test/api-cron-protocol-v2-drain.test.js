@@ -31,7 +31,7 @@ describe("api/cron-protocol-v2-drain — auth gate", () => {
     delete process.env.CRON_SECRET;
     try {
       const { default: handler } = await import(
-        `../api/cron-protocol-v2-drain.js?nosecret=${Date.now()}`
+        `../api/_handlers/cron-protocol-v2-drain.js?nosecret=${Date.now()}`
       );
       const res = makeRes();
       await handler({ headers: { authorization: "Bearer whatever" } }, res);
@@ -44,7 +44,7 @@ describe("api/cron-protocol-v2-drain — auth gate", () => {
   it("401 when bearer mismatches", async () => {
     process.env.CRON_SECRET = "expected-token";
     const { default: handler } = await import(
-      `../api/cron-protocol-v2-drain.js?wrongtoken=${Date.now()}`
+      `../api/_handlers/cron-protocol-v2-drain.js?wrongtoken=${Date.now()}`
     );
     const res = makeRes();
     await handler({ headers: { authorization: "Bearer nope" } }, res);
@@ -61,7 +61,7 @@ describe("api/cron-protocol-v2-drain — auth gate", () => {
 describe("api/cron-protocol-v2-drain — drain wiring", () => {
   async function loadHandler() {
     return await import(
-      `../api/cron-protocol-v2-drain.js?wiring=${Date.now()}-${Math.random()}`
+      `../api/_handlers/cron-protocol-v2-drain.js?wiring=${Date.now()}-${Math.random()}`
     );
   }
 

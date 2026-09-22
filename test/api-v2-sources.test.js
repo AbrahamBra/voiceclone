@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import handler from "../api/v2/sources.js";
+import handler from "../api/_handlers/v2/sources.js";
 
 // GET /api/v2/sources?persona=<uuid>
 //   → { persona_id, docs: [...], playbooks: [...] }

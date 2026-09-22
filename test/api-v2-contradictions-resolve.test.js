@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import handler from "../api/v2/contradictions-resolve.js";
+import handler from "../api/_handlers/v2/contradictions-resolve.js";
 
 // POST /api/v2/contradictions-resolve
 //   body: { id: <uuid>, action: keep_a|keep_b|both_false_positive|reject_both|punt, note?: string }

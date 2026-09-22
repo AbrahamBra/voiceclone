@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import handler from "../api/v2/propositions-distribution.js";
+import handler from "../api/_handlers/v2/propositions-distribution.js";
 
 // Same DI pattern as test/api-v2-brain-status.test.js.
 // Buckets verrouillés : 11 buckets de 1.00 → 0.50 par pas de 0.05.

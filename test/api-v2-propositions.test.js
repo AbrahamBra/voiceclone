@@ -149,7 +149,7 @@ function baseDeps(overrides = {}) {
 }
 
 async function loadHandler() {
-  const { default: handler } = await import("../api/v2/propositions.js");
+  const { default: handler } = await import("../api/_handlers/v2/propositions.js");
   return handler;
 }
 
@@ -767,7 +767,7 @@ describe("Task 4.3 — training examples", () => {
 describe("patchProse — pure function", () => {
   let patchProse;
   it("loads the export", async () => {
-    const mod = await import("../api/v2/propositions.js");
+    const mod = await import("../api/_handlers/v2/propositions.js");
     patchProse = mod.patchProse;
     assert.equal(typeof patchProse, "function");
   });

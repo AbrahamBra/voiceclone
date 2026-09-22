@@ -72,6 +72,8 @@ Conséquence pratique : la catégorisation du document à l'import (`persona_con
 
 ### API serverless ([api/](api/))
 
+Une seule fonction Vercel : [api/[...path].js](api/[...path].js) route `/api/*` vers les handlers de [api/_handlers/](api/_handlers/) (préfixe `_` = ignoré par Vercel ; le plan Hobby limite à 12 fonctions par déploiement). Ajouter un endpoint = un fichier dans `_handlers/` **et** une entrée dans la table `routes` du routeur.
+
 Synchrone :
 - `POST /api/chat` — inférence SSE clone (orchestration pipeline)
 - `POST /api/clone` — génération brouillon (legacy)

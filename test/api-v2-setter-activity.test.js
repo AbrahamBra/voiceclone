@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import handler from "../api/v2/setter-activity.js";
+import handler from "../api/_handlers/v2/setter-activity.js";
 
 // GET /api/v2/setter-activity?persona=<uuid>&period=week|month
 //   → { persona_id, period, since, total_corrections, propositions_generated,

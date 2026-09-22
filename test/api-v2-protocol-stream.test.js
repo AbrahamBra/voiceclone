@@ -99,7 +99,7 @@ function baseDeps(overrides = {}) {
 }
 
 async function loadHandler() {
-  const { default: handler } = await import("../api/v2/protocol/stream.js");
+  const { default: handler } = await import("../api/_handlers/v2/protocol/stream.js");
   return handler;
 }
 

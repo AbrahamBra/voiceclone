@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import handler from "../api/v2/propositions-batch.js";
+import handler from "../api/_handlers/v2/propositions-batch.js";
 
 // POST /api/v2/propositions-batch
 // body: { persona, filters: { target_kind?, confidence_min }, action: 'accept'|'reject', dry_run?: true }

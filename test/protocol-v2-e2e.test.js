@@ -40,7 +40,7 @@ import {
   SEMANTIC_DEDUP_THRESHOLD,
   isProtocolEmbeddingAvailable,
 } from "../lib/protocol-v2-embeddings.js";
-import handler from "../api/v2/protocol/extract.js";
+import handler from "../api/_handlers/v2/protocol/extract.js";
 
 // ─────────────────────────────────────────────────────────────
 // Surface 1 — wiring smoke test (always runs)

@@ -15,7 +15,7 @@ function makeRes() {
 
 describe("POST /api/cron-auto-critique", () => {
   it("returns 401 without bearer token", async () => {
-    const handler = (await import("../api/cron-auto-critique.js")).default;
+    const handler = (await import("../api/_handlers/cron-auto-critique.js")).default;
     const req = { method: "POST", query: {}, headers: {} };
     const res = makeRes();
     await handler(req, res);
@@ -24,7 +24,7 @@ describe("POST /api/cron-auto-critique", () => {
   });
 
   it("returns 401 with wrong bearer token", async () => {
-    const handler = (await import("../api/cron-auto-critique.js")).default;
+    const handler = (await import("../api/_handlers/cron-auto-critique.js")).default;
     const original = process.env.CRON_SECRET;
     process.env.CRON_SECRET = "real-secret";
     try {

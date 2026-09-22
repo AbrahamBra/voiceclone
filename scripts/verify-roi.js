@@ -16,7 +16,7 @@ if (!personaId) { console.error("No active persona"); process.exit(1); }
 // Admin-bypass via ADMIN_CODE — if unset, simulate by monkey-patching the request
 const ADMIN_CODE = process.env.ADMIN_CODE;
 
-const handler = (await import("../api/feedback-roi.js")).default;
+const handler = (await import("../api/_handlers/feedback-roi.js")).default;
 
 const headers = ADMIN_CODE ? { "x-access-code": ADMIN_CODE } : { "x-access-code": "__bypass_test" };
 

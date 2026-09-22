@@ -20,7 +20,7 @@ function makeRes() {
 // exercised in integration; here we verify the response shape and validation.
 describe("POST /api/feedback type=client_validate", { skip: !HAS_DB && "no DB env vars" }, () => {
   it("rejects missing botMessage with 400", async () => {
-    const handler = (await import("../api/feedback.js")).default;
+    const handler = (await import("../api/_handlers/feedback.js")).default;
     const req = {
       method: "POST",
       query: {},
@@ -36,7 +36,7 @@ describe("POST /api/feedback type=client_validate", { skip: !HAS_DB && "no DB en
 
   it("responds with ok=true and signal='client_validated' on success", async () => {
     if (!process.env.TEST_PERSONA_ID) return;
-    const handler = (await import("../api/feedback.js")).default;
+    const handler = (await import("../api/_handlers/feedback.js")).default;
     const req = {
       method: "POST",
       query: {},

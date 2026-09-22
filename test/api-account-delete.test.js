@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 
-import handler from "../api/account/delete.js";
+import handler from "../api/_handlers/account/delete.js";
 
 const CLIENT_ID = "c-1234abcd-aaaa-bbbb-cccc-deadbeefcafe";
 const ACCESS_CODE = "secret-code-zzz";

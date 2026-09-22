@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import handler from "../api/v2/contradictions.js";
+import handler from "../api/_handlers/v2/contradictions.js";
 
 // Same DI + extended-stub pattern as test/api-v2-brain-status.test.js.
 // Adds .order() recording so we can assert sort direction.

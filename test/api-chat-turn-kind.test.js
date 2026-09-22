@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 
 describe("api/chat.js turn_kind tagging (static check)", () => {
   it("assistant insertions include turn_kind", async () => {
-    const src = await fs.readFile(new URL("../api/chat.js", import.meta.url), "utf8");
+    const src = await fs.readFile(new URL("../api/_handlers/chat.js", import.meta.url), "utf8");
     // Window of 300 chars after each `role: 'assistant'` to absorb multiline objects
     const matches = [...src.matchAll(/role:\s*['"]assistant['"]([^}]{0,300}|[\s\S]{0,300}?\})/g)];
     assert.ok(matches.length >= 3, `expected at least 3 assistant inserts in api/chat.js, got ${matches.length}`);
@@ -20,7 +20,7 @@ describe("api/chat.js turn_kind tagging (static check)", () => {
   // Scoped to `{ conversation_id: ... role: "user" ... }` objects — ignores
   // in-memory prompt arrays passed to the LLM.
   it("user DB insertions include turn_kind", async () => {
-    const src = await fs.readFile(new URL("../api/chat.js", import.meta.url), "utf8");
+    const src = await fs.readFile(new URL("../api/_handlers/chat.js", import.meta.url), "utf8");
     const matches = [...src.matchAll(/\{\s*conversation_id[^}]{0,300}role:\s*['"]user['"][^}]{0,300}\}/g)];
     assert.ok(matches.length >= 3, `expected at least 3 user DB inserts in api/chat.js, got ${matches.length}`);
     for (const m of matches) {

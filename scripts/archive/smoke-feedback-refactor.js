@@ -11,7 +11,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 const PERSONA_ID = "32047cda-77cf-466b-899d-27d151a487a4"; // nicolas
 process.env.ADMIN_CODE = process.env.ADMIN_CODE || "diag-bypass-no-real-admin";
 
-const handler = (await import("../api/feedback.js")).default;
+const handler = (await import("../api/_handlers/feedback.js")).default;
 
 function mkRes() {
   let status = 200, payload = null;

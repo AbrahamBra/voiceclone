@@ -17,7 +17,7 @@ function makeRes() {
 
 describe("GET /api/feedback-events", () => {
   it("returns 400 when conversation id missing", async () => {
-    const handler = (await import("../api/feedback-events.js")).default;
+    const handler = (await import("../api/_handlers/feedback-events.js")).default;
     const req = { method: "GET", query: {}, headers: {} };
     const res = makeRes();
     await handler(req, res);
@@ -26,7 +26,7 @@ describe("GET /api/feedback-events", () => {
   });
 
   it("returns 401 without access code", async () => {
-    const handler = (await import("../api/feedback-events.js")).default;
+    const handler = (await import("../api/_handlers/feedback-events.js")).default;
     const req = { method: "GET", query: { conversation: "00000000-0000-0000-0000-000000000000" }, headers: {} };
     const res = makeRes();
     await handler(req, res);
@@ -34,7 +34,7 @@ describe("GET /api/feedback-events", () => {
   });
 
   it("rejects unknown methods", async () => {
-    const handler = (await import("../api/feedback-events.js")).default;
+    const handler = (await import("../api/_handlers/feedback-events.js")).default;
     const req = { method: "PUT", query: {}, headers: {} };
     const res = makeRes();
     await handler(req, res);
@@ -44,7 +44,7 @@ describe("GET /api/feedback-events", () => {
 
 describe("POST /api/feedback-events", { skip: !HAS_DB && "no DB env vars" }, () => {
   it("rejects invalid event_type", async () => {
-    const handler = (await import("../api/feedback-events.js")).default;
+    const handler = (await import("../api/_handlers/feedback-events.js")).default;
     const req = {
       method: "POST",
       query: {},
@@ -58,7 +58,7 @@ describe("POST /api/feedback-events", { skip: !HAS_DB && "no DB env vars" }, () 
   });
 
   it("accepts event_type='client_validated' (passes validation)", async () => {
-    const handler = (await import("../api/feedback-events.js")).default;
+    const handler = (await import("../api/_handlers/feedback-events.js")).default;
     const req = {
       method: "POST",
       query: {},
@@ -73,7 +73,7 @@ describe("POST /api/feedback-events", { skip: !HAS_DB && "no DB env vars" }, () 
   });
 
   it("Chantier 3 leak fix — accepts event_type='regen_rejection' (passes validation)", async () => {
-    const handler = (await import("../api/feedback-events.js")).default;
+    const handler = (await import("../api/_handlers/feedback-events.js")).default;
     const req = {
       method: "POST",
       query: {},
@@ -87,7 +87,7 @@ describe("POST /api/feedback-events", { skip: !HAS_DB && "no DB env vars" }, () 
   });
 
   it("Chantier 3 leak fix — accepts event_type='copy_paste_out' (passes validation)", async () => {
-    const handler = (await import("../api/feedback-events.js")).default;
+    const handler = (await import("../api/_handlers/feedback-events.js")).default;
     const req = {
       method: "POST",
       query: {},
@@ -101,7 +101,7 @@ describe("POST /api/feedback-events", { skip: !HAS_DB && "no DB env vars" }, () 
   });
 
   it("Chantier 3.1 — accepts event_type='implicit_accept' (passes validation)", async () => {
-    const handler = (await import("../api/feedback-events.js")).default;
+    const handler = (await import("../api/_handlers/feedback-events.js")).default;
     const req = {
       method: "POST",
       query: {},
@@ -115,7 +115,7 @@ describe("POST /api/feedback-events", { skip: !HAS_DB && "no DB env vars" }, () 
   });
 
   it("Chantier 3.1 — accepts event_type='implicit_dismiss' (passes validation)", async () => {
-    const handler = (await import("../api/feedback-events.js")).default;
+    const handler = (await import("../api/_handlers/feedback-events.js")).default;
     const req = {
       method: "POST",
       query: {},

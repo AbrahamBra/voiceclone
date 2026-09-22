@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import handler, { chunkDoc, appendToIdentitySection } from "../api/v2/protocol/import-doc.js";
+import handler, { chunkDoc, appendToIdentitySection } from "../api/_handlers/v2/protocol/import-doc.js";
 
 const VALID_PERSONA = "00000000-0000-0000-0000-000000000010";
 const VALID_DOC = "00000000-0000-0000-0000-000000000020";

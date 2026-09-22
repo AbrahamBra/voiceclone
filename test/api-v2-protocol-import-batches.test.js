@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import handler from "../api/v2/protocol/import-batches.js";
+import handler from "../api/_handlers/v2/protocol/import-batches.js";
 
 const VALID_PERSONA = "00000000-0000-0000-0000-000000000010";
 const DOC_ID = "00000000-0000-0000-0000-000000000020";

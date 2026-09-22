@@ -15,7 +15,7 @@ function makeRes() {
 
 describe("PATCH /api/messages", () => {
   it("rejects non-PATCH methods", async () => {
-    const handler = (await import("../api/messages.js")).default;
+    const handler = (await import("../api/_handlers/messages.js")).default;
     const req = { method: "GET", query: {}, headers: {} };
     const res = makeRes();
     await handler(req, res);
@@ -23,7 +23,7 @@ describe("PATCH /api/messages", () => {
   });
 
   it("rejects without auth (before id validation)", async () => {
-    const handler = (await import("../api/messages.js")).default;
+    const handler = (await import("../api/_handlers/messages.js")).default;
     const req = { method: "PATCH", query: {}, headers: {}, body: { turn_kind: "toi" } };
     const res = makeRes();
     await handler(req, res);
