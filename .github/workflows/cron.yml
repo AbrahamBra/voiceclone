@@ -1,0 +1,69 @@
+name: cron
+
+# Boucle d'apprentissage — planification déplacée de Vercel Cron vers GitHub
+# Actions (le plan Vercel Hobby n'accepte que des crons quotidiens).
+# Mêmes cadences qu'avant dans vercel.json. Chaque entrée `schedule` déclenche
+# son propre run ; le step correspondant est choisi via github.event.schedule.
+#
+# Secrets requis (Settings → Secrets → Actions) :
+#   CRON_BASE_URL  ex. https://voiceclone-lake.vercel.app
+#   CRON_SECRET    même valeur que la variable d'env CRON_SECRET sur Vercel
+#
+# Note : GitHub peut décaler un run de quelques minutes en période de charge,
+# et désactive les workflows planifiés après 60 jours sans activité sur le repo.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *" # cron-protocol-v2-drain
+    - cron: "*/10 * * * *" # cron-consolidate
+    - cron: "0 */6 * * *" # cron-auto-critique
+    - cron: "0 3 * * *" # cron-fidelity
+  workflow_dispatch:
+    inputs:
+      endpoint:
+        description: "Endpoint à appeler manuellement"
+        type: choice
+        required: true
+        default: cron-protocol-v2-drain
+        options:
+          - cron-protocol-v2-drain
+          - cron-consolidate
+          - cron-auto-critique
+          - cron-fidelity
+
+concurrency:
+  group: cron-${{ github.event.schedule || inputs.endpoint }}
+  cancel-in-progress: false
+
+jobs:
+  call:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Résoudre l'endpoint
+        id: pick
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+          MANUAL: ${{ inputs.endpoint }}
+        run: |
+          case "$SCHEDULE" in
+            "*/5 * * * *")  ep=cron-protocol-v2-drain ;;
+            "*/10 * * * *") ep=cron-consolidate ;;
+            "0 */6 * * *")  ep=cron-auto-critique ;;
+            "0 3 * * *")    ep=cron-fidelity ;;
+            *)              ep="$MANUAL" ;;
+          esac
+          echo "endpoint=$ep" >> "$GITHUB_OUTPUT"
+
+      - name: Appeler ${{ steps.pick.outputs.endpoint }}
+        env:
+          BASE_URL: ${{ secrets.CRON_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          ENDPOINT: ${{ steps.pick.outputs.endpoint }}
+        run: |
+          code=$(curl -sS -o /tmp/body -w '%{http_code}' --max-time 330 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/api/$ENDPOINT")
+          echo "HTTP $code"
+          head -c 2000 /tmp/body; echo
+          [ "$code" -ge 200 ] && [ "$code" -lt 300 ]
