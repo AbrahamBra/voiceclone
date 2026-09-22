@@ -129,7 +129,7 @@ const VALID_PERSONA = "11111111-2222-3333-4444-555555555555";
 
 describe("POST /api/v2/protocol/source-playbooks — validation", () => {
   it("rejects missing persona_id", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "POST", body: { source_core: "visite_profil", prose: "x" } };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -138,7 +138,7 @@ describe("POST /api/v2/protocol/source-playbooks — validation", () => {
   });
 
   it("rejects invalid source_core", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "POST", body: { persona_id: VALID_PERSONA, source_core: "bogus", prose: "x" } };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -147,7 +147,7 @@ describe("POST /api/v2/protocol/source-playbooks — validation", () => {
   });
 
   it("rejects empty prose", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "POST", body: { persona_id: VALID_PERSONA, source_core: "visite_profil", prose: "   " } };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -156,7 +156,7 @@ describe("POST /api/v2/protocol/source-playbooks — validation", () => {
   });
 
   it("rejects access denied for non-admin without persona access", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "POST", body: { persona_id: VALID_PERSONA, source_core: "visite_profil", prose: "abc" } };
     const res = makeRes();
     await handler(req, res, baseDeps({
@@ -169,7 +169,7 @@ describe("POST /api/v2/protocol/source-playbooks — validation", () => {
 
 describe("POST /api/v2/protocol/source-playbooks — happy path", () => {
   it("returns 409 if persona already has an active playbook for this source_core", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = {
       method: "POST",
       body: { persona_id: VALID_PERSONA, source_core: "visite_profil", prose: "abc" },
@@ -192,7 +192,7 @@ describe("POST /api/v2/protocol/source-playbooks — happy path", () => {
   });
 
   it("creates doc + section + materializes high-confidence artifacts on extraction", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = {
       method: "POST",
       body: {
@@ -252,7 +252,7 @@ describe("POST /api/v2/protocol/source-playbooks — happy path", () => {
   });
 
   it("succeeds with extraction killed off — returns extraction_skipped flag", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = {
       method: "POST",
       body: { persona_id: VALID_PERSONA, source_core: "spyer", prose: "Suivi audience Alec Henry" },
@@ -273,7 +273,7 @@ describe("POST /api/v2/protocol/source-playbooks — happy path", () => {
   });
 
   it("survives extraction errors gracefully (doc + section persist, no artifacts)", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = {
       method: "POST",
       body: { persona_id: VALID_PERSONA, source_core: "dr_recue", prose: "..." },
@@ -294,7 +294,7 @@ describe("POST /api/v2/protocol/source-playbooks — happy path", () => {
 
 describe("GET /api/v2/protocol/source-playbooks — list", () => {
   it("rejects missing persona param", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "GET", query: {} };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -302,7 +302,7 @@ describe("GET /api/v2/protocol/source-playbooks — list", () => {
   });
 
   it("returns empty list when persona has no source playbooks", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "GET", query: { persona: VALID_PERSONA } };
     const res = makeRes();
     const supabase = makeSupabase({
@@ -316,7 +316,7 @@ describe("GET /api/v2/protocol/source-playbooks — list", () => {
 
 describe("Method dispatch", () => {
   it("returns 405 for genuinely unsupported methods (PUT)", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "PUT" };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -329,7 +329,7 @@ const VALID_DOC = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 
 describe("GET /api/v2/protocol/source-playbooks?id= — detail", () => {
   it("rejects invalid uuid", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "GET", query: { id: "not-a-uuid" } };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -337,7 +337,7 @@ describe("GET /api/v2/protocol/source-playbooks?id= — detail", () => {
   });
 
   it("returns 404 when doc not found", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "GET", query: { id: VALID_DOC } };
     const res = makeRes();
     await handler(req, res, baseDeps({ supabase: makeSupabase({ selectByTable: { protocol_document: [] } }) }));
@@ -345,7 +345,7 @@ describe("GET /api/v2/protocol/source-playbooks?id= — detail", () => {
   });
 
   it("returns 422 when doc is not a source-specific persona playbook (no source_core)", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "GET", query: { id: VALID_DOC } };
     const res = makeRes();
     const supabase = makeSupabase({
@@ -361,7 +361,7 @@ describe("GET /api/v2/protocol/source-playbooks?id= — detail", () => {
   });
 
   it("returns 403 on access denied", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "GET", query: { id: VALID_DOC } };
     const res = makeRes();
     const supabase = makeSupabase({
@@ -381,7 +381,7 @@ describe("GET /api/v2/protocol/source-playbooks?id= — detail", () => {
   });
 
   it("returns full playbook with section prose+heading", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "GET", query: { id: VALID_DOC } };
     const res = makeRes();
     const supabase = makeSupabase({
@@ -410,7 +410,7 @@ describe("GET /api/v2/protocol/source-playbooks?id= — detail", () => {
 // ── V2.1 — PATCH (edit + re-extract with dedup) ──────────────────
 describe("PATCH /api/v2/protocol/source-playbooks — validation", () => {
   it("rejects missing id query param", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "PATCH", query: {}, body: { prose: "abc" } };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -419,7 +419,7 @@ describe("PATCH /api/v2/protocol/source-playbooks — validation", () => {
   });
 
   it("rejects empty prose", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "PATCH", query: { id: VALID_DOC }, body: { prose: "  " } };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -427,7 +427,7 @@ describe("PATCH /api/v2/protocol/source-playbooks — validation", () => {
   });
 
   it("returns 404 when doc doesn't exist", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "PATCH", query: { id: VALID_DOC }, body: { prose: "abc" } };
     const res = makeRes();
     await handler(req, res, baseDeps({ supabase: makeSupabase({ selectByTable: { protocol_document: [] } }) }));
@@ -435,7 +435,7 @@ describe("PATCH /api/v2/protocol/source-playbooks — validation", () => {
   });
 
   it("returns 422 when doc is not source-specific", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "PATCH", query: { id: VALID_DOC }, body: { prose: "abc" } };
     const res = makeRes();
     const supabase = makeSupabase({
@@ -451,7 +451,7 @@ describe("PATCH /api/v2/protocol/source-playbooks — validation", () => {
   });
 
   it("returns 409 when doc is archived", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "PATCH", query: { id: VALID_DOC }, body: { prose: "abc" } };
     const res = makeRes();
     const supabase = makeSupabase({
@@ -523,7 +523,7 @@ describe("PATCH /api/v2/protocol/source-playbooks — happy path with dedup", ()
       },
     ];
 
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = {
       method: "PATCH",
       query: { id: VALID_DOC },
@@ -561,7 +561,7 @@ describe("PATCH /api/v2/protocol/source-playbooks — happy path with dedup", ()
         protocol_artifact: [],
       },
     });
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = {
       method: "PATCH",
       query: { id: VALID_DOC },
@@ -583,7 +583,7 @@ describe("PATCH /api/v2/protocol/source-playbooks — happy path with dedup", ()
 // ── V2.1 — DELETE (soft archive) ─────────────────────────────────
 describe("DELETE /api/v2/protocol/source-playbooks — archive", () => {
   it("rejects missing id", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "DELETE", query: {} };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -591,7 +591,7 @@ describe("DELETE /api/v2/protocol/source-playbooks — archive", () => {
   });
 
   it("returns 404 when doc not found", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "DELETE", query: { id: VALID_DOC } };
     const res = makeRes();
     await handler(req, res, baseDeps({ supabase: makeSupabase({ selectByTable: { protocol_document: [] } }) }));
@@ -599,7 +599,7 @@ describe("DELETE /api/v2/protocol/source-playbooks — archive", () => {
   });
 
   it("returns 422 when doc is not source-specific", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "DELETE", query: { id: VALID_DOC } };
     const res = makeRes();
     const supabase = makeSupabase({
@@ -615,7 +615,7 @@ describe("DELETE /api/v2/protocol/source-playbooks — archive", () => {
   });
 
   it("idempotent: returns 200 + already_archived flag when doc is already archived", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "DELETE", query: { id: VALID_DOC } };
     const res = makeRes();
     const supabase = makeSupabase({
@@ -634,7 +634,7 @@ describe("DELETE /api/v2/protocol/source-playbooks — archive", () => {
   });
 
   it("flips status to archived on happy path", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "DELETE", query: { id: VALID_DOC } };
     const res = makeRes();
     const supabase = makeSupabase({
@@ -654,7 +654,7 @@ describe("DELETE /api/v2/protocol/source-playbooks — archive", () => {
   });
 
   it("returns 403 on access denied", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "DELETE", query: { id: VALID_DOC } };
     const res = makeRes();
     const supabase = makeSupabase({
@@ -685,7 +685,7 @@ describe("DELETE /api/v2/protocol/source-playbooks — archive", () => {
 //     Distinct from POST with body.persona_id (creates new playbook).
 describe("V2.2 — GET ?id= returns sections array", () => {
   it("returns all sections, not just the first one", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "GET", query: { id: VALID_DOC } };
     const res = makeRes();
     const supabase = makeSupabase({
@@ -714,7 +714,7 @@ describe("V2.2 — GET ?id= returns sections array", () => {
   });
 
   it("returns empty sections array when playbook has none", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "GET", query: { id: VALID_DOC } };
     const res = makeRes();
     const supabase = makeSupabase({
@@ -735,7 +735,7 @@ describe("V2.2 — GET ?id= returns sections array", () => {
 
 describe("V2.2 — PATCH ?id= with section_id targets specific section", () => {
   it("rejects non-uuid section_id", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = {
       method: "PATCH",
       query: { id: VALID_DOC },
@@ -748,7 +748,7 @@ describe("V2.2 — PATCH ?id= with section_id targets specific section", () => {
   });
 
   it("returns 404 when section_id doesn't exist", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = {
       method: "PATCH",
       query: { id: VALID_DOC },
@@ -770,7 +770,7 @@ describe("V2.2 — PATCH ?id= with section_id targets specific section", () => {
   });
 
   it("returns 403 when section belongs to a different document", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const SECTION_ID = "11111111-aaaa-bbbb-cccc-444444444444";
     const req = {
       method: "PATCH",
@@ -795,7 +795,7 @@ describe("V2.2 — PATCH ?id= with section_id targets specific section", () => {
   });
 
   it("targets the specified section_id (not the first one)", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const SECTION_ID = "11111111-aaaa-bbbb-cccc-555555555555";
     const req = {
       method: "PATCH",
@@ -832,7 +832,7 @@ describe("V2.2 — PATCH ?id= with section_id targets specific section", () => {
 
 describe("V2.2 — POST playbook_id appends a new section", () => {
   it("rejects when both playbook_id and persona_id are provided", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = {
       method: "POST",
       body: {
@@ -849,7 +849,7 @@ describe("V2.2 — POST playbook_id appends a new section", () => {
   });
 
   it("rejects missing prose", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "POST", body: { playbook_id: VALID_DOC, prose: "  " } };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -857,7 +857,7 @@ describe("V2.2 — POST playbook_id appends a new section", () => {
   });
 
   it("returns 404 when playbook doesn't exist", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "POST", body: { playbook_id: VALID_DOC, prose: "abc" } };
     const res = makeRes();
     await handler(req, res, baseDeps({ supabase: makeSupabase({ selectByTable: { protocol_document: [] } }) }));
@@ -865,7 +865,7 @@ describe("V2.2 — POST playbook_id appends a new section", () => {
   });
 
   it("appends a new section with order = max(existing) + 1", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = {
       method: "POST",
       body: { playbook_id: VALID_DOC, prose: "Spyer Margo Cunego — engagement audience…" },
@@ -900,7 +900,7 @@ describe("V2.2 — POST playbook_id appends a new section", () => {
   });
 
   it("first section (no existing) gets order=0", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "POST", body: { playbook_id: VALID_DOC, prose: "First section" } };
     const res = makeRes();
     const supabase = makeSupabase({
@@ -923,7 +923,7 @@ describe("V2.2 — POST playbook_id appends a new section", () => {
     const sharedText = "JAMAIS plus de 3 touches";
     const sharedHash = computeArtifactHash(sharedText);
 
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "POST", body: { playbook_id: VALID_DOC, prose: "Margo prose" } };
     const res = makeRes();
     const supabase = makeSupabase({
@@ -957,7 +957,7 @@ describe("V2.2 — POST playbook_id appends a new section", () => {
   });
 
   it("returns 422 when target playbook is archived", async () => {
-    const { default: handler } = await import("../api/v2/protocol/source-playbooks.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/source-playbooks.js");
     const req = { method: "POST", body: { playbook_id: VALID_DOC, prose: "abc" } };
     const res = makeRes();
     const supabase = makeSupabase({

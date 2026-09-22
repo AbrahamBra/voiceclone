@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import handler from "../api/v2/brain-status.js";
+import handler from "../api/_handlers/v2/brain-status.js";
 
 // Same DI pattern as test/api-v2-propositions.test.js, with `.is()` support
 // added for the `reverted_at IS NULL` / `resolved_at IS NULL` filters that

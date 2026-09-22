@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import handler from "../api/v2/protocol/extract.js";
+import handler from "../api/_handlers/v2/protocol/extract.js";
 
 const VALID_UUID_DOC = "00000000-0000-0000-0000-000000000001";
 const VALID_UUID_SECTION = "00000000-0000-0000-0000-000000000002";

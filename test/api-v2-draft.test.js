@@ -62,7 +62,7 @@ function baseDeps(overrides = {}) {
 
 describe("POST /api/v2/draft", () => {
   it("405 on GET", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = { method: "GET", headers: {}, body: {} };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -70,7 +70,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("200 on OPTIONS preflight", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = { method: "OPTIONS", headers: {}, body: {} };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -78,7 +78,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("429 when rate-limited", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = { method: "POST", headers: {}, body: { personaId: "p1", prospectContext: "ctx ctx ctx" } };
     const res = makeRes();
     await handler(req, res, baseDeps({
@@ -89,7 +89,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("403 on auth failure", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = { method: "POST", headers: {}, body: { personaId: "p1", prospectContext: "ctx" } };
     const res = makeRes();
     await handler(req, res, baseDeps({
@@ -99,7 +99,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("402 on budget exceeded", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = { method: "POST", headers: {}, body: { personaId: "p1", prospectContext: "ctx ctx" } };
     const res = makeRes();
     await handler(req, res, baseDeps({
@@ -109,7 +109,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("400 when personaId missing", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = { method: "POST", headers: {}, body: { prospectContext: "ctx" } };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -118,7 +118,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("400 when prospectContext missing", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = { method: "POST", headers: {}, body: { personaId: "p1" } };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -127,7 +127,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("400 when prospectContext too long", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = {
       method: "POST", headers: {},
       body: { personaId: "p1", prospectContext: "x".repeat(10001) },
@@ -139,7 +139,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("400 when history has bad role", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = {
       method: "POST", headers: {},
       body: {
@@ -153,7 +153,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("404 when persona missing", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = { method: "POST", headers: {}, body: { personaId: "missing", prospectContext: "ctx" } };
     const res = makeRes();
     await handler(req, res, baseDeps({ getPersonaFromDb: async () => null }));
@@ -161,7 +161,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("403 when persona belongs to another client and access denied", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = { method: "POST", headers: {}, body: { personaId: "p1", prospectContext: "ctx" } };
     const res = makeRes();
     await handler(req, res, baseDeps({
@@ -172,7 +172,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("200 + draft + confidence=1 on clean generation", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = { method: "POST", headers: {}, body: { personaId: "p1", prospectContext: "Alex DG PME 50p, post sur IA" } };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -187,7 +187,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("confidence drops on violations", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = { method: "POST", headers: {}, body: { personaId: "p1", prospectContext: "ctx" } };
     const res = makeRes();
     await handler(req, res, baseDeps({
@@ -205,7 +205,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("rewrites when rewrite=true and hard violation present", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = {
       method: "POST", headers: {},
       body: { personaId: "p1", prospectContext: "ctx", rewrite: true },
@@ -242,7 +242,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("503 + fallback_message when generate throws", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = { method: "POST", headers: {}, body: { personaId: "p1", prospectContext: "ctx" } };
     const res = makeRes();
     await handler(req, res, baseDeps({
@@ -254,7 +254,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("survives partial DB failures (corrections + entities)", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = { method: "POST", headers: {}, body: { personaId: "p1", prospectContext: "ctx" } };
     const res = makeRes();
     await handler(req, res, baseDeps({
@@ -265,7 +265,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("computeConfidence math", async () => {
-    const { computeConfidence } = await import("../api/v2/draft.js");
+    const { computeConfidence } = await import("../api/_handlers/v2/draft.js");
     assert.equal(computeConfidence([], null), 1.0);
     assert.equal(computeConfidence([{ severity: "hard" }], null), 0.6);
     assert.equal(computeConfidence([{ severity: "strong" }], null), 0.85);
@@ -276,14 +276,14 @@ describe("POST /api/v2/draft", () => {
 
   // ── V3.6.5 — qualification envelope ──────────────────────────
   it("parseQualificationEnvelope returns null + raw text on plain text", async () => {
-    const { parseQualificationEnvelope } = await import("../api/v2/draft.js");
+    const { parseQualificationEnvelope } = await import("../api/_handlers/v2/draft.js");
     const r = parseQualificationEnvelope("Salut, simple message");
     assert.equal(r.qualification, null);
     assert.equal(r.draft, "Salut, simple message");
   });
 
   it("parseQualificationEnvelope parses clean JSON envelope", async () => {
-    const { parseQualificationEnvelope } = await import("../api/v2/draft.js");
+    const { parseQualificationEnvelope } = await import("../api/_handlers/v2/draft.js");
     const json = JSON.stringify({
       qualification: { verdict: "in", reason: "Founder PME 50p", confidence: 0.85 },
       draft: "Salut Alex, vu ton post sur l'IA.",
@@ -296,7 +296,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("parseQualificationEnvelope strips ```json fences", async () => {
-    const { parseQualificationEnvelope } = await import("../api/v2/draft.js");
+    const { parseQualificationEnvelope } = await import("../api/_handlers/v2/draft.js");
     const fenced = '```json\n{"qualification":{"verdict":"out","reason":"Early stage","confidence":0.2},"draft":"skip"}\n```';
     const r = parseQualificationEnvelope(fenced);
     assert.equal(r.qualification.verdict, "out");
@@ -304,7 +304,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("parseQualificationEnvelope normalizes bad verdict to uncertain", async () => {
-    const { parseQualificationEnvelope } = await import("../api/v2/draft.js");
+    const { parseQualificationEnvelope } = await import("../api/_handlers/v2/draft.js");
     const json = JSON.stringify({
       qualification: { verdict: "MAYBE", reason: "x", confidence: 0.5 },
       draft: "ok",
@@ -314,7 +314,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("parseQualificationEnvelope clamps confidence to [0,1]", async () => {
-    const { parseQualificationEnvelope } = await import("../api/v2/draft.js");
+    const { parseQualificationEnvelope } = await import("../api/_handlers/v2/draft.js");
     const high = parseQualificationEnvelope(JSON.stringify({
       qualification: { verdict: "in", reason: "x", confidence: 1.5 }, draft: "d",
     }));
@@ -326,7 +326,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("response includes parsed qualification when generate emits envelope", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = { method: "POST", headers: {}, body: { personaId: "p1", prospectContext: "ctx" } };
     const res = makeRes();
     const envelope = JSON.stringify({
@@ -344,7 +344,7 @@ describe("POST /api/v2/draft", () => {
 
   // ── V3.6.5 — body shape v2 (snake_case + prospect_data) ──────
   it("accepts persona_id + prospect_data shape", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = {
       method: "POST", headers: {},
       body: { persona_id: "p1", prospect_data: { context: "Alex DG PME" } },
@@ -356,7 +356,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("warnings includes notice when source_core absent", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = { method: "POST", headers: {}, body: { personaId: "p1", prospectContext: "ctx ctx" } };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -366,7 +366,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("no source_core warning when valid value provided", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = {
       method: "POST", headers: {},
       body: { personaId: "p1", prospectContext: "ctx", source_core: "visite_profil" },
@@ -379,7 +379,7 @@ describe("POST /api/v2/draft", () => {
 
   // ── V3.6.5 — auto-scrape from linkedin_url ──────────────────
   it("auto-scrape fires when linkedin_url + no inline context", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = {
       method: "POST", headers: {},
       body: {
@@ -402,7 +402,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("auto-scrape skipped when prospectContext already has [Contexte lead] block", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = {
       method: "POST", headers: {},
       body: {
@@ -423,7 +423,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("503 when scrape fails AND no manual context provided", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = {
       method: "POST", headers: {},
       body: { personaId: "p1", prospect_data: { linkedin_url: "https://linkedin.com/in/x" } },
@@ -439,7 +439,7 @@ describe("POST /api/v2/draft", () => {
 
   // ── V3.6.5 — idempotency via external_lead_ref ──────────────
   it("idempotency: returns existing conv when external_lead_ref maps to one", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     let generateCalled = false;
     const fakeSupabase = makeFakeSupabase({
       conversations: [{ id: "conv-existing", persona_id: "p1", external_lead_ref: "breakcold:abc" }],
@@ -468,7 +468,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("idempotency: 409 when external_lead_ref maps to a different persona", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const fakeSupabase = makeFakeSupabase({
       conversations: [{ id: "conv-other", persona_id: "p-OTHER", external_lead_ref: "breakcold:abc" }],
       messages: [],
@@ -485,7 +485,7 @@ describe("POST /api/v2/draft", () => {
 
   // ── V3.6.5 — conv creation when external_lead_ref + no existing ──
   it("creates conv with lifecycle_state='awaiting_send' when external_lead_ref new", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const fakeSupabase = makeFakeSupabase({ conversations: [], messages: [] });
     const req = {
       method: "POST", headers: {},
@@ -510,7 +510,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("response includes persona_id on stateless path (no external_lead_ref)", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = {
       method: "POST", headers: {},
       body: { personaId: "p1", prospectContext: "Alex DG PME 50p" },
@@ -523,7 +523,7 @@ describe("POST /api/v2/draft", () => {
 
   // ── V3.6.5 — API key auth path ──────────────────────────────
   it("API key auth pins persona; rejects mismatched personaId", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const apiKeyPersona = { ...PERSONA, id: "p-fromkey" };
     const req = {
       method: "POST", headers: { "x-api-key": "sk_test" },
@@ -538,7 +538,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("API key auth: aligned personaId proceeds normally", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     const req = {
       method: "POST", headers: { "x-api-key": "sk_test" },
       body: { personaId: "p1", prospectContext: "ctx" },
@@ -551,7 +551,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("API key auth: body without persona_id proceeds (key pins the persona)", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     // Reproduces the n8n / Breakcold call shape : x-api-key header, body
     // carries prospect_data + source_core + external_lead_ref but NO
     // persona_id. The key alone resolves the persona.
@@ -573,13 +573,13 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("validate(): personaId still required without API key context", async () => {
-    const { validate } = await import("../api/v2/draft.js");
+    const { validate } = await import("../api/_handlers/v2/draft.js");
     assert.match(validate({ prospectContext: "x" }), /personaId is required/);
     assert.equal(validate({ prospect_data: { context: "x" } }, { apiKeyPinsPersona: true }), null);
   });
 
   it("hard-fails 500 + fallback_draft when API key persona has no client_id", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     // API key resolves the persona but client=null (persona.client_id was null).
     // Without external_lead_ref the legacy stateless path proceeds — so we
     // also pass external_lead_ref to enter the persistence branch.
@@ -600,7 +600,7 @@ describe("POST /api/v2/draft", () => {
   });
 
   it("hard-fails 500 + fallback_draft on conv insert error (non-23505)", async () => {
-    const { default: handler } = await import("../api/v2/draft.js");
+    const { default: handler } = await import("../api/_handlers/v2/draft.js");
     // Coerce fake supabase to error on insert (simulate FK / NOT NULL).
     const fakeSupabase = makeFakeSupabase({ conversations: [], messages: [] });
     const realFrom = fakeSupabase.from.bind(fakeSupabase);

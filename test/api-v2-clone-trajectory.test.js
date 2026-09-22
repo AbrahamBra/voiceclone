@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import handler from "../api/v2/clone-trajectory.js";
+import handler from "../api/_handlers/v2/clone-trajectory.js";
 
 function makeRes() {
   return {

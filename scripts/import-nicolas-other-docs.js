@@ -8,7 +8,7 @@
 
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
-import handler from "../api/v2/protocol/import-doc.js";
+import handler from "../api/_handlers/v2/protocol/import-doc.js";
 
 // override: true required because the shell env has ANTHROPIC_API_KEY="" set
 // by the harness, which would otherwise prevent dotenv from loading the real

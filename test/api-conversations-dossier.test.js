@@ -16,7 +16,7 @@ function makeRes() {
 
 describe("PATCH /api/conversations — dossier fields", () => {
   it("rejects PATCH without auth (before id validation)", async () => {
-    const handler = (await import("../api/conversations.js")).default;
+    const handler = (await import("../api/_handlers/conversations.js")).default;
     const req = { method: "PATCH", query: {}, headers: {}, body: { prospect_name: "Marie" } };
     const res = makeRes();
     await handler(req, res);
@@ -25,7 +25,7 @@ describe("PATCH /api/conversations — dossier fields", () => {
   });
 
   it("handler source references prospect_name/stage/note", async () => {
-    const src = await fs.readFile(new URL("../api/conversations.js", import.meta.url), "utf8");
+    const src = await fs.readFile(new URL("../api/_handlers/conversations.js", import.meta.url), "utf8");
     assert.match(src, /prospect_name/, "handler should reference prospect_name");
     assert.match(src, /\bstage\b/, "handler should reference stage");
     assert.match(src, /\bnote\b/, "handler should reference note");

@@ -69,7 +69,7 @@ function baseDeps(overrides = {}) {
 }
 
 async function loadHandler() {
-  const mod = await import("../api/v2/protocol/publish.js");
+  const mod = await import("../api/_handlers/v2/protocol/publish.js");
   return mod.default;
 }
 

@@ -26,7 +26,7 @@ const before = await supabase
 
 process.env.ADMIN_CODE = process.env.ADMIN_CODE || "diag-bypass-no-real-admin";
 
-const handler = (await import("../api/feedback.js")).default;
+const handler = (await import("../api/_handlers/feedback.js")).default;
 const req = {
   method: "POST",
   body: { type: "validate", botMessage, persona: persona.id },

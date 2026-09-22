@@ -243,7 +243,7 @@ function makeRes() {
 describe("E2E versioning — HTTP publish flows through to stats migration", () => {
   it("POST /api/v2/protocol/publish returns the migrated counts and persists the changes", async () => {
     const sb = makeSupabase(fixture());
-    const { default: handler } = await import("../api/v2/protocol/publish.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol/publish.js");
 
     const res = makeRes();
     await handler(

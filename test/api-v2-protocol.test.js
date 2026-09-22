@@ -36,7 +36,7 @@ function baseDeps(overrides = {}) {
 
 describe("GET /api/v2/protocol", () => {
   it("returns 400 when persona is missing", async () => {
-    const { default: handler } = await import("../api/v2/protocol.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol.js");
     const req = { method: "GET", query: {} };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -45,7 +45,7 @@ describe("GET /api/v2/protocol", () => {
   });
 
   it("returns 403 when access is denied", async () => {
-    const { default: handler } = await import("../api/v2/protocol.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol.js");
     const req = { method: "GET", query: { persona: "p1" } };
     const res = makeRes();
     await handler(req, res, baseDeps({
@@ -56,7 +56,7 @@ describe("GET /api/v2/protocol", () => {
   });
 
   it("returns document + sections + artifacts for authorized persona", async () => {
-    const { default: handler } = await import("../api/v2/protocol.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol.js");
     const req = { method: "GET", query: { persona: "p1" } };
     const res = makeRes();
     await handler(req, res, baseDeps({
@@ -78,7 +78,7 @@ describe("GET /api/v2/protocol", () => {
   });
 
   it("returns empty shape when persona has no active document", async () => {
-    const { default: handler } = await import("../api/v2/protocol.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol.js");
     const req = { method: "GET", query: { persona: "pNew" } };
     const res = makeRes();
     await handler(req, res, baseDeps({
@@ -92,7 +92,7 @@ describe("GET /api/v2/protocol", () => {
   });
 
   it("rejects non-GET methods with 405", async () => {
-    const { default: handler } = await import("../api/v2/protocol.js");
+    const { default: handler } = await import("../api/_handlers/v2/protocol.js");
     const req = { method: "POST", query: { persona: "p1" } };
     const res = makeRes();
     await handler(req, res, baseDeps());

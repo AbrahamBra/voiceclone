@@ -33,7 +33,7 @@ for (const candidate of envCandidates) {
   }
 }
 import { createClient } from "@supabase/supabase-js";
-import handler from "../api/v2/protocol/import-doc.js";
+import handler from "../api/_handlers/v2/protocol/import-doc.js";
 
 const NICOLAS_SLUG = "nicolas-lavall-e";
 const FIXTURE_PATH = "test/fixtures/process-setter.md";

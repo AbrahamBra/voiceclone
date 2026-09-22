@@ -35,7 +35,7 @@ function baseDeps(overrides = {}) {
 }
 
 async function loadHandler() {
-  const mod = await import("../api/v2/review-deck.js");
+  const mod = await import("../api/_handlers/v2/review-deck.js");
   return mod.default;
 }
 

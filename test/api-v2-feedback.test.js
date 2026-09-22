@@ -34,7 +34,7 @@ function baseDeps(overrides = {}) {
 
 describe("POST /api/v2/feedback", () => {
   it("405 on GET", async () => {
-    const { default: handler } = await import("../api/v2/feedback.js");
+    const { default: handler } = await import("../api/_handlers/v2/feedback.js");
     const req = { method: "GET", headers: {}, body: {} };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -42,7 +42,7 @@ describe("POST /api/v2/feedback", () => {
   });
 
   it("200 on OPTIONS preflight", async () => {
-    const { default: handler } = await import("../api/v2/feedback.js");
+    const { default: handler } = await import("../api/_handlers/v2/feedback.js");
     const req = { method: "OPTIONS", headers: {}, body: {} };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -50,7 +50,7 @@ describe("POST /api/v2/feedback", () => {
   });
 
   it("401 when no x-api-key", async () => {
-    const { default: handler } = await import("../api/v2/feedback.js");
+    const { default: handler } = await import("../api/_handlers/v2/feedback.js");
     const req = { method: "POST", headers: {}, body: { external_lead_ref: "breakcold:42", outcome: "rdv_signed" } };
     const res = makeRes();
     await handler(req, res, baseDeps({ resolveApiKey: async () => null }));
@@ -58,7 +58,7 @@ describe("POST /api/v2/feedback", () => {
   });
 
   it("429 when rate-limited", async () => {
-    const { default: handler } = await import("../api/v2/feedback.js");
+    const { default: handler } = await import("../api/_handlers/v2/feedback.js");
     const req = { method: "POST", headers: {}, body: {} };
     const res = makeRes();
     await handler(req, res, baseDeps({ rateLimit: async () => ({ allowed: false, retryAfter: 30 }) }));
@@ -67,7 +67,7 @@ describe("POST /api/v2/feedback", () => {
   });
 
   it("400 when external_lead_ref missing", async () => {
-    const { default: handler } = await import("../api/v2/feedback.js");
+    const { default: handler } = await import("../api/_handlers/v2/feedback.js");
     const req = { method: "POST", headers: {}, body: { outcome: "rdv_signed" } };
     const res = makeRes();
     await handler(req, res, baseDeps());
@@ -76,7 +76,7 @@ describe("POST /api/v2/feedback", () => {
   });
 
   it("400 when outcome missing or invalid", async () => {
-    const { default: handler } = await import("../api/v2/feedback.js");
+    const { default: handler } = await import("../api/_handlers/v2/feedback.js");
     const req = {
       method: "POST", headers: {},
       body: { external_lead_ref: "breakcold:42", outcome: "rdv_yolo" },
@@ -88,7 +88,7 @@ describe("POST /api/v2/feedback", () => {
   });
 
   it("400 when message_id is not a uuid", async () => {
-    const { default: handler } = await import("../api/v2/feedback.js");
+    const { default: handler } = await import("../api/_handlers/v2/feedback.js");
     const req = {
       method: "POST", headers: {},
       body: { external_lead_ref: "breakcold:42", outcome: "rdv_triggered", message_id: "not-a-uuid" },
@@ -100,7 +100,7 @@ describe("POST /api/v2/feedback", () => {
   });
 
   it("400 when value out of range", async () => {
-    const { default: handler } = await import("../api/v2/feedback.js");
+    const { default: handler } = await import("../api/_handlers/v2/feedback.js");
     const req = {
       method: "POST", headers: {},
       body: { external_lead_ref: "breakcold:42", outcome: "rdv_signed", value: 1e12 },
@@ -112,7 +112,7 @@ describe("POST /api/v2/feedback", () => {
   });
 
   it("400 when note too long", async () => {
-    const { default: handler } = await import("../api/v2/feedback.js");
+    const { default: handler } = await import("../api/_handlers/v2/feedback.js");
     const req = {
       method: "POST", headers: {},
       body: { external_lead_ref: "breakcold:42", outcome: "rdv_signed", note: "x".repeat(501) },
@@ -124,7 +124,7 @@ describe("POST /api/v2/feedback", () => {
   });
 
   it("404 when external_lead_ref does not match any conversation", async () => {
-    const { default: handler } = await import("../api/v2/feedback.js");
+    const { default: handler } = await import("../api/_handlers/v2/feedback.js");
     const req = {
       method: "POST", headers: {},
       body: { external_lead_ref: "breakcold:unknown", outcome: "rdv_signed" },
@@ -136,7 +136,7 @@ describe("POST /api/v2/feedback", () => {
   });
 
   it("409 when external_lead_ref belongs to a different persona", async () => {
-    const { default: handler } = await import("../api/v2/feedback.js");
+    const { default: handler } = await import("../api/_handlers/v2/feedback.js");
     const req = {
       method: "POST", headers: {},
       body: { external_lead_ref: "breakcold:42", outcome: "rdv_signed" },
@@ -153,7 +153,7 @@ describe("POST /api/v2/feedback", () => {
   });
 
   it("503 when supabase is null", async () => {
-    const { default: handler } = await import("../api/v2/feedback.js");
+    const { default: handler } = await import("../api/_handlers/v2/feedback.js");
     const req = {
       method: "POST", headers: {},
       body: { external_lead_ref: "breakcold:42", outcome: "rdv_signed" },
@@ -164,7 +164,7 @@ describe("POST /api/v2/feedback", () => {
   });
 
   it("200 + outcome_id on fresh rdv_signed insert", async () => {
-    const { default: handler } = await import("../api/v2/feedback.js");
+    const { default: handler } = await import("../api/_handlers/v2/feedback.js");
     const req = {
       method: "POST", headers: {},
       body: {
@@ -195,7 +195,7 @@ describe("POST /api/v2/feedback", () => {
   });
 
   it("200 + duplicate=true on idempotent re-fire (23505)", async () => {
-    const { default: handler } = await import("../api/v2/feedback.js");
+    const { default: handler } = await import("../api/_handlers/v2/feedback.js");
     const req = {
       method: "POST", headers: {},
       body: { external_lead_ref: "breakcold:42", outcome: "rdv_signed" },
@@ -216,7 +216,7 @@ describe("POST /api/v2/feedback", () => {
   });
 
   it("400 on FK violation (bad message_id)", async () => {
-    const { default: handler } = await import("../api/v2/feedback.js");
+    const { default: handler } = await import("../api/_handlers/v2/feedback.js");
     const req = {
       method: "POST", headers: {},
       body: {
@@ -238,7 +238,7 @@ describe("POST /api/v2/feedback", () => {
   });
 
   it("validate() exported helper covers happy path", async () => {
-    const { validate } = await import("../api/v2/feedback.js");
+    const { validate } = await import("../api/_handlers/v2/feedback.js");
     assert.equal(validate({ external_lead_ref: "breakcold:42", outcome: "rdv_signed" }), null);
     assert.match(validate(null), /Body must/);
     assert.match(validate({}), /external_lead_ref/);
@@ -246,7 +246,7 @@ describe("POST /api/v2/feedback", () => {
   });
 
   it("OUTCOME_VALUES is the canonical set", async () => {
-    const { OUTCOME_VALUES } = await import("../api/v2/feedback.js");
+    const { OUTCOME_VALUES } = await import("../api/_handlers/v2/feedback.js");
     assert.ok(OUTCOME_VALUES.has("rdv_triggered"));
     assert.ok(OUTCOME_VALUES.has("rdv_signed"));
     assert.ok(OUTCOME_VALUES.has("rdv_no_show"));

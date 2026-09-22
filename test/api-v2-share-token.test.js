@@ -92,7 +92,7 @@ function baseDeps(overrides = {}) {
 }
 
 async function loadHandler() {
-  const mod = await import("../api/v2/personas/share-token.js");
+  const mod = await import("../api/_handlers/v2/personas/share-token.js");
   return mod.default;
 }
 
