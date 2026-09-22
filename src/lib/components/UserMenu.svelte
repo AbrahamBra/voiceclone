@@ -49,6 +49,9 @@
 
   {#if open}
     <div class="menu" role="menu" transition:fly={{ y: -4, duration: 120 }}>
+      <button class="item" role="menuitem" onclick={() => go("/clones")}>
+        <span class="icon">◎</span> Mes clones
+      </button>
       <button class="item" role="menuitem" onclick={() => go("/create")}>
         <span class="icon">＋</span> Nouveau clone
       </button>

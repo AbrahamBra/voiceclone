@@ -76,6 +76,7 @@
         </button>
       {/each}
     {/if}
+    <a class="all-link mono" href="/clones" onclick={() => onClose?.()}>voir tous les clones →</a>
   </div>
 {/if}
 
@@ -165,6 +166,20 @@
   @keyframes driftPulse {
     0%, 100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--vermillon) 20%, transparent); }
     50%      { box-shadow: 0 0 0 4px color-mix(in srgb, var(--vermillon) 10%, transparent); }
+  }
+  .all-link {
+    display: block;
+    padding: 7px 10px;
+    border-top: 1px solid var(--rule-strong);
+    font-size: 10px;
+    color: var(--ink-40);
+    text-decoration: none;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .all-link:hover {
+    background: var(--paper-subtle);
+    color: var(--ink);
   }
   .empty {
     padding: 12px;
